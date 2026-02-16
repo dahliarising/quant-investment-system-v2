@@ -637,6 +637,133 @@
             }
         }
 
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--gray-900);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            z-index: 9999;
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            max-width: 90vw;
+            text-align: center;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast.success { background: linear-gradient(135deg, #10b981, #059669); }
+        .toast.error { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .toast.info { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            z-index: 9000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            padding: 1rem;
+        }
+
+        .modal-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            transform: scale(0.9);
+            transition: transform 0.3s;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        .modal-overlay.show .modal {
+            transform: scale(1);
+        }
+
+        .modal h2 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--gray-900);
+        }
+
+        .modal-close {
+            float: right;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--gray-600);
+            padding: 0.25rem;
+            line-height: 1;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--gray-200);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .strategy-log {
+            font-family: monospace;
+            font-size: 0.8rem;
+            background: var(--gray-50);
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            color: var(--gray-700);
+            line-height: 1.8;
+        }
+
+        /* Touch-friendly improvements */
+        .btn, .tab-btn, .nav-item {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .nav-item { cursor: pointer; }
+
+        tbody tr {
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         /* Extra small devices */
         @media (max-width: 380px) {
             .container {
@@ -677,11 +804,11 @@
                     </div>
                 </div>
                 <div class="header-actions">
-                    <button class="btn btn-secondary">
+                    <button class="btn btn-secondary" id="exportBtn" onclick="exportData()">
                         <i class="fas fa-download"></i>
                         Export
                     </button>
-                    <button class="btn btn-primary">
+                    <button class="btn btn-primary" id="runStrategyBtn" onclick="runStrategy()">
                         <i class="fas fa-play"></i>
                         Run Strategy
                     </button>
@@ -695,23 +822,23 @@
             <aside class="sidebar">
                 <div class="sidebar-section">
                     <h3>Navigation</h3>
-                    <div class="nav-item active">
+                    <div class="nav-item active" onclick="switchNav(this, 'dashboard')">
                         <i class="fas fa-home"></i>
                         <span>Dashboard</span>
                     </div>
-                    <div class="nav-item">
+                    <div class="nav-item" onclick="switchNav(this, 'portfolio')">
                         <i class="fas fa-chart-bar"></i>
                         <span>Portfolio</span>
                     </div>
-                    <div class="nav-item">
+                    <div class="nav-item" onclick="switchNav(this, 'holdings')">
                         <i class="fas fa-list"></i>
                         <span>Holdings</span>
                     </div>
-                    <div class="nav-item">
+                    <div class="nav-item" onclick="switchNav(this, 'backtest')">
                         <i class="fas fa-history"></i>
                         <span>Backtest</span>
                     </div>
-                    <div class="nav-item">
+                    <div class="nav-item" onclick="switchNav(this, 'settings')">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
                     </div>
@@ -828,11 +955,11 @@
                     <div class="chart-header">
                         <h2 class="chart-title">Portfolio Performance</h2>
                         <div class="chart-controls">
-                            <button class="tab-btn active">1M</button>
-                            <button class="tab-btn">3M</button>
-                            <button class="tab-btn">6M</button>
-                            <button class="tab-btn">1Y</button>
-                            <button class="tab-btn">ALL</button>
+                            <button class="tab-btn active" onclick="changePeriod(this, 30)">1M</button>
+                            <button class="tab-btn" onclick="changePeriod(this, 90)">3M</button>
+                            <button class="tab-btn" onclick="changePeriod(this, 180)">6M</button>
+                            <button class="tab-btn" onclick="changePeriod(this, 365)">1Y</button>
+                            <button class="tab-btn" onclick="changePeriod(this, 0)">ALL</button>
                         </div>
                     </div>
                     <div id="performanceChart" style="height: 400px;"></div>
@@ -882,7 +1009,169 @@
         </div>
     </div>
 
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Strategy Modal -->
+    <div class="modal-overlay" id="strategyModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h2><i class="fas fa-rocket" style="color: var(--primary);"></i> Running Strategy</h2>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div id="progressText" style="font-size:0.9rem; color:var(--gray-600); margin-bottom:1rem;">Initializing...</div>
+            <div class="strategy-log" id="strategyLog"></div>
+        </div>
+    </div>
+
+    <!-- Stock Detail Modal -->
+    <div class="modal-overlay" id="stockModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeStockModal()">&times;</button>
+            <h2 id="stockModalTitle">Stock Detail</h2>
+            <div id="stockModalContent"></div>
+        </div>
+    </div>
+
     <script>
+        // ===== Toast Notification =====
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type;
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // ===== Modal Helpers =====
+        function closeModal() {
+            document.getElementById('strategyModal').classList.remove('show');
+        }
+        function closeStockModal() {
+            document.getElementById('stockModal').classList.remove('show');
+        }
+
+        // ===== Navigation =====
+        function switchNav(el, page) {
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active');
+            showToast(page.charAt(0).toUpperCase() + page.slice(1) + ' selected', 'info');
+        }
+
+        // ===== Export Data =====
+        function exportData() {
+            const csv = ['Symbol,Name,Score,Weight,1M Return,3M Return,Status'];
+            holdings.forEach(s => {
+                csv.push([
+                    s.symbol, s.name, s.score.toFixed(3),
+                    (s.weight*100).toFixed(1)+'%',
+                    (s.return1m*100).toFixed(2)+'%',
+                    (s.return3m*100).toFixed(2)+'%',
+                    s.score > 0.85 ? 'Strong Buy' : s.score > 0.75 ? 'Buy' : 'Hold'
+                ].join(','));
+            });
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'portfolio_holdings_' + new Date().toISOString().split('T')[0] + '.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('CSV exported successfully!', 'success');
+        }
+
+        // ===== Run Strategy =====
+        function runStrategy() {
+            const modal = document.getElementById('strategyModal');
+            const fill = document.getElementById('progressFill');
+            const text = document.getElementById('progressText');
+            const log = document.getElementById('strategyLog');
+
+            modal.classList.add('show');
+            fill.style.width = '0%';
+            log.innerHTML = '';
+
+            const steps = [
+                { pct: 10, msg: 'Loading market data...' },
+                { pct: 25, msg: 'Calculating factor scores (Momentum, Quality, Value)...' },
+                { pct: 40, msg: 'Running ML prediction models...' },
+                { pct: 55, msg: 'Generating alpha signals...' },
+                { pct: 70, msg: 'Optimizing portfolio weights...' },
+                { pct: 85, msg: 'Running risk analysis & drawdown check...' },
+                { pct: 95, msg: 'Finalizing trade recommendations...' },
+                { pct: 100, msg: 'Strategy complete! New signals generated.' }
+            ];
+
+            steps.forEach((step, i) => {
+                setTimeout(() => {
+                    fill.style.width = step.pct + '%';
+                    text.textContent = step.msg;
+                    log.innerHTML += '<div>' + new Date().toLocaleTimeString() + ' - ' + step.msg + '</div>';
+                    log.scrollTop = log.scrollHeight;
+
+                    if (i === steps.length - 1) {
+                        setTimeout(() => {
+                            // Update stat cards with new random values
+                            const statValues = document.querySelectorAll('.stat-value');
+                            const newReturn = (20 + Math.random() * 10).toFixed(1);
+                            const newSharpe = (1.8 + Math.random() * 0.8).toFixed(2);
+                            const newDD = (5 + Math.random() * 8).toFixed(1);
+                            const newWin = (58 + Math.random() * 12).toFixed(1);
+                            statValues[0].textContent = '+' + newReturn + '%';
+                            statValues[1].textContent = newSharpe;
+                            statValues[2].textContent = '-' + newDD + '%';
+                            statValues[3].textContent = newWin + '%';
+
+                            // Regenerate charts
+                            const newPerf = generatePerformanceData();
+                            Plotly.react('performanceChart', [
+                                { ...performanceTrace1, x: newPerf.dates, y: newPerf.portfolio },
+                                { ...performanceTrace2, x: newPerf.dates, y: newPerf.benchmark }
+                            ], performanceLayout);
+
+                            showToast('Strategy executed! Dashboard updated.', 'success');
+                        }, 500);
+                    }
+                }, (i + 1) * 600);
+            });
+        }
+
+        // ===== Stock Row Click =====
+        function showStockDetail(stock) {
+            const modal = document.getElementById('stockModal');
+            document.getElementById('stockModalTitle').innerHTML =
+                '<i class="fas fa-chart-bar" style="color:var(--primary)"></i> ' + stock.symbol + ' - ' + stock.name;
+            document.getElementById('stockModalContent').innerHTML =
+                '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:1rem;">' +
+                    '<div style="background:var(--gray-50); padding:1rem; border-radius:10px;">' +
+                        '<div style="font-size:0.8rem; color:var(--gray-600); text-transform:uppercase;">Factor Score</div>' +
+                        '<div style="font-size:1.5rem; font-weight:800; color:var(--primary);">' + stock.score.toFixed(3) + '</div>' +
+                    '</div>' +
+                    '<div style="background:var(--gray-50); padding:1rem; border-radius:10px;">' +
+                        '<div style="font-size:0.8rem; color:var(--gray-600); text-transform:uppercase;">Weight</div>' +
+                        '<div style="font-size:1.5rem; font-weight:800;">' + (stock.weight*100).toFixed(1) + '%</div>' +
+                    '</div>' +
+                    '<div style="background:var(--gray-50); padding:1rem; border-radius:10px;">' +
+                        '<div style="font-size:0.8rem; color:var(--gray-600); text-transform:uppercase;">1M Return</div>' +
+                        '<div style="font-size:1.5rem; font-weight:800; color:' + (stock.return1m>0?'var(--success)':'var(--danger)') + ';">' +
+                            (stock.return1m>0?'+':'') + (stock.return1m*100).toFixed(2) + '%</div>' +
+                    '</div>' +
+                    '<div style="background:var(--gray-50); padding:1rem; border-radius:10px;">' +
+                        '<div style="font-size:0.8rem; color:var(--gray-600); text-transform:uppercase;">3M Return</div>' +
+                        '<div style="font-size:1.5rem; font-weight:800; color:' + (stock.return3m>0?'var(--success)':'var(--danger)') + ';">' +
+                            (stock.return3m>0?'+':'') + (stock.return3m*100).toFixed(2) + '%</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div style="margin-top:1.5rem; padding:1rem; background:' +
+                    (stock.score>0.85?'rgba(16,185,129,0.1)':stock.score>0.75?'rgba(245,158,11,0.1)':'rgba(239,68,68,0.1)') +
+                    '; border-radius:10px; text-align:center;">' +
+                    '<span style="font-weight:700; font-size:1.1rem; color:' +
+                    (stock.score>0.85?'#065f46':stock.score>0.75?'#92400e':'#991b1b') + ';">' +
+                    (stock.score>0.85?'Strong Buy':stock.score>0.75?'Buy':'Hold') +
+                    ' Recommendation</span>' +
+                '</div>';
+            modal.classList.add('show');
+        }
+
         // Generate sample data
         function generatePerformanceData() {
             const days = 180;
@@ -908,8 +1197,29 @@
             return { dates, portfolio, benchmark };
         }
 
+        // ===== Period Change for Chart =====
+        const fullPerfData = generatePerformanceData();
+
+        function changePeriod(btn, days) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const sliceFrom = days === 0 ? 0 : Math.max(0, fullPerfData.dates.length - days);
+            const dates = fullPerfData.dates.slice(sliceFrom);
+            const portfolio = fullPerfData.portfolio.slice(sliceFrom);
+            const benchmark = fullPerfData.benchmark.slice(sliceFrom);
+
+            Plotly.react('performanceChart', [
+                { ...performanceTrace1, x: dates, y: portfolio },
+                { ...performanceTrace2, x: dates, y: benchmark }
+            ], performanceLayout);
+
+            const labels = {30:'1 Month',90:'3 Months',180:'6 Months',365:'1 Year',0:'All Time'};
+            showToast('Showing ' + labels[days] + ' data', 'info');
+        }
+
         // Portfolio Performance Chart
-        const perfData = generatePerformanceData();
+        const perfData = fullPerfData;
         
         const performanceTrace1 = {
             x: perfData.dates,
@@ -1034,6 +1344,7 @@
         const tbody = document.querySelector('#holdingsTable tbody');
         holdings.forEach(stock => {
             const row = document.createElement('tr');
+            row.onclick = function() { showStockDetail(stock); };
             row.innerHTML = `
                 <td><strong>${stock.symbol}</strong></td>
                 <td>${stock.name}</td>
@@ -1052,6 +1363,13 @@
                 </td>
             `;
             tbody.appendChild(row);
+        });
+
+        // Close modals on overlay click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === this) this.classList.remove('show');
+            });
         });
     </script>
 </body>
