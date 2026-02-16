@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quant Investment System - Premium Dashboard</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Charts -->
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Animation -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #8b5cf6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            --dark: #0f172a;
+            --light: #f8fafc;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--gray-800);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        
+        /* Glassmorphism Container */
+        .container {
+            max-width: 1920px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Header */
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            padding: 1.5rem 2rem;
+            border-radius: 20px;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: fadeInDown 0.6s ease-out;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .logo-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.8) 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .logo-text h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: white;
+            margin: 0;
+        }
+        
+        .logo-text p {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.9);
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-primary {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        /* Main Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            animation: fadeInLeft 0.6s ease-out;
+        }
+        
+        .sidebar-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 16px;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+        
+        .sidebar-section h3 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gray-600);
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+        
+        .nav-item {
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--gray-700);
+            text-decoration: none;
+        }
+        
+        .nav-item:hover {
+            background: var(--gray-100);
+            transform: translateX(5px);
+        }
+        
+        .nav-item.active {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+        
+        .nav-item i {
+            width: 20px;
+            font-size: 1.1rem;
+        }
+
+        .is-hidden {
+            display: none !important;
+        }
+        
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1.8rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
+        }
+        
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .stat-icon.success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+        
+        .stat-icon.danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+        
+        .stat-icon.info {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+        
+        .stat-icon.warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+        }
+        
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        
+        .stat-value {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--gray-900);
+            margin: 0.5rem 0;
+            line-height: 1;
+        }
+        
+        .stat-change {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+        }
+        
+        .stat-change.positive {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        
+        .stat-change.negative {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        
+        /* Chart Containers */
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+            animation: fadeInUp 0.8s ease-out;
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .chart-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        
+        .chart-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--gray-300);
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+        }
+        
+        /* Table Styles */
+        .table-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            animation: fadeInUp 1s ease-out;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        thead {
+            background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+        }
+        
+        th {
+            padding: 1.2rem 1.5rem;
+            text-align: left;
+            font-weight: 700;
+            color: var(--gray-700);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        td {
+            padding: 1.2rem 1.5rem;
+            border-bottom: 1px solid var(--gray-200);
+            color: var(--gray-800);
+        }
+        
+        tbody tr {
+            transition: all 0.3s;
+        }
+        
+        tbody tr:hover {
+            background: var(--gray-50);
+            transform: scale(1.01);
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.35rem 0.85rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .badge-success {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            color: #065f46;
+        }
+        
+        .badge-danger {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            color: #991b1b;
+        }
+        
+        .badge-warning {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            color: #92400e;
+        }
+        
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 640px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="logo-text">
+                        <h1>Quant Investment System</h1>
+                        <p>AI-Powered Multi-Factor Platform</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <span id="uiStatusBadge" style="
+                        display: inline-flex;
+                        align-items: center;
+                        padding: 0.55rem 0.9rem;
+                        border-radius: 999px;
+                        font-size: 0.78rem;
+                        font-weight: 700;
+                        letter-spacing: 0.3px;
+                        background: rgba(255,255,255,0.22);
+                        color: white;
+                        border: 1px solid rgba(255,255,255,0.35);
+                    ">INIT</span>
+                    <button class="btn btn-secondary">
+                        <i class="fas fa-download"></i>
+                        Export
+                    </button>
+                    <button class="btn btn-primary">
+                        <i class="fas fa-play"></i>
+                        Run Strategy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-grid">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>Navigation</h3>
+                    <a class="nav-item active" data-nav="dashboard" role="button" tabindex="0" href="#statsSection">
+                        <i class="fas fa-home"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a class="nav-item" data-nav="portfolio" role="button" tabindex="0" href="#performanceSection">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>Portfolio</span>
+                    </a>
+                    <a class="nav-item" data-nav="holdings" role="button" tabindex="0" href="#holdingsSection">
+                        <i class="fas fa-list"></i>
+                        <span>Holdings</span>
+                    </a>
+                    <a class="nav-item" data-nav="backtest" role="button" tabindex="0" href="#performanceSection">
+                        <i class="fas fa-history"></i>
+                        <span>Backtest</span>
+                    </a>
+                    <a class="nav-item" data-nav="settings" role="button" tabindex="0" href="#settingsSection">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </a>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3>Market Data</h3>
+                    <div style="padding: 1rem 0;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                            <span style="color: var(--gray-600); font-size: 0.9rem;">KOSPI</span>
+                            <span style="font-weight: 700; color: var(--success);">2,650.5 ▲</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                            <span style="color: var(--gray-600); font-size: 0.9rem;">KOSDAQ</span>
+                            <span style="font-weight: 700; color: var(--danger);">850.2 ▼</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--gray-600); font-size: 0.9rem;">S&P 500</span>
+                            <span style="font-weight: 700; color: var(--success);">4,825.0 ▲</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3>System Status</h3>
+                    <div style="padding: 1rem 0;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                            <div style="width: 8px; height: 8px; background: var(--success); border-radius: 50%;"></div>
+                            <span style="font-size: 0.9rem;">Data Feed Active</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                            <div style="width: 8px; height: 8px; background: var(--success); border-radius: 50%;"></div>
+                            <span style="font-size: 0.9rem;">Models Running</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div style="width: 8px; height: 8px; background: var(--warning); border-radius: 50%;"></div>
+                            <span style="font-size: 0.9rem;">Portfolio Sync</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main>
+                <!-- Stats Grid -->
+                <div class="stats-grid" id="statsSection">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div>
+                                <div class="stat-label">Total Return</div>
+                                <div class="stat-value">+24.8%</div>
+                                <span class="stat-change positive">
+                                    <i class="fas fa-arrow-up"></i>
+                                    +3.2% this month
+                                </span>
+                            </div>
+                            <div class="stat-icon success">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div>
+                                <div class="stat-label">Sharpe Ratio</div>
+                                <div class="stat-value">2.15</div>
+                                <span class="stat-change positive">
+                                    <i class="fas fa-check-circle"></i>
+                                    Excellent
+                                </span>
+                            </div>
+                            <div class="stat-icon info">
+                                <i class="fas fa-star"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div>
+                                <div class="stat-label">Max Drawdown</div>
+                                <div class="stat-value">-8.5%</div>
+                                <span class="stat-change negative">
+                                    <i class="fas fa-arrow-down"></i>
+                                    Within limit
+                                </span>
+                            </div>
+                            <div class="stat-icon danger">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div>
+                                <div class="stat-label">Win Rate</div>
+                                <div class="stat-value">64.2%</div>
+                                <span class="stat-change positive">
+                                    <i class="fas fa-thumbs-up"></i>
+                                    Above 50%
+                                </span>
+                            </div>
+                            <div class="stat-icon warning">
+                                <i class="fas fa-percentage"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portfolio Performance Chart -->
+                <div class="chart-container" id="performanceSection">
+                    <div class="chart-header">
+                        <h2 class="chart-title" id="performanceTitle">Portfolio Performance</h2>
+                        <div class="chart-controls">
+                            <button class="tab-btn active" data-range="1M">1M</button>
+                            <button class="tab-btn" data-range="3M">3M</button>
+                            <button class="tab-btn" data-range="6M">6M</button>
+                            <button class="tab-btn" data-range="1Y">1Y</button>
+                            <button class="tab-btn" data-range="ALL">ALL</button>
+                        </div>
+                    </div>
+                    <div id="performanceChart" style="height: 400px;"></div>
+                </div>
+
+                <!-- Holdings Table -->
+                <div class="table-container" id="holdingsSection">
+                    <div style="padding: 2rem;">
+                        <h2 class="chart-title" style="margin-bottom: 1.5rem;">Top Holdings</h2>
+                        <table id="holdingsTable">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Name</th>
+                                    <th>Score</th>
+                                    <th>Weight</th>
+                                    <th>1M Return</th>
+                                    <th>3M Return</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="factorsSection" style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 2rem;">
+                    <!-- Factor Attribution -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h2 class="chart-title">Factor Attribution</h2>
+                        </div>
+                        <div id="factorChart" style="height: 300px;"></div>
+                    </div>
+
+                    <!-- Sector Allocation -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h2 class="chart-title">Sector Allocation</h2>
+                        </div>
+                        <div id="sectorChart" style="height: 300px;"></div>
+                    </div>
+                </div>
+
+                <div class="chart-container is-hidden" id="settingsSection">
+                    <div class="chart-header">
+                        <h2 class="chart-title">Settings</h2>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+                        <label style="display: flex; align-items: center; gap: 0.75rem; font-weight: 500;">
+                            <input type="checkbox" checked />
+                            Auto Refresh
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.75rem; font-weight: 500;">
+                            <input type="checkbox" checked />
+                            Show Benchmark
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.75rem; font-weight: 500;">
+                            <input type="checkbox" />
+                            Risk Alerts
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.75rem; font-weight: 500;">
+                            <input type="checkbox" />
+                            Dark Theme (Planned)
+                        </label>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const chartConfig = {
+            responsive: true,
+            displayModeBar: false
+        };
+        const hasPlotly = typeof window.Plotly !== "undefined";
+
+        function showToast(message, type = "info") {
+            const toast = document.createElement("div");
+            const bgByType = {
+                info: "rgba(59, 130, 246, 0.96)",
+                success: "rgba(16, 185, 129, 0.96)",
+                warning: "rgba(245, 158, 11, 0.96)"
+            };
+            toast.textContent = message;
+            toast.style.position = "fixed";
+            toast.style.right = "20px";
+            toast.style.bottom = "20px";
+            toast.style.zIndex = "9999";
+            toast.style.padding = "10px 14px";
+            toast.style.borderRadius = "10px";
+            toast.style.color = "#fff";
+            toast.style.fontWeight = "600";
+            toast.style.background = bgByType[type] || bgByType.info;
+            toast.style.boxShadow = "0 8px 24px rgba(0,0,0,0.2)";
+            document.body.appendChild(toast);
+            window.setTimeout(() => toast.remove(), 2000);
+        }
+
+        function renderChartFallback(targetId, message) {
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            target.innerHTML = `
+                <div style="
+                    height: 100%;
+                    min-height: 220px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: 1px dashed #d1d5db;
+                    border-radius: 12px;
+                    color: #6b7280;
+                    font-weight: 600;
+                    background: rgba(249, 250, 251, 0.8);
+                ">
+                    ${message}
+                </div>
+            `;
+        }
+
+        const sectionRefs = {
+            stats: document.getElementById("statsSection"),
+            performance: document.getElementById("performanceSection"),
+            holdings: document.getElementById("holdingsSection"),
+            factors: document.getElementById("factorsSection"),
+            settings: document.getElementById("settingsSection")
+        };
+
+        const navViews = {
+            dashboard: {
+                show: ["stats", "performance", "holdings", "factors"],
+                title: "Portfolio Performance",
+                anchor: "statsSection"
+            },
+            portfolio: {
+                show: ["stats", "performance", "factors"],
+                title: "Portfolio Performance",
+                anchor: "performanceSection"
+            },
+            holdings: {
+                show: ["holdings"],
+                title: "Portfolio Performance",
+                anchor: "holdingsSection"
+            },
+            backtest: {
+                show: ["performance", "factors"],
+                title: "Backtest Performance",
+                anchor: "performanceSection"
+            },
+            settings: {
+                show: ["settings"],
+                title: "Portfolio Performance",
+                anchor: "settingsSection"
+            }
+        };
+
+        const performanceTitle = document.getElementById("performanceTitle");
+        const navItems = Array.from(document.querySelectorAll(".nav-item"));
+        const rangeButtons = Array.from(document.querySelectorAll(".tab-btn"));
+        const exportButton = document.querySelector(".btn-secondary");
+        const runButton = document.querySelector(".btn-primary");
+        const uiStatusBadge = document.getElementById("uiStatusBadge");
+
+        if (uiStatusBadge) {
+            uiStatusBadge.textContent = hasPlotly ? "INTERACTIVE" : "INTERACTIVE (NO CDN)";
+        }
+
+        function setActiveNav(navKey) {
+            navItems.forEach((item) => item.classList.toggle("active", item.dataset.nav === navKey));
+        }
+
+        function showNavView(navKey) {
+            const view = navViews[navKey] || navViews.dashboard;
+            Object.values(sectionRefs).forEach((el) => {
+                if (el) el.classList.add("is-hidden");
+            });
+            view.show.forEach((name) => {
+                if (sectionRefs[name]) sectionRefs[name].classList.remove("is-hidden");
+            });
+            if (performanceTitle) performanceTitle.textContent = view.title;
+
+            const anchorEl = document.getElementById(view.anchor);
+            if (anchorEl) {
+                anchorEl.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+        }
+
+        function handleNavActivation(item) {
+            const navKey = item.dataset.nav || "dashboard";
+            setActiveNav(navKey);
+            showNavView(navKey);
+        }
+
+        navItems.forEach((item) => {
+            item.addEventListener("click", (event) => {
+                event.preventDefault();
+                handleNavActivation(item);
+            });
+            item.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleNavActivation(item);
+                }
+            });
+        });
+
+        if (exportButton) {
+            exportButton.addEventListener("click", () => {
+                showToast("Export queued (demo)", "success");
+            });
+        }
+
+        if (runButton) {
+            runButton.addEventListener("click", () => {
+                showToast("Strategy run started (demo)", "info");
+            });
+        }
+
+        function generatePerformanceData(days = 365) {
+            const dates = [];
+            const portfolio = [];
+            const benchmark = [];
+            let portfolioValue = 100000000;
+            let benchmarkValue = 100000000;
+
+            for (let i = 0; i < days; i++) {
+                const date = new Date();
+                date.setDate(date.getDate() - (days - i));
+                dates.push(date.toISOString().split("T")[0]);
+                portfolioValue *= 1 + (Math.random() - 0.45) * 0.02;
+                benchmarkValue *= 1 + (Math.random() - 0.48) * 0.015;
+                portfolio.push(portfolioValue);
+                benchmark.push(benchmarkValue);
+            }
+            return { dates, portfolio, benchmark };
+        }
+
+        function slicePerformanceData(data, range) {
+            const daysByRange = { "1M": 30, "3M": 90, "6M": 180, "1Y": 365, "ALL": data.dates.length };
+            const days = daysByRange[range] || 30;
+            return {
+                dates: data.dates.slice(-days),
+                portfolio: data.portfolio.slice(-days),
+                benchmark: data.benchmark.slice(-days)
+            };
+        }
+
+        function buildPerformanceTraces(data) {
+            return [
+                {
+                    x: data.dates,
+                    y: data.portfolio,
+                    name: "Portfolio",
+                    type: "scatter",
+                    mode: "lines",
+                    line: { color: "#6366f1", width: 3 },
+                    fill: "tozeroy",
+                    fillcolor: "rgba(99, 102, 241, 0.1)"
+                },
+                {
+                    x: data.dates,
+                    y: data.benchmark,
+                    name: "Benchmark",
+                    type: "scatter",
+                    mode: "lines",
+                    line: { color: "#ef4444", width: 2, dash: "dash" }
+                }
+            ];
+        }
+
+        const perfData = generatePerformanceData(365);
+        const performanceLayout = {
+            margin: { t: 20, r: 20, b: 40, l: 60 },
+            xaxis: { gridcolor: "#f3f4f6", showgrid: true },
+            yaxis: { gridcolor: "#f3f4f6", showgrid: true, tickformat: ",.0f" },
+            legend: { orientation: "h", y: 1.1 },
+            hovermode: "x unified",
+            plot_bgcolor: "transparent",
+            paper_bgcolor: "transparent"
+        };
+
+        function renderPerformanceChart(range) {
+            if (!hasPlotly) {
+                renderChartFallback("performanceChart", "Chart library unavailable. Check internet/CDN.");
+                return;
+            }
+            try {
+                const view = slicePerformanceData(perfData, range);
+                Plotly.react("performanceChart", buildPerformanceTraces(view), performanceLayout, chartConfig);
+            } catch (error) {
+                console.error("Performance chart render failed:", error);
+                renderChartFallback("performanceChart", "Failed to render performance chart.");
+            }
+        }
+
+        function renderFactorChart() {
+            if (!hasPlotly) {
+                renderChartFallback("factorChart", "Chart library unavailable. Check internet/CDN.");
+                return;
+            }
+            try {
+                const factorData = {
+                    x: [5.2, 3.8, -1.2, 2.5, 4.1],
+                    y: ["Momentum", "Quality", "Risk", "Liquidity", "Size"],
+                    type: "bar",
+                    orientation: "h",
+                    marker: {
+                        color: [5.2, 3.8, -1.2, 2.5, 4.1].map((v) => (v > 0 ? "#10b981" : "#ef4444"))
+                    },
+                    text: ["+5.2%", "+3.8%", "-1.2%", "+2.5%", "+4.1%"],
+                    textposition: "outside"
+                };
+                const factorLayout = {
+                    margin: { t: 20, r: 80, b: 40, l: 80 },
+                    xaxis: { gridcolor: "#f3f4f6", showgrid: true, title: "Contribution (%)" },
+                    plot_bgcolor: "transparent",
+                    paper_bgcolor: "transparent"
+                };
+                Plotly.newPlot("factorChart", [factorData], factorLayout, chartConfig);
+            } catch (error) {
+                console.error("Factor chart render failed:", error);
+                renderChartFallback("factorChart", "Failed to render factor chart.");
+            }
+        }
+
+        function renderSectorChart() {
+            if (!hasPlotly) {
+                renderChartFallback("sectorChart", "Chart library unavailable. Check internet/CDN.");
+                return;
+            }
+            try {
+                const sectorData = {
+                    values: [35, 25, 20, 12, 8],
+                    labels: ["Technology", "Healthcare", "Finance", "Consumer", "Energy"],
+                    type: "pie",
+                    hole: 0.5,
+                    marker: { colors: ["#6366f1", "#8b5cf6", "#ec4899", "#3b82f6", "#10b981"] },
+                    textinfo: "label+percent",
+                    textfont: { size: 12 }
+                };
+                const sectorLayout = {
+                    margin: { t: 20, r: 20, b: 20, l: 20 },
+                    showlegend: false,
+                    plot_bgcolor: "transparent",
+                    paper_bgcolor: "transparent"
+                };
+                Plotly.newPlot("sectorChart", [sectorData], sectorLayout, chartConfig);
+            } catch (error) {
+                console.error("Sector chart render failed:", error);
+                renderChartFallback("sectorChart", "Failed to render sector chart.");
+            }
+        }
+
+        function populateHoldingsTable() {
+            const holdings = [
+                { symbol: "AAPL", name: "Apple Inc.", score: 0.92, weight: 0.12, return1m: 0.08, return3m: 0.15 },
+                { symbol: "MSFT", name: "Microsoft Corp.", score: 0.89, weight: 0.11, return1m: 0.06, return3m: 0.12 },
+                { symbol: "GOOGL", name: "Alphabet Inc.", score: 0.85, weight: 0.10, return1m: -0.02, return3m: 0.08 },
+                { symbol: "NVDA", name: "NVIDIA Corp.", score: 0.88, weight: 0.09, return1m: 0.12, return3m: 0.25 },
+                { symbol: "AMZN", name: "Amazon.com Inc.", score: 0.82, weight: 0.09, return1m: 0.04, return3m: 0.10 },
+                { symbol: "META", name: "Meta Platforms", score: 0.80, weight: 0.08, return1m: 0.05, return3m: 0.18 },
+                { symbol: "TSLA", name: "Tesla Inc.", score: 0.78, weight: 0.07, return1m: -0.05, return3m: 0.05 },
+                { symbol: "JPM", name: "JPMorgan Chase", score: 0.75, weight: 0.06, return1m: 0.03, return3m: 0.07 }
+            ];
+
+            const tbody = document.querySelector("#holdingsTable tbody");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+
+            holdings.forEach((stock) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td><strong>${stock.symbol}</strong></td>
+                    <td>${stock.name}</td>
+                    <td>${stock.score.toFixed(3)}</td>
+                    <td>${(stock.weight * 100).toFixed(1)}%</td>
+                    <td style="color: ${stock.return1m > 0 ? "var(--success)" : "var(--danger)"}; font-weight: 600;">
+                        ${stock.return1m > 0 ? "+" : ""}${(stock.return1m * 100).toFixed(2)}%
+                    </td>
+                    <td style="color: ${stock.return3m > 0 ? "var(--success)" : "var(--danger)"}; font-weight: 600;">
+                        ${stock.return3m > 0 ? "+" : ""}${(stock.return3m * 100).toFixed(2)}%
+                    </td>
+                    <td>
+                        <span class="badge ${stock.score > 0.85 ? "badge-success" : stock.score > 0.75 ? "badge-warning" : "badge-danger"}">
+                            ${stock.score > 0.85 ? "Strong Buy" : stock.score > 0.75 ? "Buy" : "Hold"}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        rangeButtons.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const range = btn.dataset.range || "1M";
+                rangeButtons.forEach((other) => other.classList.remove("active"));
+                btn.classList.add("active");
+                renderPerformanceChart(range);
+            });
+        });
+
+        showNavView("dashboard");
+        populateHoldingsTable();
+        renderPerformanceChart("1M");
+        renderFactorChart();
+        renderSectorChart();
+    </script>
+</body>
+</html>
