@@ -284,8 +284,20 @@ body{
 
     <!-- ===== PAGE: Screener ===== -->
     <div id="page-screener" class="page">
+        <!-- Ticker Search -->
         <div class="card">
-            <div class="card-title"><i class="fas fa-search-dollar"></i> Stock Screener</div>
+            <div class="card-title"><i class="fas fa-crosshairs"></i> Ticker Lookup & Prediction</div>
+            <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
+                <input type="text" id="searchTicker" placeholder="Enter ticker (e.g. PLTR, SOFI, RIVN...)" autocomplete="off"
+                    style="flex:1;padding:.6rem .8rem;border:1.5px solid var(--border);background:var(--bg);color:var(--text);border-radius:10px;font-size:.85rem;font-family:inherit;-webkit-appearance:none"
+                    onkeydown="if(event.key==='Enter')searchStock()">
+                <button class="btn btn-primary" onclick="searchStock()"><i class="fas fa-search"></i> Analyze</button>
+            </div>
+            <div id="searchResult"></div>
+        </div>
+        <!-- Sector Screener -->
+        <div class="card">
+            <div class="card-title"><i class="fas fa-search-dollar"></i> Stock Screener <span style="font-size:.65rem;color:var(--text3);font-weight:400;margin-left:.3rem">(70 stocks, 7 sectors)</span></div>
             <div class="filter-row" id="screenerFilters"></div>
             <div id="screenerResults"></div>
         </div>
@@ -438,27 +450,99 @@ const plotDark={plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)',font:
 
 let isLive=false, lastUpdate=null, priceCache={};
 
-// Signals data (fallback prices - will be overwritten by real data)
+// Signals data per sector (~10 each, fallback prices overwritten by real data)
 const signals=[
+    // Tech (10)
     {s:'NVDA',n:'NVIDIA',sec:'Tech',sc:.95,tp:0,cp:0,f:{mom:1.8,val:-0.5,qual:1.2,risk:-0.3},r:'AI/GPU demand, data center growth'},
     {s:'AAPL',n:'Apple',sec:'Tech',sc:.92,tp:0,cp:0,f:{mom:1.2,val:0.8,qual:1.5,risk:0.2},r:'Services growth, iPhone cycle'},
     {s:'MSFT',n:'Microsoft',sec:'Tech',sc:.89,tp:0,cp:0,f:{mom:0.9,val:0.3,qual:1.8,risk:0.1},r:'Azure + Copilot AI integration'},
+    {s:'AVGO',n:'Broadcom',sec:'Tech',sc:.87,tp:0,cp:0,f:{mom:1.4,val:0.2,qual:1.6,risk:0.1},r:'AI networking, VMware synergy'},
+    {s:'CRM',n:'Salesforce',sec:'Tech',sc:.83,tp:0,cp:0,f:{mom:0.8,val:0.6,qual:1.3,risk:0.2},r:'AI CRM, Data Cloud growth'},
+    {s:'ADBE',n:'Adobe',sec:'Tech',sc:.81,tp:0,cp:0,f:{mom:0.5,val:0.4,qual:1.5,risk:0.3},r:'AI creative tools, Firefly'},
+    {s:'AMD',n:'AMD',sec:'Tech',sc:.84,tp:0,cp:0,f:{mom:1.3,val:-0.3,qual:0.9,risk:-0.5},r:'AI chip competition, MI300'},
+    {s:'ORCL',n:'Oracle',sec:'Tech',sc:.79,tp:0,cp:0,f:{mom:1.0,val:0.7,qual:1.1,risk:0.4},r:'Cloud infrastructure, OCI'},
+    {s:'NOW',n:'ServiceNow',sec:'Tech',sc:.82,tp:0,cp:0,f:{mom:1.1,val:-0.4,qual:1.4,risk:0.0},r:'AI workflow automation'},
+    {s:'INTC',n:'Intel',sec:'Tech',sc:.62,tp:0,cp:0,f:{mom:-1.2,val:1.5,qual:-0.8,risk:-1.5},r:'Foundry turnaround, 18A node'},
+    // Healthcare (10)
     {s:'LLY',n:'Eli Lilly',sec:'Healthcare',sc:.88,tp:0,cp:0,f:{mom:1.5,val:-1.2,qual:0.8,risk:-0.5},r:'GLP-1 drug pipeline'},
-    {s:'AMZN',n:'Amazon',sec:'Consumer',sc:.85,tp:0,cp:0,f:{mom:0.7,val:0.5,qual:1.0,risk:0.3},r:'AWS + retail margin'},
-    {s:'META',n:'Meta',sec:'Communication',sc:.83,tp:0,cp:0,f:{mom:1.3,val:1.1,qual:0.6,risk:-0.2},r:'Ad recovery, Reels'},
-    {s:'JPM',n:'JPMorgan',sec:'Finance',sc:.80,tp:0,cp:0,f:{mom:0.5,val:1.5,qual:1.3,risk:0.8},r:'NII growth'},
-    {s:'TSLA',n:'Tesla',sec:'Consumer',sc:.72,tp:0,cp:0,f:{mom:-0.3,val:-1.8,qual:0.2,risk:-1.2},r:'FSD progress, energy'},
-    {s:'AVGO',n:'Broadcom',sec:'Tech',sc:.87,tp:0,cp:0,f:{mom:1.4,val:0.2,qual:1.6,risk:0.1},r:'AI networking, VMware'},
     {s:'UNH',n:'UnitedHealth',sec:'Healthcare',sc:.81,tp:0,cp:0,f:{mom:0.3,val:0.9,qual:1.7,risk:0.5},r:'Medicare expansion'},
+    {s:'JNJ',n:'Johnson & Johnson',sec:'Healthcare',sc:.78,tp:0,cp:0,f:{mom:0.1,val:1.2,qual:1.5,risk:0.9},r:'MedTech + pharma split'},
+    {s:'ABBV',n:'AbbVie',sec:'Healthcare',sc:.80,tp:0,cp:0,f:{mom:0.6,val:1.0,qual:1.2,risk:0.3},r:'Immunology, Rinvoq growth'},
+    {s:'MRK',n:'Merck',sec:'Healthcare',sc:.77,tp:0,cp:0,f:{mom:0.2,val:0.8,qual:1.3,risk:0.6},r:'Keytruda franchise'},
+    {s:'TMO',n:'Thermo Fisher',sec:'Healthcare',sc:.79,tp:0,cp:0,f:{mom:0.4,val:0.3,qual:1.6,risk:0.2},r:'Life sciences tools leader'},
+    {s:'ABT',n:'Abbott Labs',sec:'Healthcare',sc:.76,tp:0,cp:0,f:{mom:0.3,val:0.7,qual:1.4,risk:0.7},r:'Diagnostics + MedTech'},
+    {s:'AMGN',n:'Amgen',sec:'Healthcare',sc:.74,tp:0,cp:0,f:{mom:0.5,val:0.9,qual:1.0,risk:0.4},r:'Obesity drug MariTide'},
+    {s:'PFE',n:'Pfizer',sec:'Healthcare',sc:.65,tp:0,cp:0,f:{mom:-0.8,val:1.8,qual:0.5,risk:-0.3},r:'Post-COVID pipeline rebuild'},
+    {s:'ISRG',n:'Intuitive Surgical',sec:'Healthcare',sc:.85,tp:0,cp:0,f:{mom:1.2,val:-0.9,qual:1.5,risk:-0.1},r:'Da Vinci 5 robot launch'},
+    // Finance (10)
+    {s:'JPM',n:'JPMorgan',sec:'Finance',sc:.80,tp:0,cp:0,f:{mom:0.5,val:1.5,qual:1.3,risk:0.8},r:'NII growth, investment banking'},
+    {s:'V',n:'Visa',sec:'Finance',sc:.86,tp:0,cp:0,f:{mom:0.9,val:0.2,qual:1.8,risk:0.6},r:'Global payments leader'},
+    {s:'MA',n:'Mastercard',sec:'Finance',sc:.85,tp:0,cp:0,f:{mom:0.8,val:0.1,qual:1.7,risk:0.5},r:'Cross-border recovery'},
+    {s:'GS',n:'Goldman Sachs',sec:'Finance',sc:.78,tp:0,cp:0,f:{mom:0.7,val:1.3,qual:1.0,risk:-0.2},r:'Trading + asset mgmt'},
+    {s:'BAC',n:'Bank of America',sec:'Finance',sc:.75,tp:0,cp:0,f:{mom:0.3,val:1.6,qual:0.8,risk:0.1},r:'Rate sensitivity, consumer'},
+    {s:'MS',n:'Morgan Stanley',sec:'Finance',sc:.77,tp:0,cp:0,f:{mom:0.6,val:1.1,qual:1.1,risk:0.0},r:'Wealth management pivot'},
+    {s:'BLK',n:'BlackRock',sec:'Finance',sc:.82,tp:0,cp:0,f:{mom:1.0,val:0.4,qual:1.5,risk:0.3},r:'ETF dominance, $10T+ AUM'},
+    {s:'AXP',n:'American Express',sec:'Finance',sc:.79,tp:0,cp:0,f:{mom:0.8,val:0.7,qual:1.2,risk:0.2},r:'Premium consumer spend'},
+    {s:'C',n:'Citigroup',sec:'Finance',sc:.70,tp:0,cp:0,f:{mom:0.2,val:1.8,qual:0.4,risk:-0.4},r:'Restructuring turnaround'},
+    {s:'SCHW',n:'Schwab',sec:'Finance',sc:.76,tp:0,cp:0,f:{mom:0.4,val:1.0,qual:1.0,risk:0.1},r:'Brokerage + Ameritrade integration'},
+    // Consumer (10)
+    {s:'AMZN',n:'Amazon',sec:'Consumer',sc:.85,tp:0,cp:0,f:{mom:0.7,val:0.5,qual:1.0,risk:0.3},r:'AWS + retail margin expansion'},
+    {s:'TSLA',n:'Tesla',sec:'Consumer',sc:.72,tp:0,cp:0,f:{mom:-0.3,val:-1.8,qual:0.2,risk:-1.2},r:'FSD progress, energy storage'},
+    {s:'COST',n:'Costco',sec:'Consumer',sc:.83,tp:0,cp:0,f:{mom:1.0,val:-0.6,qual:1.6,risk:0.8},r:'Membership model, pricing power'},
+    {s:'WMT',n:'Walmart',sec:'Consumer',sc:.80,tp:0,cp:0,f:{mom:0.8,val:0.3,qual:1.3,risk:0.9},r:'E-commerce + ad platform'},
+    {s:'HD',n:'Home Depot',sec:'Consumer',sc:.78,tp:0,cp:0,f:{mom:0.4,val:0.6,qual:1.4,risk:0.4},r:'Housing cycle recovery'},
+    {s:'MCD',n:'McDonald\'s',sec:'Consumer',sc:.76,tp:0,cp:0,f:{mom:0.2,val:0.5,qual:1.5,risk:0.7},r:'Digital ordering, loyalty program'},
+    {s:'NKE',n:'Nike',sec:'Consumer',sc:.68,tp:0,cp:0,f:{mom:-0.7,val:0.8,qual:0.9,risk:-0.3},r:'Brand refresh, DTC recovery'},
+    {s:'SBUX',n:'Starbucks',sec:'Consumer',sc:.71,tp:0,cp:0,f:{mom:-0.2,val:0.6,qual:1.0,risk:0.1},r:'New CEO turnaround plan'},
+    {s:'PG',n:'Procter & Gamble',sec:'Consumer',sc:.77,tp:0,cp:0,f:{mom:0.3,val:0.4,qual:1.6,risk:1.0},r:'Pricing power, staples leader'},
+    {s:'TGT',n:'Target',sec:'Consumer',sc:.69,tp:0,cp:0,f:{mom:-0.4,val:1.2,qual:0.7,risk:-0.1},r:'Discretionary recovery play'},
+    // Communication (10)
+    {s:'META',n:'Meta',sec:'Communication',sc:.83,tp:0,cp:0,f:{mom:1.3,val:1.1,qual:0.6,risk:-0.2},r:'Ad recovery, Reels monetization'},
+    {s:'GOOG',n:'Alphabet',sec:'Communication',sc:.86,tp:0,cp:0,f:{mom:0.9,val:1.0,qual:1.4,risk:0.3},r:'Search AI, Cloud, YouTube'},
+    {s:'NFLX',n:'Netflix',sec:'Communication',sc:.84,tp:0,cp:0,f:{mom:1.4,val:-0.3,qual:1.1,risk:0.1},r:'Ad tier growth, live sports'},
+    {s:'DIS',n:'Disney',sec:'Communication',sc:.73,tp:0,cp:0,f:{mom:0.1,val:0.7,qual:0.8,risk:-0.2},r:'Streaming profit, parks'},
+    {s:'CMCSA',n:'Comcast',sec:'Communication',sc:.71,tp:0,cp:0,f:{mom:-0.2,val:1.4,qual:0.9,risk:0.5},r:'Broadband + Peacock'},
+    {s:'TMUS',n:'T-Mobile',sec:'Communication',sc:.79,tp:0,cp:0,f:{mom:0.7,val:0.5,qual:1.2,risk:0.6},r:'5G subscriber growth'},
+    {s:'SPOT',n:'Spotify',sec:'Communication',sc:.81,tp:0,cp:0,f:{mom:1.5,val:-0.8,qual:0.7,risk:-0.4},r:'Margin expansion, price hikes'},
+    {s:'T',n:'AT&T',sec:'Communication',sc:.68,tp:0,cp:0,f:{mom:0.0,val:1.6,qual:0.5,risk:0.3},r:'Fiber + 5G, debt reduction'},
+    {s:'ROKU',n:'Roku',sec:'Communication',sc:.66,tp:0,cp:0,f:{mom:-0.5,val:0.3,qual:0.3,risk:-0.8},r:'CTV platform, ad recovery'},
+    {s:'RBLX',n:'Roblox',sec:'Communication',sc:.70,tp:0,cp:0,f:{mom:0.6,val:-1.5,qual:-0.2,risk:-0.9},r:'Metaverse gaming, user growth'},
+    // Energy (10)
+    {s:'XOM',n:'ExxonMobil',sec:'Energy',sc:.78,tp:0,cp:0,f:{mom:0.4,val:1.3,qual:1.1,risk:0.6},r:'Pioneer acquisition, Permian'},
+    {s:'CVX',n:'Chevron',sec:'Energy',sc:.76,tp:0,cp:0,f:{mom:0.3,val:1.2,qual:1.0,risk:0.5},r:'Hess merger, Guyana'},
+    {s:'COP',n:'ConocoPhillips',sec:'Energy',sc:.77,tp:0,cp:0,f:{mom:0.5,val:1.1,qual:1.2,risk:0.3},r:'Low-cost production'},
+    {s:'SLB',n:'Schlumberger',sec:'Energy',sc:.74,tp:0,cp:0,f:{mom:0.2,val:0.9,qual:0.8,risk:-0.1},r:'Oilfield services leader'},
+    {s:'EOG',n:'EOG Resources',sec:'Energy',sc:.75,tp:0,cp:0,f:{mom:0.3,val:1.0,qual:1.3,risk:0.4},r:'Premium drilling returns'},
+    {s:'MPC',n:'Marathon Petroleum',sec:'Energy',sc:.73,tp:0,cp:0,f:{mom:0.6,val:1.4,qual:0.7,risk:-0.2},r:'Refining margins'},
+    {s:'OXY',n:'Occidental',sec:'Energy',sc:.71,tp:0,cp:0,f:{mom:-0.1,val:1.0,qual:0.6,risk:-0.5},r:'Berkshire-backed, carbon capture'},
+    {s:'WMB',n:'Williams Companies',sec:'Energy',sc:.72,tp:0,cp:0,f:{mom:0.4,val:0.8,qual:0.9,risk:0.7},r:'Natural gas pipelines'},
+    {s:'PSX',n:'Phillips 66',sec:'Energy',sc:.70,tp:0,cp:0,f:{mom:0.1,val:1.3,qual:0.7,risk:0.0},r:'Refining + midstream'},
+    {s:'LNG',n:'Cheniere Energy',sec:'Energy',sc:.79,tp:0,cp:0,f:{mom:0.7,val:0.6,qual:1.1,risk:0.2},r:'LNG export dominance'},
+    // Industrial (10)
+    {s:'CAT',n:'Caterpillar',sec:'Industrial',sc:.80,tp:0,cp:0,f:{mom:0.8,val:0.7,qual:1.3,risk:0.3},r:'Infrastructure spending cycle'},
+    {s:'GE',n:'GE Aerospace',sec:'Industrial',sc:.83,tp:0,cp:0,f:{mom:1.3,val:0.2,qual:1.2,risk:0.1},r:'Aviation aftermarket growth'},
+    {s:'HON',n:'Honeywell',sec:'Industrial',sc:.77,tp:0,cp:0,f:{mom:0.3,val:0.6,qual:1.4,risk:0.5},r:'Automation + aerospace'},
+    {s:'UNP',n:'Union Pacific',sec:'Industrial',sc:.76,tp:0,cp:0,f:{mom:0.2,val:0.8,qual:1.5,risk:0.7},r:'Rail network efficiency'},
+    {s:'RTX',n:'RTX Corp',sec:'Industrial',sc:.78,tp:0,cp:0,f:{mom:0.6,val:0.5,qual:1.1,risk:0.4},r:'Defense + Pratt & Whitney'},
+    {s:'LMT',n:'Lockheed Martin',sec:'Industrial',sc:.79,tp:0,cp:0,f:{mom:0.5,val:0.9,qual:1.3,risk:0.8},r:'Defense spending, F-35'},
+    {s:'DE',n:'Deere',sec:'Industrial',sc:.75,tp:0,cp:0,f:{mom:0.1,val:0.7,qual:1.4,risk:0.2},r:'Precision agriculture tech'},
+    {s:'BA',n:'Boeing',sec:'Industrial',sc:.63,tp:0,cp:0,f:{mom:-0.8,val:-0.5,qual:-0.6,risk:-1.3},r:'Production recovery, 737 MAX'},
+    {s:'ETN',n:'Eaton Corp',sec:'Industrial',sc:.82,tp:0,cp:0,f:{mom:1.2,val:0.1,qual:1.3,risk:0.2},r:'Electrification megatrend'},
+    {s:'UBER',n:'Uber',sec:'Industrial',sc:.81,tp:0,cp:0,f:{mom:1.1,val:-0.2,qual:0.8,risk:-0.1},r:'Mobility + delivery profitability'},
 ];
 
-// Hidden champions
+// Hidden champions (mid-cap with strong factors)
 const hiddenGems=[
     {s:'CRWD',n:'CrowdStrike',sec:'Tech',sc:.88,cp:0,mom:1.6,qual:1.3,r:'Cybersecurity leader'},
     {s:'DDOG',n:'Datadog',sec:'Tech',sc:.84,cp:0,mom:1.2,qual:0.9,r:'Observability platform'},
     {s:'MELI',n:'MercadoLibre',sec:'Consumer',sc:.82,cp:0,mom:1.4,qual:1.1,r:'LatAm e-commerce'},
     {s:'TTD',n:'Trade Desk',sec:'Tech',sc:.79,cp:0,mom:0.8,qual:1.0,r:'Programmatic ads'},
     {s:'HUBS',n:'HubSpot',sec:'Tech',sc:.77,cp:0,mom:0.6,qual:0.8,r:'SMB marketing'},
+    {s:'PANW',n:'Palo Alto',sec:'Tech',sc:.86,cp:0,mom:1.3,qual:1.2,r:'Platformization, AI security'},
+    {s:'SNOW',n:'Snowflake',sec:'Tech',sc:.75,cp:0,mom:0.4,qual:0.7,r:'Data cloud, AI features'},
+    {s:'COIN',n:'Coinbase',sec:'Finance',sc:.71,cp:0,mom:1.8,qual:0.3,r:'Crypto exchange, Base L2'},
+    {s:'ABNB',n:'Airbnb',sec:'Consumer',sc:.76,cp:0,mom:0.5,qual:1.0,r:'Travel demand, experiences'},
+    {s:'PLTR',n:'Palantir',sec:'Tech',sc:.80,cp:0,mom:1.7,qual:0.5,r:'AI/ML platform, gov + commercial'},
 ];
 
 // ===== Real-time Price Fetching =====
@@ -627,6 +711,185 @@ setInterval(()=>{
     // US market: 14:30-21:00 UTC (9:30-16:00 ET)
     if(h>=14&&h<=21&&now.getUTCDay()>=1&&now.getUTCDay()<=5){refreshPrices();}
 },5*60*1000);
+
+// ===== Ticker Search & Prediction =====
+const searchHistory=load('qis_search_v1')||[];
+
+async function searchStock(){
+    const input=document.getElementById('searchTicker');
+    const ticker=input.value.trim().toUpperCase();
+    const box=document.getElementById('searchResult');
+    if(!ticker){toast('Enter a ticker symbol','error');return}
+
+    box.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--text3)"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:var(--orange)"></i><p style="margin-top:.5rem">Analyzing '+ticker+'...</p></div>';
+
+    try{
+        // Fetch price data + historical for momentum calc
+        const proxies=[
+            url=>`https://corsproxy.io/?${encodeURIComponent(url)}`,
+            url=>`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+        ];
+        let chartData=null;
+        for(const proxy of proxies){
+            try{
+                const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo`;
+                const res=await fetch(proxy(url),{signal:AbortSignal.timeout(10000)});
+                if(!res.ok)continue;
+                chartData=await res.json();break;
+            }catch(e){continue;}
+        }
+        if(!chartData||!chartData.chart||!chartData.chart.result||!chartData.chart.result[0]){
+            box.innerHTML='<div style="text-align:center;padding:1.5rem"><i class="fas fa-exclamation-circle" style="font-size:2rem;color:var(--danger);margin-bottom:.5rem"></i><p style="color:var(--danger);font-weight:600">Ticker "'+ticker+'" not found</p><p style="color:var(--text3);font-size:.8rem">Check the symbol and try again</p></div>';
+            return;
+        }
+
+        const result=chartData.chart.result[0];
+        const meta=result.meta;
+        const closes=result.indicators.quote[0].close.filter(v=>v!=null);
+        const highs=result.indicators.quote[0].high.filter(v=>v!=null);
+        const lows=result.indicators.quote[0].low.filter(v=>v!=null);
+        const volumes=result.indicators.quote[0].volume.filter(v=>v!=null);
+        const timestamps=result.timestamp||[];
+
+        const price=meta.regularMarketPrice||closes[closes.length-1];
+        const prevClose=meta.chartPreviousClose||meta.previousClose||closes[closes.length-2]||price;
+        const dailyChg=price-prevClose;
+        const dailyPct=(dailyChg/prevClose*100);
+        const name=meta.shortName||meta.longName||ticker;
+        const currency=meta.currency||'USD';
+        const exchange=meta.exchangeName||'';
+
+        // Calculate factors from historical data
+        const n=closes.length;
+        // Momentum: 6-month return
+        const ret6m=n>1?((closes[n-1]/closes[0])-1)*100:0;
+        // 1-month return
+        const ret1m=n>21?((closes[n-1]/closes[n-22])-1)*100:ret6m/6;
+        // Volatility
+        const dailyRets=[];for(let i=1;i<closes.length;i++)dailyRets.push((closes[i]-closes[i-1])/closes[i-1]);
+        const avgRet=dailyRets.reduce((a,b)=>a+b,0)/dailyRets.length;
+        const variance=dailyRets.reduce((a,r)=>a+Math.pow(r-avgRet,2),0)/dailyRets.length;
+        const vol=Math.sqrt(variance)*Math.sqrt(252)*100; // annualized vol %
+
+        // Simple MA gap
+        const ma50=n>=50?closes.slice(-50).reduce((a,b)=>a+b,0)/50:price;
+        const ma200=n>=130?closes.slice(-130).reduce((a,b)=>a+b,0)/130:ma50;
+        const maGap=((price-ma50)/ma50*100);
+
+        // 52-week high proximity
+        const high52=Math.max(...highs);
+        const nearHigh=((price/high52)*100);
+
+        // Volume trend
+        const recentVol=volumes.slice(-20).reduce((a,b)=>a+b,0)/Math.min(20,volumes.length);
+        const olderVol=volumes.slice(-60,-20).reduce((a,b)=>a+b,0)/Math.min(40,volumes.length)||recentVol;
+        const volTrend=((recentVol/olderVol)-1)*100;
+
+        // Factor z-scores (normalized approx)
+        const momZ=Math.max(-3,Math.min(3,(ret6m-15)/20));
+        const valZ=Math.max(-3,Math.min(3,(20-vol)/15)); // low vol = value proxy
+        const qualZ=Math.max(-3,Math.min(3,(maGap)/10));
+        const riskZ=Math.max(-3,Math.min(3,(nearHigh-85)/10));
+
+        // AI Score (composite)
+        const rawScore=(momZ*0.3+qualZ*0.25+valZ*0.2+riskZ*0.25+1.5)/3;
+        const aiScore=Math.max(0.1,Math.min(0.99,rawScore));
+        const rating=aiScore>=0.8?'Strong Buy':aiScore>=0.65?'Buy':aiScore>=0.5?'Hold':aiScore>=0.35?'Weak Hold':'Sell';
+        const ratingColor=aiScore>=0.8?'var(--success)':aiScore>=0.65?'var(--info)':aiScore>=0.5?'var(--warning)':aiScore>=0.35?'var(--orange)':'var(--danger)';
+
+        // Target price (based on score + momentum)
+        const upside=(aiScore-0.3)*30; // -6% to +20%
+        const targetPrice=price*(1+upside/100);
+
+        // Mini price chart data
+        const chartDates=timestamps.map(t=>new Date(t*1000).toISOString().split('T')[0]);
+
+        // Save to search history
+        if(!searchHistory.find(h=>h.s===ticker)){
+            searchHistory.unshift({s:ticker,n:name,t:Date.now()});
+            if(searchHistory.length>20)searchHistory.pop();
+            save('qis_search_v1',searchHistory);
+        }
+
+        // Render result
+        box.innerHTML=`
+        <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+            <div style="background:linear-gradient(135deg,rgba(232,121,58,0.08),rgba(167,139,250,0.05));padding:1rem;border-bottom:1px solid var(--border)">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <div style="font-size:1.1rem;font-weight:800;color:var(--text)">${ticker} <span style="font-size:.7rem;color:var(--text3);font-weight:400">${exchange}</span></div>
+                        <div style="font-size:.8rem;color:var(--text3)">${name} · ${currency}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-size:1.3rem;font-weight:800;color:var(--text)">$${price.toFixed(2)}</div>
+                        <div style="font-size:.85rem;font-weight:700;color:${dailyPct>=0?'var(--success)':'var(--danger)'}">${dailyPct>=0?'+':''}${dailyPct.toFixed(2)}% (${dailyChg>=0?'+':''}$${dailyChg.toFixed(2)})</div>
+                    </div>
+                </div>
+            </div>
+            <div style="padding:1rem">
+                <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.85rem">
+                    <div style="font-size:2rem;font-weight:900;color:${ratingColor}">${(aiScore*100).toFixed(0)}</div>
+                    <div>
+                        <div style="font-size:.9rem;font-weight:700;color:${ratingColor}">${rating}</div>
+                        <div style="font-size:.65rem;color:var(--text3)">AI Multi-Factor Score</div>
+                    </div>
+                    <div style="margin-left:auto;text-align:right">
+                        <div style="font-size:.65rem;color:var(--text3)">TARGET</div>
+                        <div style="font-size:1rem;font-weight:700;color:var(--success)">$${targetPrice.toFixed(2)} (${upside>=0?'+':''}${upside.toFixed(1)}%)</div>
+                    </div>
+                </div>
+                <div id="searchMiniChart" style="height:150px;margin-bottom:.85rem"></div>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-bottom:.85rem">
+                    ${[['MOM',momZ],['VAL',valZ],['QUAL',qualZ],['RISK',riskZ]].map(([k,v])=>
+                        `<div style="background:var(--bg);padding:.5rem;border-radius:8px;text-align:center;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">${k}</div><div style="font-size:.95rem;font-weight:700;color:${v>0?'var(--success)':'var(--danger)'};">${v.toFixed(2)}</div></div>`
+                    ).join('')}
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-bottom:.85rem">
+                    ${[
+                        ['6M Return',(ret6m>=0?'+':'')+ret6m.toFixed(1)+'%',ret6m>=0?'var(--success)':'var(--danger)'],
+                        ['1M Return',(ret1m>=0?'+':'')+ret1m.toFixed(1)+'%',ret1m>=0?'var(--success)':'var(--danger)'],
+                        ['Volatility',vol.toFixed(1)+'%',vol<25?'var(--success)':vol<40?'var(--warning)':'var(--danger)'],
+                        ['MA50 Gap',(maGap>=0?'+':'')+maGap.toFixed(1)+'%',maGap>=0?'var(--success)':'var(--danger)'],
+                        ['52W High',nearHigh.toFixed(1)+'%',nearHigh>90?'var(--success)':'var(--warning)'],
+                        ['Vol Trend',(volTrend>=0?'+':'')+volTrend.toFixed(0)+'%',volTrend>0?'var(--info)':'var(--text3)'],
+                    ].map(([l,v,c])=>`<div style="background:var(--bg);padding:.55rem;border-radius:8px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">${l}</div><div style="font-size:.85rem;font-weight:700;color:${c}">${v}</div></div>`).join('')}
+                </div>
+                <div style="display:flex;gap:.5rem">
+                    <button class="btn btn-primary" style="flex:1" onclick="addSearchToPortfolio('${ticker}','${name.replace(/'/g,"\\'")}',${price})"><i class="fas fa-plus"></i> Add to Portfolio</button>
+                    <button class="btn btn-ghost" style="flex:1" onclick="addSearchToSignals('${ticker}','${name.replace(/'/g,"\\'")}',${price},${aiScore},${targetPrice},${momZ},${valZ},${qualZ},${riskZ})"><i class="fas fa-bookmark"></i> Watch</button>
+                </div>
+            </div>
+        </div>`;
+
+        // Draw mini chart
+        Plotly.newPlot('searchMiniChart',[{
+            x:chartDates,y:closes,type:'scatter',mode:'lines',
+            line:{color:'#e8793a',width:2},fill:'tozeroy',fillcolor:'rgba(232,121,58,0.06)'
+        }],{...plotDark,margin:{t:5,r:5,b:25,l:45},yaxis:{gridcolor:'rgba(42,58,92,.3)'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
+
+    }catch(e){
+        box.innerHTML='<div style="text-align:center;padding:1.5rem"><i class="fas fa-wifi" style="font-size:2rem;color:var(--danger);margin-bottom:.5rem"></i><p style="color:var(--danger);font-weight:600">Network error</p><p style="color:var(--text3);font-size:.8rem">'+e.message+'</p></div>';
+    }
+}
+
+function addSearchToPortfolio(sym,name,price){
+    document.getElementById('aSymbol').value=sym;
+    document.getElementById('aName').value=name;
+    document.getElementById('aCur').value=price.toFixed(2);
+    document.getElementById('aBuy').value=price.toFixed(2);
+    document.getElementById('aQty').value='';
+    document.getElementById('addModal').classList.add('show');
+}
+
+function addSearchToSignals(sym,name,price,sc,tp,mom,val,qual,risk){
+    // Check if already exists
+    if(!signals.find(s=>s.s===sym)){
+        signals.push({s:sym,n:name,sec:'Custom',sc,tp,cp:price,f:{mom,val,qual,risk},r:'User-analyzed ticker',_changePct:0});
+        screenerAll.push({s:sym,n:name,sec:'Custom',sc,tp,cp:price,f:{mom,val,qual,risk},r:'User-analyzed ticker',_changePct:0});
+    }
+    toast(sym+' added to watchlist','success');
+    renderSigs();
+}
 
 // Screener universe (mutable - rebuilt when prices update)
 let screenerAll=[...signals,...hiddenGems.map(h=>({s:h.s,n:h.n,sec:h.sec,sc:h.sc,tp:Math.round(h.cp*1.15),cp:h.cp,f:{mom:h.mom,val:0,qual:h.qual,risk:0},r:h.r}))];
