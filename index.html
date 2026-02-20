@@ -273,8 +273,12 @@ body{
 
     <!-- ===== PAGE: Signals ===== -->
     <div id="page-signals" class="page">
+        <div style="display:flex;gap:.4rem;margin-bottom:.85rem">
+            <button class="btn btn-primary" id="sigUS" onclick="switchMarket('US')" style="flex:1;justify-content:center"><i class="fas fa-flag-usa"></i> US</button>
+            <button class="btn btn-outline" id="sigKR" onclick="switchMarket('KR')" style="flex:1;justify-content:center"><span style="font-size:.85rem">🇰🇷</span> KR</button>
+        </div>
         <div class="card">
-            <div class="card-title"><i class="fas fa-bolt"></i> AI Buy Signals</div>
+            <div class="card-title"><i class="fas fa-bolt"></i> AI Buy Signals <span id="sigMarketLabel" style="font-size:.65rem;color:var(--text3);font-weight:400;margin-left:.3rem">(US Market)</span></div>
             <p style="font-size:.75rem;color:var(--text3);margin-bottom:.75rem">Multi-factor + ML model recommendations. Tap for details.</p>
             <div id="signalsList"></div>
         </div>
@@ -284,25 +288,31 @@ body{
 
     <!-- ===== PAGE: Screener ===== -->
     <div id="page-screener" class="page">
+        <!-- Market Toggle -->
+        <div style="display:flex;gap:.4rem;margin-bottom:.85rem">
+            <button class="btn btn-primary" id="mktUS" onclick="switchMarket('US')" style="flex:1;justify-content:center"><i class="fas fa-flag-usa"></i> US Market</button>
+            <button class="btn btn-outline" id="mktKR" onclick="switchMarket('KR')" style="flex:1;justify-content:center"><span style="font-size:.85rem">🇰🇷</span> 한국 주식</button>
+        </div>
         <!-- Ticker Search -->
         <div class="card">
             <div class="card-title"><i class="fas fa-crosshairs"></i> Ticker Lookup & Prediction</div>
             <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
-                <input type="text" id="searchTicker" placeholder="Enter ticker (e.g. PLTR, SOFI, RIVN...)" autocomplete="off"
+                <input type="text" id="searchTicker" placeholder="Enter ticker (e.g. AAPL, 005930...)" autocomplete="off"
                     style="flex:1;padding:.6rem .8rem;border:1.5px solid var(--border);background:var(--bg);color:var(--text);border-radius:10px;font-size:.85rem;font-family:inherit;-webkit-appearance:none"
                     onkeydown="if(event.key==='Enter')searchStock()">
                 <button class="btn btn-primary" onclick="searchStock()"><i class="fas fa-search"></i> Analyze</button>
             </div>
+            <p id="searchHint" style="font-size:.7rem;color:var(--text3);margin-bottom:.5rem">US: AAPL, TSLA, PLTR... | KR: 005930, 000660, 373220...</p>
             <div id="searchResult"></div>
         </div>
         <!-- Sector Screener -->
         <div class="card">
-            <div class="card-title"><i class="fas fa-search-dollar"></i> Stock Screener <span style="font-size:.65rem;color:var(--text3);font-weight:400;margin-left:.3rem">(70 stocks, 7 sectors)</span></div>
+            <div class="card-title"><i class="fas fa-search-dollar"></i> Stock Screener <span id="screenerCount" style="font-size:.65rem;color:var(--text3);font-weight:400;margin-left:.3rem">(70 stocks, 7 sectors)</span></div>
             <div class="filter-row" id="screenerFilters"></div>
             <div id="screenerResults"></div>
         </div>
         <div class="card"><div class="card-title"><i class="fas fa-gem"></i> Hidden Champions</div>
-            <p style="font-size:.75rem;color:var(--text3);margin-bottom:.6rem">Mid-cap stocks with strong momentum + quality factors</p>
+            <p style="font-size:.75rem;color:var(--text3);margin-bottom:.6rem" id="hiddenDesc">Mid-cap stocks with strong momentum + quality factors</p>
             <div id="hiddenChampions"></div>
         </div>
     </div>
@@ -400,7 +410,7 @@ body{
         <div class="form-group"><label>Quantity</label><input type="number" id="aQty" placeholder="0" step="1"></div>
         <div class="form-group"><label>Current Price</label><input type="number" id="aCur" placeholder="0" step="0.01"></div>
         <div class="form-group"><label>Sector</label>
-            <select id="aSector"><option>Tech</option><option>Healthcare</option><option>Finance</option><option>Consumer</option><option>Energy</option><option>Industrial</option><option>Communication</option><option>Other</option></select></div>
+            <select id="aSector"><option>Tech</option><option>Healthcare</option><option>Finance</option><option>Consumer</option><option>Energy</option><option>Industrial</option><option>Communication</option><option>IT</option><option>바이오</option><option>금융</option><option>소비재</option><option>엔터</option><option>에너지</option><option>산업재</option><option>Other</option></select></div>
         <div style="display:flex;gap:.6rem">
             <button class="btn btn-primary" style="flex:1" onclick="addStock()">Add</button>
             <button class="btn btn-outline" style="flex:1" onclick="closeModals()">Cancel</button>
@@ -545,8 +555,109 @@ const hiddenGems=[
     {s:'PLTR',n:'Palantir',sec:'Tech',sc:.80,cp:0,mom:1.7,qual:0.5,r:'AI/ML platform, gov + commercial'},
 ];
 
+// Korean Signals (10 per sector, Yahoo ticker = code.KS for KOSPI, code.KQ for KOSDAQ)
+const signalsKR=[
+    // IT/반도체 (10)
+    {s:'005930.KS',n:'삼성전자',sec:'IT',sc:.93,tp:0,cp:0,f:{mom:0.8,val:1.2,qual:1.5,risk:0.3},r:'AI 반도체 HBM, 파운드리'},
+    {s:'000660.KS',n:'SK하이닉스',sec:'IT',sc:.91,tp:0,cp:0,f:{mom:1.7,val:-0.3,qual:1.0,risk:-0.5},r:'HBM3E 독점, AI 메모리'},
+    {s:'035420.KS',n:'NAVER',sec:'IT',sc:.82,tp:0,cp:0,f:{mom:0.5,val:0.8,qual:1.2,risk:0.1},r:'검색 + 커머스 + AI HyperCLOVA'},
+    {s:'035720.KS',n:'카카오',sec:'IT',sc:.72,tp:0,cp:0,f:{mom:-0.5,val:1.0,qual:0.6,risk:-0.4},r:'플랫폼 규제 완화 기대'},
+    {s:'006400.KS',n:'삼성SDI',sec:'IT',sc:.79,tp:0,cp:0,f:{mom:-0.2,val:0.9,qual:1.3,risk:0.0},r:'전고체 배터리, BMW 공급'},
+    {s:'373220.KS',n:'LG에너지솔루션',sec:'IT',sc:.81,tp:0,cp:0,f:{mom:0.3,val:-0.5,qual:1.1,risk:-0.2},r:'北미 배터리 공장 확대'},
+    {s:'000270.KS',n:'기아',sec:'IT',sc:.84,tp:0,cp:0,f:{mom:1.0,val:1.5,qual:1.2,risk:0.6},r:'EV + HEV, 역대급 실적'},
+    {s:'005380.KS',n:'현대차',sec:'IT',sc:.83,tp:0,cp:0,f:{mom:0.9,val:1.3,qual:1.1,risk:0.5},r:'전동화 + 로보틱스'},
+    {s:'009150.KS',n:'삼성전기',sec:'IT',sc:.76,tp:0,cp:0,f:{mom:0.4,val:0.7,qual:1.0,risk:0.2},r:'MLCC AI 서버 수요'},
+    {s:'017670.KS',n:'SK텔레콤',sec:'IT',sc:.75,tp:0,cp:0,f:{mom:0.3,val:1.1,qual:1.3,risk:0.8},r:'AI 인프라 + 구독 성장'},
+    // 바이오/헬스케어 (10)
+    {s:'207940.KS',n:'삼성바이오로직스',sec:'바이오',sc:.87,tp:0,cp:0,f:{mom:1.0,val:-1.0,qual:1.5,risk:0.1},r:'CMO/CDO 글로벌 1위'},
+    {s:'068270.KS',n:'셀트리온',sec:'바이오',sc:.80,tp:0,cp:0,f:{mom:0.6,val:0.5,qual:1.0,risk:-0.1},r:'바이오시밀러 파이프라인'},
+    {s:'326030.KS',n:'SK바이오팜',sec:'바이오',sc:.77,tp:0,cp:0,f:{mom:0.2,val:-0.3,qual:0.8,risk:-0.3},r:'엑스코프리 글로벌 확대'},
+    {s:'000100.KS',n:'유한양행',sec:'바이오',sc:.78,tp:0,cp:0,f:{mom:0.7,val:0.4,qual:1.2,risk:0.4},r:'레이저티닙 FDA 승인'},
+    {s:'128940.KS',n:'한미약품',sec:'바이오',sc:.76,tp:0,cp:0,f:{mom:0.5,val:0.3,qual:0.9,risk:0.1},r:'GLP-1 비만치료제 기대'},
+    {s:'196170.KQ',n:'알테오젠',sec:'바이오',sc:.85,tp:0,cp:0,f:{mom:1.8,val:-1.5,qual:0.7,risk:-0.8},r:'SC 플랫폼 기술, 글로벌 L/O'},
+    {s:'145020.KS',n:'휴젤',sec:'바이오',sc:.74,tp:0,cp:0,f:{mom:0.8,val:0.6,qual:1.1,risk:0.3},r:'보톡스 + 필러 해외 진출'},
+    {s:'012790.KS',n:'신일제약',sec:'바이오',sc:.65,tp:0,cp:0,f:{mom:-0.3,val:1.2,qual:0.5,risk:0.2},r:'제네릭 안정 성장'},
+    {s:'302440.KQ',n:'SK바이오사이언스',sec:'바이오',sc:.71,tp:0,cp:0,f:{mom:-0.4,val:0.8,qual:0.7,risk:-0.2},r:'백신 CDMO 전환'},
+    {s:'091990.KS',n:'셀트리온헬스케어',sec:'바이오',sc:.73,tp:0,cp:0,f:{mom:0.3,val:0.6,qual:0.8,risk:0.0},r:'바이오시밀러 유통'},
+    // 금융 (10)
+    {s:'105560.KS',n:'KB금융',sec:'금융',sc:.82,tp:0,cp:0,f:{mom:0.9,val:1.5,qual:1.3,risk:0.7},r:'밸류업 배당 확대'},
+    {s:'055550.KS',n:'신한지주',sec:'금융',sc:.80,tp:0,cp:0,f:{mom:0.7,val:1.4,qual:1.2,risk:0.6},r:'비은행 포트폴리오'},
+    {s:'086790.KS',n:'하나금융지주',sec:'금융',sc:.79,tp:0,cp:0,f:{mom:0.8,val:1.6,qual:1.1,risk:0.5},r:'자사주 소각, 밸류업'},
+    {s:'316140.KS',n:'우리금융지주',sec:'금융',sc:.76,tp:0,cp:0,f:{mom:0.5,val:1.7,qual:0.9,risk:0.4},r:'비은행 인수 전략'},
+    {s:'000810.KS',n:'삼성화재',sec:'금융',sc:.78,tp:0,cp:0,f:{mom:0.6,val:1.3,qual:1.4,risk:0.8},r:'손해보험 시장 1위'},
+    {s:'032830.KS',n:'삼성생명',sec:'금융',sc:.74,tp:0,cp:0,f:{mom:0.3,val:1.5,qual:1.0,risk:0.6},r:'K-ICS 자본 건전성'},
+    {s:'024110.KS',n:'기업은행',sec:'금융',sc:.73,tp:0,cp:0,f:{mom:0.4,val:1.8,qual:0.8,risk:0.5},r:'중소기업 대출, 고배당'},
+    {s:'006800.KS',n:'미래에셋증권',sec:'금융',sc:.75,tp:0,cp:0,f:{mom:0.5,val:1.2,qual:0.9,risk:0.1},r:'글로벌 자산관리'},
+    {s:'071050.KS',n:'한국금융지주',sec:'금융',sc:.77,tp:0,cp:0,f:{mom:0.6,val:1.1,qual:1.2,risk:0.3},r:'한국투자증권 실적'},
+    {s:'138930.KS',n:'BNK금융지주',sec:'금융',sc:.70,tp:0,cp:0,f:{mom:0.3,val:1.6,qual:0.7,risk:0.4},r:'지방은행 밸류업'},
+    // 소비재 (10)
+    {s:'051900.KS',n:'LG생활건강',sec:'소비재',sc:.72,tp:0,cp:0,f:{mom:-0.3,val:0.8,qual:1.2,risk:0.1},r:'중국 리오프닝 수혜'},
+    {s:'090430.KS',n:'아모레퍼시픽',sec:'소비재',sc:.70,tp:0,cp:0,f:{mom:-0.4,val:0.7,qual:0.9,risk:-0.1},r:'브랜드 리뉴얼, 해외'},
+    {s:'097950.KS',n:'CJ제일제당',sec:'소비재',sc:.76,tp:0,cp:0,f:{mom:0.3,val:0.9,qual:1.3,risk:0.5},r:'비비고 글로벌 확대'},
+    {s:'004170.KS',n:'신세계',sec:'소비재',sc:.68,tp:0,cp:0,f:{mom:-0.2,val:1.1,qual:0.8,risk:0.2},r:'백화점 + 이마트'},
+    {s:'069960.KS',n:'현대백화점',sec:'소비재',sc:.67,tp:0,cp:0,f:{mom:-0.3,val:1.0,qual:0.9,risk:0.3},r:'더현대 MZ 소비'},
+    {s:'003550.KS',n:'LG',sec:'소비재',sc:.74,tp:0,cp:0,f:{mom:0.2,val:1.2,qual:1.1,risk:0.6},r:'지주사 할인 해소'},
+    {s:'282330.KS',n:'BGF리테일',sec:'소비재',sc:.71,tp:0,cp:0,f:{mom:0.1,val:0.8,qual:1.0,risk:0.5},r:'CU 편의점 확장'},
+    {s:'271560.KS',n:'오리온',sec:'소비재',sc:.78,tp:0,cp:0,f:{mom:0.6,val:0.7,qual:1.4,risk:0.6},r:'해외 스낵 고성장'},
+    {s:'004990.KS',n:'롯데지주',sec:'소비재',sc:.63,tp:0,cp:0,f:{mom:-0.6,val:1.3,qual:0.4,risk:-0.3},r:'구조조정 + 밸류업'},
+    {s:'018260.KS',n:'삼성에스디에스',sec:'소비재',sc:.77,tp:0,cp:0,f:{mom:0.4,val:0.6,qual:1.3,risk:0.4},r:'IT서비스 + 물류 AI'},
+    // 엔터/미디어 (10)
+    {s:'352820.KS',n:'하이브',sec:'엔터',sc:.78,tp:0,cp:0,f:{mom:0.3,val:-0.5,qual:0.8,risk:-0.4},r:'BTS 컴백, 위버스 성장'},
+    {s:'041510.KS',n:'에스엠',sec:'엔터',sc:.74,tp:0,cp:0,f:{mom:0.5,val:0.3,qual:0.7,risk:-0.2},r:'에스파, NCT 글로벌 투어'},
+    {s:'122870.KS',n:'와이지엔터',sec:'엔터',sc:.72,tp:0,cp:0,f:{mom:0.4,val:0.2,qual:0.6,risk:-0.3},r:'블랙핑크, 베이비몬스터'},
+    {s:'035760.KS',n:'CJ ENM',sec:'엔터',sc:.69,tp:0,cp:0,f:{mom:-0.1,val:0.9,qual:0.5,risk:-0.1},r:'OTT 티빙 + 콘텐츠'},
+    {s:'034830.KS',n:'한국토지신탁',sec:'엔터',sc:.64,tp:0,cp:0,f:{mom:-0.3,val:1.4,qual:0.6,risk:0.3},r:'부동산 신탁'},
+    {s:'030000.KS',n:'제일기획',sec:'엔터',sc:.73,tp:0,cp:0,f:{mom:0.2,val:0.8,qual:1.1,risk:0.5},r:'삼성 광고 + 디지털'},
+    {s:'036570.KS',n:'엔씨소프트',sec:'엔터',sc:.66,tp:0,cp:0,f:{mom:-0.8,val:1.2,qual:0.4,risk:-0.6},r:'신작 리니지W, TL'},
+    {s:'251270.KS',n:'넷마블',sec:'엔터',sc:.64,tp:0,cp:0,f:{mom:-0.5,val:0.6,qual:0.3,risk:-0.5},r:'게임 포트폴리오 다변화'},
+    {s:'263750.KS',n:'펄어비스',sec:'엔터',sc:.68,tp:0,cp:0,f:{mom:0.1,val:0.4,qual:0.5,risk:-0.3},r:'붉은사막 출시 기대'},
+    {s:'259960.KS',n:'크래프톤',sec:'엔터',sc:.80,tp:0,cp:0,f:{mom:0.9,val:0.7,qual:1.0,risk:0.2},r:'배틀그라운드, 인조이'},
+    // 에너지/소재 (10)
+    {s:'005490.KS',n:'POSCO홀딩스',sec:'에너지',sc:.79,tp:0,cp:0,f:{mom:0.4,val:1.3,qual:1.1,risk:0.2},r:'2차전지 소재 + 철강'},
+    {s:'010130.KS',n:'고려아연',sec:'에너지',sc:.77,tp:0,cp:0,f:{mom:0.5,val:0.9,qual:1.2,risk:0.4},r:'아연 + 2차전지 리사이클링'},
+    {s:'051910.KS',n:'LG화학',sec:'에너지',sc:.78,tp:0,cp:0,f:{mom:0.2,val:0.8,qual:1.0,risk:-0.1},r:'양극재 + 신약 사업'},
+    {s:'096770.KS',n:'SK이노베이션',sec:'에너지',sc:.73,tp:0,cp:0,f:{mom:-0.1,val:1.0,qual:0.7,risk:-0.3},r:'배터리 분사 후 밸류업'},
+    {s:'011170.KS',n:'롯데케미칼',sec:'에너지',sc:.62,tp:0,cp:0,f:{mom:-0.7,val:1.5,qual:0.3,risk:-0.8},r:'석화 업황 바닥 기대'},
+    {s:'006260.KS',n:'LS',sec:'에너지',sc:.81,tp:0,cp:0,f:{mom:1.2,val:0.6,qual:1.0,risk:0.1},r:'전력 인프라 + 전선'},
+    {s:'267260.KS',n:'HD현대일렉트릭',sec:'에너지',sc:.88,tp:0,cp:0,f:{mom:1.8,val:-0.3,qual:1.3,risk:-0.2},r:'변압기 슈퍼사이클'},
+    {s:'042670.KS',n:'HD현대인프라코어',sec:'에너지',sc:.75,tp:0,cp:0,f:{mom:0.6,val:1.1,qual:0.8,risk:0.3},r:'건설장비 수출'},
+    {s:'003670.KS',n:'포스코퓨처엠',sec:'에너지',sc:.76,tp:0,cp:0,f:{mom:-0.2,val:0.5,qual:0.9,risk:-0.4},r:'양극재/음극재 소재'},
+    {s:'078930.KS',n:'GS',sec:'에너지',sc:.72,tp:0,cp:0,f:{mom:0.3,val:1.2,qual:0.9,risk:0.5},r:'정유/발전 + 신재생'},
+    // 산업재 (10)
+    {s:'329180.KS',n:'HD현대중공업',sec:'산업재',sc:.84,tp:0,cp:0,f:{mom:1.3,val:0.5,qual:1.0,risk:0.1},r:'조선 슈퍼사이클, LNG선'},
+    {s:'009540.KS',n:'HD한국조선해양',sec:'산업재',sc:.82,tp:0,cp:0,f:{mom:1.2,val:0.4,qual:0.9,risk:0.0},r:'수주 잔고 역대 최대'},
+    {s:'010140.KS',n:'삼성중공업',sec:'산업재',sc:.79,tp:0,cp:0,f:{mom:1.0,val:0.7,qual:0.7,risk:-0.1},r:'LNG FPSO, 드릴십'},
+    {s:'003490.KS',n:'대한항공',sec:'산업재',sc:.77,tp:0,cp:0,f:{mom:0.6,val:0.8,qual:1.0,risk:0.3},r:'아시아나 합병 시너지'},
+    {s:'028050.KS',n:'삼성엔지니어링',sec:'산업재',sc:.78,tp:0,cp:0,f:{mom:0.7,val:0.6,qual:1.1,risk:0.2},r:'중동 플랜트 수주'},
+    {s:'047050.KS',n:'포스코인터내셔널',sec:'산업재',sc:.76,tp:0,cp:0,f:{mom:0.5,val:0.9,qual:0.8,risk:0.1},r:'LNG 트레이딩 + 미얀마'},
+    {s:'034020.KS',n:'두산에너빌리티',sec:'산업재',sc:.80,tp:0,cp:0,f:{mom:1.1,val:0.3,qual:0.8,risk:-0.2},r:'원전 SMR + 가스터빈'},
+    {s:'012450.KS',n:'한화에어로스페이스',sec:'산업재',sc:.86,tp:0,cp:0,f:{mom:1.6,val:-0.2,qual:1.2,risk:-0.1},r:'K방산 수출, 항공엔진'},
+    {s:'047810.KS',n:'한국항공우주',sec:'산업재',sc:.83,tp:0,cp:0,f:{mom:1.3,val:0.1,qual:1.0,risk:0.0},r:'KF-21, 수리온, 방산수출'},
+    {s:'064350.KS',n:'현대로템',sec:'산업재',sc:.81,tp:0,cp:0,f:{mom:1.4,val:0.4,qual:0.9,risk:-0.1},r:'K2 전차, 수소전기차'},
+];
+
+const hiddenGemsKR=[
+    {s:'196170.KQ',n:'알테오젠',sec:'바이오',sc:.85,cp:0,mom:1.8,qual:0.7,r:'SC 플랫폼 L/O 대형 딜'},
+    {s:'267260.KS',n:'HD현대일렉트릭',sec:'에너지',sc:.88,cp:0,mom:1.8,qual:1.3,r:'변압기 글로벌 수요 폭증'},
+    {s:'012450.KS',n:'한화에어로스페이스',sec:'산업재',sc:.86,cp:0,mom:1.6,qual:1.2,r:'K방산 수출 역대급'},
+    {s:'259960.KS',n:'크래프톤',sec:'엔터',sc:.80,cp:0,mom:0.9,qual:1.0,r:'배그 + 인조이 신작'},
+    {s:'006260.KS',n:'LS',sec:'에너지',sc:.81,cp:0,mom:1.2,qual:1.0,r:'전력 인프라 슈퍼사이클'},
+    {s:'000270.KS',n:'기아',sec:'IT',sc:.84,cp:0,mom:1.0,qual:1.2,r:'EV6/EV9 + 역대급 주주환원'},
+    {s:'003670.KS',n:'포스코퓨처엠',sec:'에너지',sc:.76,cp:0,mom:-0.2,qual:0.9,r:'2차전지 소재 핵심'},
+    {s:'064350.KS',n:'현대로템',sec:'산업재',sc:.81,cp:0,mom:1.4,qual:0.9,r:'K2전차 수출 대박'},
+    {s:'047050.KS',n:'포스코인터내셔널',sec:'산업재',sc:.76,cp:0,mom:0.5,qual:0.8,r:'LNG 사업 확대'},
+    {s:'128940.KS',n:'한미약품',sec:'바이오',sc:.76,cp:0,mom:0.5,qual:0.9,r:'GLP-1 비만치료제'},
+];
+
+// Current market selection
+let currentMarket='US'; // 'US' or 'KR'
+function getSignals(){return currentMarket==='US'?signals:signalsKR}
+function getHiddenGems(){return currentMarket==='US'?hiddenGems:hiddenGemsKR}
+function getSectors(){return currentMarket==='US'?['Tech','Healthcare','Finance','Consumer','Communication','Energy','Industrial']:['IT','바이오','금융','소비재','엔터','에너지','산업재']}
+
 // ===== Real-time Price Fetching =====
 const ALL_TICKERS=[...signals.map(s=>s.s),...hiddenGems.map(h=>h.s)];
+const ALL_TICKERS_KR=[...signalsKR.map(s=>s.s),...hiddenGemsKR.map(h=>h.s)];
 
 function updateDataStatus(status,msg){
     const el=document.getElementById('dataStatus');
@@ -615,41 +726,37 @@ async function fetchPricesFromYahoo(tickers){
     return null;
 }
 
-function applyPrices(prices){
+function applyPricesToList(prices,sigList,gemList){
     if(!prices)return;
-    priceCache=prices;
-    // Update signals
-    signals.forEach(sig=>{
+    Object.assign(priceCache,prices);
+    sigList.forEach(sig=>{
         if(prices[sig.s]){
             sig.cp=prices[sig.s].price;
-            sig.tp=Math.round(sig.cp*(1+(.05+sig.sc*.15))*100)/100; // target = current * (1 + upside based on score)
+            sig.tp=Math.round(sig.cp*(1+(.05+sig.sc*.15))*100)/100;
             sig._change=prices[sig.s].change;
             sig._changePct=prices[sig.s].changePct;
             sig._prevClose=prices[sig.s].prevClose;
         }
     });
-    // Update hidden gems
-    hiddenGems.forEach(h=>{
-        if(prices[h.s]){
-            h.cp=prices[h.s].price;
-            h._change=prices[h.s].change;
-            h._changePct=prices[h.s].changePct;
-        }
+    gemList.forEach(h=>{
+        if(prices[h.s]){h.cp=prices[h.s].price;h._change=prices[h.s].change;h._changePct=prices[h.s].changePct;}
     });
-    // Update screenerAll
-    screenerAll.length=0;
-    screenerAll.push(...signals,...hiddenGems.map(h=>({s:h.s,n:h.n,sec:h.sec,sc:h.sc,tp:Math.round(h.cp*1.15*100)/100,cp:h.cp,f:{mom:h.mom,val:0,qual:h.qual,risk:0},r:h.r,_change:h._change,_changePct:h._changePct})));
-
     // Update portfolio current prices
-    const p=portfolio();
-    let updated=false;
-    p.forEach(stock=>{
-        if(prices[stock.symbol]){stock.currentPrice=prices[stock.symbol].price;updated=true;}
-    });
+    const p=portfolio();let updated=false;
+    p.forEach(stock=>{if(prices[stock.symbol]){stock.currentPrice=prices[stock.symbol].price;updated=true;}});
     if(updated)save(SK,p);
-
-    // Save to cache
-    save(PCK,{prices,timestamp:Date.now()});
+}
+function applyPrices(prices){
+    if(!prices)return;
+    applyPricesToList(prices,signals,hiddenGems);
+    applyPricesToList(prices,signalsKR,hiddenGemsKR);
+    rebuildScreenerAll();
+    save(PCK,{prices:priceCache,timestamp:Date.now()});
+}
+function rebuildScreenerAll(){
+    const sigs=getSignals(),gems=getHiddenGems();
+    screenerAll.length=0;
+    screenerAll.push(...sigs,...gems.map(h=>({s:h.s,n:h.n,sec:h.sec,sc:h.sc,tp:Math.round((h.cp||1)*1.15*100)/100,cp:h.cp,f:{mom:h.mom,val:0,qual:h.qual,risk:0},r:h.r,_change:h._change,_changePct:h._changePct})));
 }
 
 async function refreshPrices(){
@@ -657,9 +764,10 @@ async function refreshPrices(){
     icon.classList.add('fa-spin');
     updateDataStatus('loading');
 
-    // Gather all tickers including portfolio
-    const portTickers=portfolio().map(s=>s.symbol).filter(t=>!ALL_TICKERS.includes(t));
-    const allTickers=[...ALL_TICKERS,...portTickers];
+    const portTickers=portfolio().map(s=>s.symbol).filter(t=>!ALL_TICKERS.includes(t)&&!ALL_TICKERS_KR.includes(t));
+    // Deduplicate KR tickers (some appear in both signals and hiddenGems)
+    const krUnique=[...new Set(ALL_TICKERS_KR)];
+    const allTickers=[...ALL_TICKERS,...krUnique,...portTickers];
 
     const prices=await fetchPricesFromYahoo(allTickers);
     icon.classList.remove('fa-spin');
@@ -670,34 +778,38 @@ async function refreshPrices(){
         toast('Prices updated! '+Object.keys(prices).length+' stocks','success');
     }else{
         updateDataStatus('error');
-        toast('Failed to fetch prices. Using cached data.','error');
+        toast('Failed to fetch. Using cached data.','error');
     }
     renderAll();
 }
 
 async function initPrices(){
-    // Try loading from cache first
     const cached=load(PCK);
     if(cached&&cached.prices&&cached.timestamp){
         const age=Date.now()-cached.timestamp;
-        applyPrices(cached.prices);
-        if(age<15*60*1000){ // cache valid for 15 minutes
+        priceCache=cached.prices;
+        applyPricesToList(cached.prices,signals,hiddenGems);
+        applyPricesToList(cached.prices,signalsKR,hiddenGemsKR);
+        rebuildScreenerAll();
+        if(age<15*60*1000){
             isLive=true;lastUpdate=new Date(cached.timestamp);
             updateDataStatus('cached','Cached '+Math.round(age/60000)+'m ago');
-            renderAll();
-            return;
+            renderAll();return;
         }
     }
-    // Fetch fresh prices
     updateDataStatus('loading');
-    const portTickers=portfolio().map(s=>s.symbol).filter(t=>!ALL_TICKERS.includes(t));
-    const allTickers=[...ALL_TICKERS,...portTickers];
+    const portTickers=portfolio().map(s=>s.symbol).filter(t=>!ALL_TICKERS.includes(t)&&!ALL_TICKERS_KR.includes(t));
+    const krUnique=[...new Set(ALL_TICKERS_KR)];
+    const allTickers=[...ALL_TICKERS,...krUnique,...portTickers];
     const prices=await fetchPricesFromYahoo(allTickers);
     if(prices&&Object.keys(prices).length>0){
         applyPrices(prices);isLive=true;lastUpdate=new Date();
         updateDataStatus('live');
     }else if(cached&&cached.prices){
-        applyPrices(cached.prices);
+        priceCache=cached.prices;
+        applyPricesToList(cached.prices,signals,hiddenGems);
+        applyPricesToList(cached.prices,signalsKR,hiddenGemsKR);
+        rebuildScreenerAll();
         updateDataStatus('cached','Using old cache');
     }else{
         updateDataStatus('error');
@@ -707,29 +819,66 @@ async function initPrices(){
 
 // Auto-refresh every 5 minutes during market hours
 setInterval(()=>{
-    const now=new Date();const h=now.getUTCHours();
-    // US market: 14:30-21:00 UTC (9:30-16:00 ET)
-    if(h>=14&&h<=21&&now.getUTCDay()>=1&&now.getUTCDay()<=5){refreshPrices();}
+    const now=new Date();const h=now.getUTCHours();const d=now.getUTCDay();
+    // US: 14:30-21:00 UTC | KR: 00:00-06:30 UTC (09:00-15:30 KST)
+    const usOpen=h>=14&&h<=21&&d>=1&&d<=5;
+    const krOpen=h>=0&&h<7&&d>=1&&d<=5;
+    if(usOpen||krOpen)refreshPrices();
 },5*60*1000);
+
+// ===== Market Switching =====
+function switchMarket(mkt){
+    currentMarket=mkt;
+    rebuildScreenerAll();
+    // Update toggle buttons
+    document.getElementById('mktUS').className='btn '+(mkt==='US'?'btn-primary':'btn-outline');
+    document.getElementById('mktKR').className='btn '+(mkt==='KR'?'btn-primary':'btn-outline');
+    document.getElementById('sigUS').className='btn '+(mkt==='US'?'btn-primary':'btn-outline');
+    document.getElementById('sigKR').className='btn '+(mkt==='KR'?'btn-primary':'btn-outline');
+    // Update labels
+    document.getElementById('sigMarketLabel').textContent=mkt==='US'?'(US Market)':'(한국 시장)';
+    document.getElementById('screenerCount').textContent=mkt==='US'?'(70 stocks, 7 sectors)':'(70 종목, 7 섹터)';
+    document.getElementById('hiddenDesc').textContent=mkt==='US'?'Mid-cap stocks with strong momentum + quality factors':'강한 모멘텀 + 퀄리티 중소형주';
+    document.getElementById('searchHint').textContent=mkt==='US'?'US: AAPL, TSLA, PLTR... | KR: 005930, 000660, 373220...':'KR: 005930, 000660... | US: AAPL, TSLA...';
+    document.getElementById('searchTicker').placeholder=mkt==='US'?'Enter ticker (e.g. AAPL, 005930...)':'종목코드 입력 (예: 005930, AAPL...)';
+    renderSigs();renderScreener();
+}
 
 // ===== Ticker Search & Prediction =====
 const searchHistory=load('qis_search_v1')||[];
 
+// Convert user input to Yahoo Finance ticker
+function toYahooTicker(raw){
+    raw=raw.trim().toUpperCase();
+    // If pure digits (Korean stock code), auto-detect KOSPI/KOSDAQ
+    if(/^\d{6}$/.test(raw)){
+        // Try .KS first (KOSPI), fallback to .KQ (KOSDAQ) handled in search
+        return {ticker:raw+'.KS',alt:raw+'.KQ',isKR:true,display:raw};
+    }
+    // Already has .KS or .KQ suffix
+    if(/^\d{6}\.(KS|KQ)$/.test(raw))return {ticker:raw,alt:null,isKR:true,display:raw.split('.')[0]};
+    // US ticker
+    return {ticker:raw,alt:null,isKR:false,display:raw};
+}
+
 async function searchStock(){
     const input=document.getElementById('searchTicker');
-    const ticker=input.value.trim().toUpperCase();
+    const rawInput=input.value.trim().toUpperCase();
     const box=document.getElementById('searchResult');
-    if(!ticker){toast('Enter a ticker symbol','error');return}
+    if(!rawInput){toast('Enter a ticker symbol','error');return}
 
-    box.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--text3)"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:var(--orange)"></i><p style="margin-top:.5rem">Analyzing '+ticker+'...</p></div>';
+    const parsed=toYahooTicker(rawInput);
+    let ticker=parsed.ticker;
+
+    box.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--text3)"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:var(--orange)"></i><p style="margin-top:.5rem">Analyzing '+parsed.display+'...</p></div>';
 
     try{
-        // Fetch price data + historical for momentum calc
         const proxies=[
             url=>`https://corsproxy.io/?${encodeURIComponent(url)}`,
             url=>`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
         ];
         let chartData=null;
+        // Try primary ticker
         for(const proxy of proxies){
             try{
                 const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo`;
@@ -738,8 +887,20 @@ async function searchStock(){
                 chartData=await res.json();break;
             }catch(e){continue;}
         }
+        // If KOSPI failed, try KOSDAQ
+        if((!chartData||!chartData.chart||!chartData.chart.result||!chartData.chart.result[0])&&parsed.alt){
+            ticker=parsed.alt;
+            for(const proxy of proxies){
+                try{
+                    const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo`;
+                    const res=await fetch(proxy(url),{signal:AbortSignal.timeout(10000)});
+                    if(!res.ok)continue;
+                    chartData=await res.json();break;
+                }catch(e){continue;}
+            }
+        }
         if(!chartData||!chartData.chart||!chartData.chart.result||!chartData.chart.result[0]){
-            box.innerHTML='<div style="text-align:center;padding:1.5rem"><i class="fas fa-exclamation-circle" style="font-size:2rem;color:var(--danger);margin-bottom:.5rem"></i><p style="color:var(--danger);font-weight:600">Ticker "'+ticker+'" not found</p><p style="color:var(--text3);font-size:.8rem">Check the symbol and try again</p></div>';
+            box.innerHTML='<div style="text-align:center;padding:1.5rem"><i class="fas fa-exclamation-circle" style="font-size:2rem;color:var(--danger);margin-bottom:.5rem"></i><p style="color:var(--danger);font-weight:600">"'+parsed.display+'" not found</p><p style="color:var(--text3);font-size:.8rem">'+(parsed.isKR?'6자리 종목코드를 확인하세요 (예: 005930)':'Check the symbol and try again')+'</p></div>';
             return;
         }
 
@@ -811,18 +972,25 @@ async function searchStock(){
             save('qis_search_v1',searchHistory);
         }
 
+        // Currency formatting for search result
+        const isKR=parsed.isKR||(currency==='KRW');
+        const fmtP=v=>isKR?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(v):'$'+v.toFixed(2);
+        const fmtChg=v=>isKR?(v>=0?'+':'')+new Intl.NumberFormat('ko-KR',{maximumFractionDigits:0}).format(v)+'원':(v>=0?'+':'-')+'$'+Math.abs(v).toFixed(2);
+        const displayTicker=isKR?parsed.display:ticker;
+        const ratingKR=isKR?(aiScore>=0.8?'강력매수':aiScore>=0.65?'매수':aiScore>=0.5?'보유':aiScore>=0.35?'관망':'매도'):rating;
+
         // Render result
         box.innerHTML=`
         <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
             <div style="background:linear-gradient(135deg,rgba(232,121,58,0.08),rgba(167,139,250,0.05));padding:1rem;border-bottom:1px solid var(--border)">
                 <div style="display:flex;justify-content:space-between;align-items:center">
                     <div>
-                        <div style="font-size:1.1rem;font-weight:800;color:var(--text)">${ticker} <span style="font-size:.7rem;color:var(--text3);font-weight:400">${exchange}</span></div>
+                        <div style="font-size:1.1rem;font-weight:800;color:var(--text)">${displayTicker} <span style="font-size:.7rem;color:var(--text3);font-weight:400">${exchange}</span></div>
                         <div style="font-size:.8rem;color:var(--text3)">${name} · ${currency}</div>
                     </div>
                     <div style="text-align:right">
-                        <div style="font-size:1.3rem;font-weight:800;color:var(--text)">$${price.toFixed(2)}</div>
-                        <div style="font-size:.85rem;font-weight:700;color:${dailyPct>=0?'var(--success)':'var(--danger)'}">${dailyPct>=0?'+':''}${dailyPct.toFixed(2)}% (${dailyChg>=0?'+':''}$${dailyChg.toFixed(2)})</div>
+                        <div style="font-size:1.3rem;font-weight:800;color:var(--text)">${fmtP(price)}</div>
+                        <div style="font-size:.85rem;font-weight:700;color:${dailyPct>=0?'var(--success)':'var(--danger)'}">${dailyPct>=0?'+':''}${dailyPct.toFixed(2)}% (${fmtChg(dailyChg)})</div>
                     </div>
                 </div>
             </div>
@@ -830,12 +998,12 @@ async function searchStock(){
                 <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.85rem">
                     <div style="font-size:2rem;font-weight:900;color:${ratingColor}">${(aiScore*100).toFixed(0)}</div>
                     <div>
-                        <div style="font-size:.9rem;font-weight:700;color:${ratingColor}">${rating}</div>
+                        <div style="font-size:.9rem;font-weight:700;color:${ratingColor}">${ratingKR}</div>
                         <div style="font-size:.65rem;color:var(--text3)">AI Multi-Factor Score</div>
                     </div>
                     <div style="margin-left:auto;text-align:right">
                         <div style="font-size:.65rem;color:var(--text3)">TARGET</div>
-                        <div style="font-size:1rem;font-weight:700;color:var(--success)">$${targetPrice.toFixed(2)} (${upside>=0?'+':''}${upside.toFixed(1)}%)</div>
+                        <div style="font-size:1rem;font-weight:700;color:var(--success)">${fmtP(targetPrice)} (${upside>=0?'+':''}${upside.toFixed(1)}%)</div>
                     </div>
                 </div>
                 <div id="searchMiniChart" style="height:150px;margin-bottom:.85rem"></div>
@@ -855,8 +1023,8 @@ async function searchStock(){
                     ].map(([l,v,c])=>`<div style="background:var(--bg);padding:.55rem;border-radius:8px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">${l}</div><div style="font-size:.85rem;font-weight:700;color:${c}">${v}</div></div>`).join('')}
                 </div>
                 <div style="display:flex;gap:.5rem">
-                    <button class="btn btn-primary" style="flex:1" onclick="addSearchToPortfolio('${ticker}','${name.replace(/'/g,"\\'")}',${price})"><i class="fas fa-plus"></i> Add to Portfolio</button>
-                    <button class="btn btn-ghost" style="flex:1" onclick="addSearchToSignals('${ticker}','${name.replace(/'/g,"\\'")}',${price},${aiScore},${targetPrice},${momZ},${valZ},${qualZ},${riskZ})"><i class="fas fa-bookmark"></i> Watch</button>
+                    <button class="btn btn-primary" style="flex:1" onclick="addSearchToPortfolio('${ticker}','${name.replace(/'/g,"\\'")}',${price})"><i class="fas fa-plus"></i> ${isKR?'포트폴리오 추가':'Add to Portfolio'}</button>
+                    <button class="btn btn-ghost" style="flex:1" onclick="addSearchToSignals('${ticker}','${name.replace(/'/g,"\\'")}',${price},${aiScore},${targetPrice},${momZ},${valZ},${qualZ},${riskZ},'${isKR?'KR':'US'}')"><i class="fas fa-bookmark"></i> ${isKR?'관심종목':'Watch'}</button>
                 </div>
             </div>
         </div>`;
@@ -881,14 +1049,14 @@ function addSearchToPortfolio(sym,name,price){
     document.getElementById('addModal').classList.add('show');
 }
 
-function addSearchToSignals(sym,name,price,sc,tp,mom,val,qual,risk){
-    // Check if already exists
-    if(!signals.find(s=>s.s===sym)){
-        signals.push({s:sym,n:name,sec:'Custom',sc,tp,cp:price,f:{mom,val,qual,risk},r:'User-analyzed ticker',_changePct:0});
-        screenerAll.push({s:sym,n:name,sec:'Custom',sc,tp,cp:price,f:{mom,val,qual,risk},r:'User-analyzed ticker',_changePct:0});
+function addSearchToSignals(sym,name,price,sc,tp,mom,val,qual,risk,market){
+    const targetList=market==='KR'?signalsKR:signals;
+    if(!targetList.find(s=>s.s===sym)){
+        targetList.push({s:sym,n:name,sec:market==='KR'?'사용자':'Custom',sc,tp,cp:price,f:{mom,val,qual,risk},r:market==='KR'?'사용자 분석 종목':'User-analyzed ticker',_changePct:0});
+        rebuildScreenerAll();
     }
-    toast(sym+' added to watchlist','success');
-    renderSigs();
+    toast((name||sym)+' added!','success');
+    renderSigs();renderScreener();
 }
 
 // Screener universe (mutable - rebuilt when prices update)
@@ -905,7 +1073,11 @@ function saveSetting(k,v){const s=settings();s[k]=v;save(STK,s);toast('Saved','s
 function updateWeight(el){document.getElementById(el.id+'Val').textContent=parseFloat(el.value).toFixed(2)}
 
 // ===== Helpers =====
-function fmt(n){const s=settings();return s.currency==='KRW'?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(n):new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2}).format(n)}
+function isKRTicker(sym){return sym&&(sym.includes('.KS')||sym.includes('.KQ'))}
+function fmtKRW(n){return new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(n)}
+function fmtUSD(n){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2}).format(n)}
+function fmt(n){const s=settings();return s.currency==='KRW'?fmtKRW(n):fmtUSD(n)}
+function fmtAuto(n,sym){return isKRTicker(sym)?fmtKRW(n):fmtUSD(n)}
 function pct(n){return(n>=0?'+':'')+n.toFixed(2)+'%'}
 function pc(v){return v>=0?'pnl-pos':'pnl-neg'}
 
@@ -947,18 +1119,23 @@ function logTrade(sym,action,price,qty){const t=trades();t.push({symbol:sym,acti
 
 // ===== Signal Detail =====
 function showSig(sig){
-    closeModals();const up=sig.cp?((sig.tp-sig.cp)/sig.cp*100).toFixed(1):'—';
+    closeModals();
+    const isKR=sig.s.includes('.KS')||sig.s.includes('.KQ');
+    const fmtS=v=>isKR?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(v):fmt(v);
+    const up=sig.cp?((sig.tp-sig.cp)/sig.cp*100).toFixed(1):'—';
     const dailyChg=sig._changePct!=null?sig._changePct:0;
     const dailyStr=(dailyChg>=0?'+':'')+dailyChg.toFixed(2)+'%';
     const dailyColor=dailyChg>=0?'var(--success)':'var(--danger)';
-    document.getElementById('sigTitle').innerHTML='<span style="color:var(--orange)">'+sig.s+'</span> '+sig.n;
+    const dispTitle=isKR?sig.n+' <span style="font-size:.8rem;color:var(--text3)">'+sig.s.split('.')[0]+'</span>':'<span style="color:var(--orange)">'+sig.s+'</span> '+sig.n;
+    document.getElementById('sigTitle').innerHTML=dispTitle;
     document.getElementById('sigContent').innerHTML=
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:.75rem 0">'+
-        [['AI SCORE',(sig.sc*100).toFixed(0)+'/100','var(--orange)'],['TODAY',dailyStr,dailyColor],['CURRENT',sig.cp?fmt(sig.cp):'—','var(--text)'],['TARGET',sig.tp?fmt(sig.tp):'—','var(--success)'],['UPSIDE','+'+up+'%','var(--success)'],['PREV CLOSE',sig._prevClose?fmt(sig._prevClose):'—','var(--text3)']]
+        [['AI SCORE',(sig.sc*100).toFixed(0)+'/100','var(--orange)'],['TODAY',dailyStr,dailyColor],['CURRENT',sig.cp?fmtS(sig.cp):'—','var(--text)'],['TARGET',sig.tp?fmtS(sig.tp):'—','var(--success)'],['UPSIDE','+'+up+'%','var(--success)'],['PREV CLOSE',sig._prevClose?fmtS(sig._prevClose):'—','var(--text3)']]
         .map(x=>'<div style="background:var(--bg);padding:.7rem;border-radius:10px;border:1px solid var(--border)"><div style="font-size:.65rem;color:var(--text3)">'+x[0]+'</div><div style="font-size:1.15rem;font-weight:800;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+
         '</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-bottom:.6rem">'+
         Object.entries(sig.f).map(([k,v])=>'<div style="background:var(--bg);padding:.5rem;border-radius:8px;text-align:center;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3);text-transform:uppercase">'+k+'</div><div style="font-size:.95rem;font-weight:700;color:'+(v>0?'var(--success)':'var(--danger)')+'">'+v.toFixed(1)+'</div></div>').join('')+
-        '</div><div style="background:var(--bg);padding:.7rem;border-radius:10px;font-size:.8rem;color:var(--text2);border:1px solid var(--border)"><strong style="color:var(--orange)">Analysis:</strong> '+sig.r+'</div>';
+        '</div><div style="background:var(--bg);padding:.7rem;border-radius:10px;font-size:.8rem;color:var(--text2);border:1px solid var(--border)"><strong style="color:var(--orange)">'+(isKR?'분석:':'Analysis:')+'</strong> '+sig.r+'</div>';
+    document.getElementById('sigAddBtn').textContent=isKR?'포트폴리오에 추가':'Add to Portfolio';
     document.getElementById('sigAddBtn').onclick=()=>{closeModals();openAddModal(sig)};
     document.getElementById('sigModal').classList.add('show');
 }
@@ -1013,42 +1190,71 @@ function renderPort(){
     const p=portfolio(),c=document.getElementById('portfolioList');
     if(!p.length){c.innerHTML='<div class="empty-state"><i class="fas fa-wallet"></i><p>No stocks yet</p><p style="font-size:.75rem;margin-top:.3rem">Add from Signals or use + button</p></div>';return}
     c.innerHTML=p.map((s,i)=>{const pnl=(s.currentPrice-s.buyPrice)*s.quantity,ret=(s.currentPrice-s.buyPrice)/s.buyPrice*100;
-        return'<div class="portfolio-item" onclick="openEditModal('+i+')"><div class="portfolio-top"><div class="stock-left"><div class="stock-icon">'+s.symbol.slice(0,3)+'</div><div><div class="stock-name">'+s.symbol+'</div><div class="stock-sub">'+s.name+'</div></div></div><div class="stock-right"><div class="stock-price '+pc(pnl)+'">'+fmt(pnl)+'</div><div class="stock-change '+(ret>=0?'up':'down')+'">'+pct(ret)+'</div></div></div><div class="portfolio-details"><div><div class="detail-label">Buy</div><div class="detail-value">'+fmt(s.buyPrice)+'</div></div><div><div class="detail-label">Current</div><div class="detail-value">'+fmt(s.currentPrice)+'</div></div><div><div class="detail-label">Qty</div><div class="detail-value">'+s.quantity+'</div></div></div></div>'}).join('');
+        const f=v=>fmtAuto(v,s.symbol);
+        const isKR=isKRTicker(s.symbol);
+        const dispN=isKR?s.name:s.symbol;
+        const dispSub=isKR?s.symbol.split('.')[0]:s.name;
+        const dispIcon=isKR?s.symbol.split('.')[0].slice(0,4):s.symbol.slice(0,3);
+        return'<div class="portfolio-item" onclick="openEditModal('+i+')"><div class="portfolio-top"><div class="stock-left"><div class="stock-icon">'+dispIcon+'</div><div><div class="stock-name">'+dispN+'</div><div class="stock-sub">'+dispSub+'</div></div></div><div class="stock-right"><div class="stock-price '+pc(pnl)+'">'+f(pnl)+'</div><div class="stock-change '+(ret>=0?'up':'down')+'">'+pct(ret)+'</div></div></div><div class="portfolio-details"><div><div class="detail-label">Buy</div><div class="detail-value">'+f(s.buyPrice)+'</div></div><div><div class="detail-label">Current</div><div class="detail-value">'+f(s.currentPrice)+'</div></div><div><div class="detail-label">Qty</div><div class="detail-value">'+s.quantity+'</div></div></div></div>'}).join('');
 }
 
 function renderSigs(){
-    document.getElementById('signalsList').innerHTML=signals.map(sig=>{
-        const chg=sig._changePct!=null?sig._changePct:((sig.tp-sig.cp)/sig.cp*100);
+    const sigs=getSignals();
+    const isKR=currentMarket==='KR';
+    const fmtSig=v=>isKR?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(v):fmt(v);
+    // Display name: for KR tickers, show Korean name instead of code
+    const dispName=sig=>isKR?sig.n:sig.s;
+    const dispCode=sig=>isKR?sig.s.split('.')[0]:sig.s.slice(0,3);
+
+    document.getElementById('signalsList').innerHTML=sigs.sort((a,b)=>b.sc-a.sc).map(sig=>{
+        const chg=sig._changePct!=null?sig._changePct:(sig.cp&&sig.tp?((sig.tp-sig.cp)/sig.cp*100):0);
         const chgDir=chg>=0?'up':'down';
         const bc=sig.sc>=.9?'badge-strong':sig.sc>=.8?'badge-buy':'badge-hold';
-        const bt=sig.sc>=.9?'Strong Buy':sig.sc>=.8?'Buy':'Hold';
-        return'<div class="stock-item" onclick=\'showSig('+JSON.stringify(sig).replace(/'/g,"\\'")+')\'><div class="stock-left"><div class="stock-icon">'+sig.s.slice(0,3)+'</div><div><div class="stock-name">'+sig.s+' <span class="badge '+bc+'">'+bt+'</span></div><div class="stock-sub">'+sig.n+'</div></div></div><div class="stock-right"><div class="stock-price">'+(sig.cp?fmt(sig.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div></div>'}).join('');
+        const bt=isKR?(sig.sc>=.9?'강력매수':sig.sc>=.8?'매수':'보유'):(sig.sc>=.9?'Strong Buy':sig.sc>=.8?'Buy':'Hold');
+        return'<div class="stock-item" onclick=\'showSig('+JSON.stringify(sig).replace(/'/g,"\\'")+')\'><div class="stock-left"><div class="stock-icon">'+dispCode(sig)+'</div><div><div class="stock-name">'+dispName(sig)+' <span class="badge '+bc+'">'+bt+'</span></div><div class="stock-sub">'+(isKR?sig.s.split('.')[0]+' · '+sig.sec:sig.n)+'</div></div></div><div class="stock-right"><div class="stock-price">'+(sig.cp?fmtSig(sig.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div></div>'}).join('');
 
     // Factor heatmap
-    const tickers=signals.slice(0,8).map(s=>s.s),factors=['Momentum','Value','Quality','Risk'];
-    const z=signals.slice(0,8).map(s=>[s.f.mom,s.f.val,s.f.qual,s.f.risk]);
+    const top8=sigs.slice(0,8);
+    const tickers=top8.map(s=>isKR?s.n.slice(0,5):s.s);
+    const factors=isKR?['모멘텀','가치','퀄리티','리스크']:['Momentum','Value','Quality','Risk'];
+    const z=top8.map(s=>[s.f.mom,s.f.val,s.f.qual,s.f.risk]);
     Plotly.newPlot('heatmapChart',[{z,x:factors,y:tickers,type:'heatmap',colorscale:[[0,'#ff6b6b'],[.5,'#1a1a2e'],[1,'#2dd4a8']],zmid:0,text:z.map(r=>r.map(v=>v.toFixed(1))),texttemplate:'%{text}',textfont:{size:10},colorbar:{title:'Z',tickfont:{color:'#7a6f63'},titlefont:{color:'#7a6f63'}}}],{...plotDark,margin:{t:5,r:10,b:30,l:55},xaxis:{side:'top'}},{responsive:true,displayModeBar:false});
 
-    // Factor bar
-    Plotly.newPlot('factorChart',[{x:[8.5,7.2,6.8,5.5,4.1],y:['Momentum','Quality','Growth','Value','Low Vol'],type:'bar',orientation:'h',marker:{color:['#e8793a','#f4a261','#a78bfa','#2dd4a8','#4fc3f7']},text:['8.5','7.2','6.8','5.5','4.1'],textposition:'outside',textfont:{color:'#7a6f63'}}],{...plotDark,margin:{t:5,r:35,b:25,l:75},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
+    const fLabels=isKR?['모멘텀','퀄리티','성장','가치','저변동']:['Momentum','Quality','Growth','Value','Low Vol'];
+    Plotly.newPlot('factorChart',[{x:[8.5,7.2,6.8,5.5,4.1],y:fLabels,type:'bar',orientation:'h',marker:{color:['#e8793a','#f4a261','#a78bfa','#2dd4a8','#4fc3f7']},text:['8.5','7.2','6.8','5.5','4.1'],textposition:'outside',textfont:{color:'#7a6f63'}}],{...plotDark,margin:{t:5,r:35,b:25,l:75},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
 }
 
 function renderScreener(){
-    const fEl=document.getElementById('screenerFilters');
-    fEl.innerHTML=['All',...sectors].map(s=>'<span class="filter-chip'+(s==='All'?' active':'')+'" onclick="filterScreener(this,\''+s+'\')">'+s+'</span>').join('');
-    filterScreener(null,'All');
+    const isKR=currentMarket==='KR';
+    const secs=getSectors();
+    const gems=getHiddenGems();
+    const allLabel=isKR?'전체':'All';
+    const fmtSc=v=>isKR?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(v):fmt(v);
 
-    document.getElementById('hiddenChampions').innerHTML=hiddenGems.map(h=>{
+    const fEl=document.getElementById('screenerFilters');
+    fEl.innerHTML=[allLabel,...secs].map(s=>'<span class="filter-chip'+(s===allLabel?' active':'')+'" onclick="filterScreener(this,\''+s+'\')">'+s+'</span>').join('');
+    filterScreener(null,allLabel);
+
+    document.getElementById('hiddenChampions').innerHTML=gems.map(h=>{
         const chg=h._changePct!=null?h._changePct:0;const chgDir=chg>=0?'up':'down';
-        return'<div class="stock-item"><div class="stock-left"><div class="stock-icon" style="background:linear-gradient(135deg,var(--purple),#7c3aed)">'+h.s.slice(0,3)+'</div><div><div class="stock-name">'+h.s+' <span class="badge badge-strong" style="background:rgba(167,139,250,0.12);color:var(--purple);border-color:rgba(167,139,250,0.25)">'+h.sc.toFixed(2)+'</span></div><div class="stock-sub">'+h.n+' · '+h.sec+'</div></div></div><div class="stock-right"><div class="stock-price">'+(h.cp?fmt(h.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div></div>'}).join('');
+        const dispN=isKR?h.n:h.s;
+        const dispCode=isKR?h.s.split('.')[0].slice(0,4):h.s.slice(0,3);
+        const sub=isKR?h.s.split('.')[0]+' · '+h.sec:h.n+' · '+h.sec;
+        return'<div class="stock-item"><div class="stock-left"><div class="stock-icon" style="background:linear-gradient(135deg,var(--purple),#7c3aed)">'+dispCode+'</div><div><div class="stock-name">'+dispN+' <span class="badge badge-strong" style="background:rgba(167,139,250,0.12);color:var(--purple);border-color:rgba(167,139,250,0.25)">'+h.sc.toFixed(2)+'</span></div><div class="stock-sub">'+sub+'</div></div></div><div class="stock-right"><div class="stock-price">'+(h.cp?fmtSc(h.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div></div>'}).join('');
 }
 function filterScreener(el,sec){
+    const isKR=currentMarket==='KR';
+    const allLabel=isKR?'전체':'All';
+    const fmtSc=v=>isKR?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(v):fmt(v);
     if(el){document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));el.classList.add('active')}
-    const filtered=sec==='All'?screenerAll:screenerAll.filter(s=>s.sec===sec);
+    const filtered=sec===allLabel?screenerAll:screenerAll.filter(s=>s.sec===sec);
     document.getElementById('screenerResults').innerHTML=filtered.sort((a,b)=>b.sc-a.sc).map(s=>{
-        const chg=s._changePct!=null?s._changePct:((s.tp-s.cp)/s.cp*100);
+        const chg=s._changePct!=null?s._changePct:(s.cp&&s.tp?((s.tp-s.cp)/s.cp*100):0);
         const chgDir=chg>=0?'up':'down';
-        return'<div class="stock-item" onclick=\'showSig('+JSON.stringify(s).replace(/'/g,"\\'")+')\'><div class="stock-left"><div class="stock-icon">'+s.s.slice(0,3)+'</div><div><div class="stock-name">'+s.s+' <span class="badge badge-buy">'+(s.sc*100).toFixed(0)+'</span></div><div class="stock-sub">'+s.n+' · '+s.sec+'</div></div></div><div class="stock-right"><div class="stock-price">'+(s.cp?fmt(s.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div></div>'}).join('');
+        const dispN=isKR?s.n:s.s;
+        const dispCode=isKR?s.s.split('.')[0].slice(0,4):s.s.slice(0,3);
+        const sub=isKR?s.s.split('.')[0]+' · '+s.sec:s.n+' · '+s.sec;
+        return'<div class="stock-item" onclick=\'showSig('+JSON.stringify(s).replace(/'/g,"\\'")+')\'><div class="stock-left"><div class="stock-icon">'+dispCode+'</div><div><div class="stock-name">'+dispN+' <span class="badge badge-buy">'+(s.sc*100).toFixed(0)+'</span></div><div class="stock-sub">'+sub+'</div></div></div><div class="stock-right"><div class="stock-price">'+(s.cp?fmtSc(s.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div></div>'}).join('');
 }
 
 function renderAnalysis(){
