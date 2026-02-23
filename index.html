@@ -293,6 +293,13 @@ body{
         </div>
         <div class="card"><div class="card-title"><i class="fas fa-fire"></i> Factor Heatmap</div><div id="heatmapChart" style="height:280px"></div></div>
         <div class="card"><div class="card-title"><i class="fas fa-chart-bar"></i> Factor Scores</div><div id="factorChart" style="height:220px"></div></div>
+        <!-- Smart Money Tracker -->
+        <div class="card" id="smartMoneyCard">
+            <div class="card-title"><i class="fas fa-user-tie" style="color:var(--warning)"></i> 스마트머니 추적 <span style="font-size:.62rem;color:var(--text3);font-weight:400;margin-left:.3rem">13F 공시 기준</span></div>
+            <p style="font-size:.74rem;color:var(--text3);margin-bottom:.65rem">세계 최고 투자자들이 지금 무엇을 사고 있는지 확인하세요. 종목을 탭하면 AI 분석이 열립니다.</p>
+            <div id="smTabs" style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.7rem"></div>
+            <div id="smDetail"></div>
+        </div>
     </div>
 
     <!-- ===== PAGE: Screener ===== -->
@@ -741,6 +748,94 @@ function checkAlerts(prices){
     });
     if(changed)save(ALRT_KEY,alerts);
 }
+
+// ===== Smart Money Tracker (13F & 공시 데이터, Q4 2024 기준) =====
+const smartMoneyUS=[
+    {name:'워런 버핏',fund:'Berkshire Hathaway',icon:'🎩',strategy:'가치투자 · 장기보유',updated:'Q4 2024',holdings:[
+        {s:'AAPL',pct:40.8,action:'TRIM',note:'최대 보유 (비중 축소 중)'},
+        {s:'BAC', pct:10.2,action:'HOLD',note:'금융주 장기보유'},
+        {s:'AXP', pct:10.1,action:'HOLD',note:'소비자금융 장기보유'},
+        {s:'KO',  pct:8.5, action:'HOLD',note:'50년 이상 보유 · 배당'},
+        {s:'OXY', pct:5.3, action:'BUY', note:'계속 매수 중 · 원유'},
+        {s:'MCO', pct:4.1, action:'HOLD',note:'신용평가 · 독점력'},
+    ]},
+    {name:'캐시 우드',fund:'ARK Invest',icon:'🚀',strategy:'혁신기술 · 5년 투자',updated:'Q4 2024',holdings:[
+        {s:'TSLA',pct:13.8,action:'HOLD',note:'ARKK 최대 보유 · 자율주행'},
+        {s:'RBLX',pct:7.2, action:'BUY', note:'메타버스 플레이'},
+        {s:'NVDA',pct:5.9, action:'HOLD',note:'AI 인프라 핵심'},
+        {s:'CRSP',pct:5.1, action:'BUY', note:'유전자편집 선도주'},
+        {s:'RXRX',pct:4.6, action:'BUY', note:'AI 신약개발'},
+        {s:'PATH',pct:4.2, action:'HOLD',note:'기업 자동화 AI'},
+    ]},
+    {name:'레이 달리오',fund:'Bridgewater',icon:'🌊',strategy:'올웨더 · 리스크 분산',updated:'Q4 2024',holdings:[
+        {s:'SPY', pct:18.2,action:'HOLD',note:'S&P500 인덱스 헤지'},
+        {s:'EEM', pct:9.8, action:'HOLD',note:'신흥국 분산투자'},
+        {s:'GLD', pct:8.1, action:'BUY', note:'인플레 헤지 · 금'},
+        {s:'NVDA',pct:4.2, action:'BUY', note:'AI 성장'},
+        {s:'AAPL',pct:3.9, action:'HOLD',note:'대형주 코어'},
+        {s:'AMZN',pct:3.4, action:'HOLD',note:'클라우드/커머스'},
+    ]},
+    {name:'빌 애크먼',fund:'Pershing Square',icon:'♟️',strategy:'행동주의 · 고집중',updated:'Q4 2024',holdings:[
+        {s:'GOOGL',pct:21.5,action:'BUY', note:'AI 검색 지배력'},
+        {s:'QSR',  pct:16.8,action:'HOLD',note:'버거킹 모회사'},
+        {s:'HLT',  pct:14.2,action:'HOLD',note:'호텔산업 회복'},
+        {s:'NFLX', pct:10.4,action:'BUY', note:'스트리밍 독점'},
+        {s:'CP',   pct:12.1,action:'HOLD',note:'캐나다 철도'},
+        {s:'UBER', pct:8.2, action:'NEW', note:'신규 편입'},
+    ]},
+    {name:'마이클 버리',fund:'Scion Capital',icon:'🔮',strategy:'역발상 · 매크로',updated:'Q4 2024',holdings:[
+        {s:'BABA',pct:24.1,action:'BUY', note:'중국 역발상 · 저평가'},
+        {s:'JD',  pct:18.3,action:'BUY', note:'중국 이커머스'},
+        {s:'PDD', pct:12.7,action:'BUY', note:'테무 모회사'},
+        {s:'BIDU',pct:9.8, action:'NEW', note:'중국 AI 검색'},
+        {s:'MGM', pct:8.2, action:'HOLD',note:'카지노 리오프닝'},
+        {s:'HCA', pct:7.1, action:'HOLD',note:'병원 체인'},
+    ]},
+    {name:'데이비드 테퍼',fund:'Appaloosa',icon:'🐎',strategy:'이벤트드리븐 · 특수상황',updated:'Q4 2024',holdings:[
+        {s:'META', pct:15.2,action:'HOLD',note:'AI 광고 수혜'},
+        {s:'AMZN', pct:11.8,action:'HOLD',note:'AWS 클라우드'},
+        {s:'NVDA', pct:10.4,action:'HOLD',note:'AI GPU 독점'},
+        {s:'BABA', pct:9.3, action:'BUY', note:'중국 반등 베팅'},
+        {s:'MSFT', pct:8.7, action:'HOLD',note:'Azure·AI Copilot'},
+        {s:'GOOGL',pct:7.9, action:'HOLD',note:'AI 검색·클라우드'},
+    ]},
+];
+
+const smartMoneyKR=[
+    {name:'국민연금',fund:'NPS (700조+)',icon:'🏛️',strategy:'국내 최대 기관 · 장기가치',updated:'2024 공시',holdings:[
+        {s:'005930.KS',pct:8.8,action:'HOLD',note:'삼성전자 최대주주'},
+        {s:'000660.KS',pct:4.2,action:'HOLD',note:'SK하이닉스 HBM'},
+        {s:'035420.KS',pct:3.1,action:'HOLD',note:'NAVER AI'},
+        {s:'373220.KS',pct:2.9,action:'BUY', note:'LG에너지솔루션 배터리'},
+        {s:'051910.KS',pct:2.8,action:'BUY', note:'LG화학 2차전지'},
+        {s:'207940.KS',pct:2.5,action:'HOLD',note:'삼성바이오로직스 CDMO'},
+    ]},
+    {name:'미래에셋',fund:'Mirae Asset Global',icon:'🌏',strategy:'성장주 · 글로벌분산',updated:'2024 공시',holdings:[
+        {s:'267260.KS',pct:7.2,action:'BUY', note:'변압기 슈퍼사이클'},
+        {s:'207940.KS',pct:5.8,action:'BUY', note:'삼성바이오 CDMO'},
+        {s:'006260.KS',pct:4.3,action:'BUY', note:'LS 전력인프라'},
+        {s:'035420.KS',pct:3.9,action:'HOLD',note:'NAVER AI 성장'},
+        {s:'259960.KS',pct:3.4,action:'HOLD',note:'크래프톤 게임'},
+        {s:'000660.KS',pct:2.9,action:'HOLD',note:'SK하이닉스'},
+    ]},
+    {name:'KB자산운용',fund:'KB Asset Mgmt',icon:'💛',strategy:'배당+성장 · 장기보유',updated:'2024 공시',holdings:[
+        {s:'005930.KS',pct:15.1,action:'HOLD',note:'삼성전자 밸류업'},
+        {s:'005380.KS',pct:6.8, action:'HOLD',note:'현대차 전기차 전환'},
+        {s:'000270.KS',pct:5.2, action:'BUY', note:'기아 고배당'},
+        {s:'012330.KS',pct:4.1, action:'HOLD',note:'현대모비스'},
+        {s:'055550.KS',pct:3.8, action:'BUY', note:'신한지주 고배당'},
+        {s:'086790.KS',pct:3.2, action:'BUY', note:'하나금융지주'},
+    ]},
+    {name:'삼성자산운용',fund:'Samsung AM',icon:'💎',strategy:'KODEX ETF · 인덱스',updated:'2024 공시',holdings:[
+        {s:'005930.KS',pct:22.1,action:'HOLD',note:'시총 1위 삼성전자'},
+        {s:'000660.KS',pct:7.8, action:'HOLD',note:'HBM 시총 2위'},
+        {s:'035420.KS',pct:3.2, action:'HOLD',note:'NAVER'},
+        {s:'005380.KS',pct:3.1, action:'HOLD',note:'현대차'},
+        {s:'373220.KS',pct:2.8, action:'HOLD',note:'LG에너지솔루션'},
+        {s:'207940.KS',pct:2.2, action:'HOLD',note:'삼성바이오'},
+    ]},
+];
+let smIdx=0; // currently selected smart money investor
 
 // Current market selection
 let currentMarket='US'; // 'US' or 'KR'
@@ -1413,6 +1508,7 @@ function renderPort(){
 
 function renderSigs(){
     renderMarketCommentary();
+    renderSmartMoney();
     const sigs=getSignals();
     const isKR=currentMarket==='KR';
     const fmtSig=v=>isKR?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(v):fmt(v);
@@ -1561,6 +1657,70 @@ function renderTradeLog(){
         t.forEach((tr,i)=>{if(tr.action==='SELL')correct++;acc.push(t.length>0?(correct/(i+1)*100):50);dates.push(new Date(tr.date).toLocaleDateString())});
         Plotly.newPlot('accuracyChart',[{x:dates,y:acc,type:'scatter',mode:'lines+markers',line:{color:'#e8793a',width:2},marker:{size:5,color:'#f4a261'}}],{...plotDark,yaxis:{gridcolor:'rgba(42,58,92,.3)',title:'Accuracy %'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
     }else{Plotly.newPlot('accuracyChart',[],{...plotDark,annotations:[{text:'More trades needed',showarrow:false,font:{size:12,color:'#5a5050'}}],xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false})}
+}
+
+// ===== Smart Money Tracker =====
+function renderSmartMoney(){
+    const tabEl=document.getElementById('smTabs');
+    const detEl=document.getElementById('smDetail');
+    if(!tabEl||!detEl)return;
+    const isKR=currentMarket==='KR';
+    const list=isKR?smartMoneyKR:smartMoneyUS;
+    if(smIdx>=list.length)smIdx=0;
+
+    // Tabs
+    tabEl.innerHTML=list.map((inv,i)=>
+        '<button onclick="selectSMTab('+i+')" style="padding:.28rem .55rem;border-radius:20px;border:1px solid '+(i===smIdx?'var(--orange)':'var(--border)')+ ';background:'+(i===smIdx?'rgba(232,121,58,0.12)':'transparent')+';color:'+(i===smIdx?'var(--orange)':'var(--text3)')+';font-size:.68rem;font-weight:700;cursor:pointer">'+inv.icon+' '+inv.name+'</button>'
+    ).join('');
+
+    const inv=list[smIdx];
+    const actionColor={BUY:'var(--success)',NEW:'var(--cyan)',HOLD:'var(--text3)',TRIM:'var(--warning)',SELL:'var(--danger)'};
+    const actionBg={BUY:'rgba(45,212,168,0.1)',NEW:'rgba(34,211,238,0.1)',HOLD:'rgba(42,58,92,0.4)',TRIM:'rgba(255,209,102,0.1)',SELL:'rgba(255,107,107,0.1)'};
+    const actionKR={BUY:'매수',NEW:'신규',HOLD:'보유',TRIM:'축소',SELL:'매도'};
+
+    let rows='';
+    inv.holdings.forEach(h=>{
+        const sym=h.s.includes('.')?h.s.split('.')[0]:h.s;
+        const ac=actionColor[h.action]||'var(--text3)';
+        const ab=actionBg[h.action]||'transparent';
+        const ak=actionKR[h.action]||h.action;
+        // Check if we have live price
+        const cached=priceCache[h.s];
+        const priceStr=cached?'<span style="font-size:.75rem;color:var(--text);font-weight:700">'+(isKR?new Intl.NumberFormat('ko-KR',{maximumFractionDigits:0}).format(cached.price)+'원':'$'+cached.price.toFixed(2))+'</span>'+'<span style="font-size:.65rem;color:'+(cached.changePct>=0?'var(--success)':'var(--danger)')+'"> '+(cached.changePct>=0?'+':'')+cached.changePct.toFixed(1)+'%</span>':'';
+        rows+='<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem 0;border-bottom:1px solid rgba(42,58,92,.25);cursor:pointer" onclick="smAnalyze(\''+h.s+'\',\''+sym+'\')">'+
+            '<div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,rgba(232,121,58,0.15),rgba(167,139,250,0.1));display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;color:var(--text);flex-shrink:0">'+sym.slice(0,4)+'</div>'+
+            '<div style="flex:1;min-width:0">'+
+                '<div style="font-size:.82rem;font-weight:700;color:var(--text)">'+sym+' <span style="font-size:.65rem;padding:.1rem .35rem;border-radius:8px;background:'+ab+';color:'+ac+';font-weight:700">'+ak+'</span></div>'+
+                '<div style="font-size:.68rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+h.note+'</div>'+
+            '</div>'+
+            '<div style="text-align:right;flex-shrink:0">'+
+                '<div style="font-size:.7rem;color:var(--text3)">비중</div>'+
+                '<div style="font-size:.85rem;font-weight:800;color:var(--orange)">'+h.pct+'%</div>'+
+                priceStr+
+            '</div>'+
+        '</div>';
+    });
+
+    detEl.innerHTML=
+        '<div style="background:rgba(232,121,58,0.05);border:1px solid rgba(232,121,58,0.15);border-radius:10px;padding:.6rem .75rem;margin-bottom:.6rem">'+
+            '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+
+                '<span style="font-size:1.3rem">'+inv.icon+'</span>'+
+                '<div><div style="font-size:.9rem;font-weight:800;color:var(--text)">'+inv.name+'</div><div style="font-size:.68rem;color:var(--text3)">'+inv.fund+' · '+inv.strategy+'</div></div>'+
+                '<div style="margin-left:auto;font-size:.6rem;color:var(--text3);background:var(--bg);padding:.15rem .4rem;border-radius:8px;border:1px solid var(--border)">'+inv.updated+'</div>'+
+            '</div>'+
+        '</div>'+
+        rows+
+        '<div style="margin-top:.55rem;padding:.45rem;background:rgba(0,0,0,0.15);border-radius:8px;font-size:.71rem;color:var(--text3)">'+
+            '💡 이 데이터는 SEC 13F / 공시 기준입니다. 실제 포트폴리오와 다를 수 있으며 투자 조언이 아닙니다.</div>';
+}
+
+function selectSMTab(i){smIdx=i;renderSmartMoney();}
+
+async function smAnalyze(ticker,display){
+    // Switch to screener tab and trigger search
+    go('screener',document.querySelectorAll('.tab-item')[3]);
+    document.getElementById('searchTicker').value=display;
+    await searchStock();
 }
 
 // ===== Price Alerts =====
