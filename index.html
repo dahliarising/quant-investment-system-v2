@@ -250,22 +250,29 @@ body{
 
     <!-- ===== PAGE: Dashboard ===== -->
     <div id="page-dashboard" class="page active">
+        <!-- 오늘의 브리핑 -->
+        <div id="todayBriefing"></div>
+        <!-- 오늘의 추천 -->
+        <div id="todayPick"></div>
         <div class="summary-grid" id="dashSummary"></div>
-        <div class="card"><div class="card-title"><i class="fas fa-chart-area"></i> Portfolio Performance</div><div id="perfChart" style="height:220px"></div></div>
-        <div class="card"><div class="card-title"><i class="fas fa-chart-line"></i> Drawdown</div><div id="ddChart" style="height:140px"></div></div>
-        <div class="card"><div class="card-title"><i class="fas fa-calendar-alt"></i> Monthly Returns</div><div id="monthlyChart" style="height:180px"></div></div>
+        <!-- 포트폴리오 어드바이스 -->
+        <div id="portfolioAdvice"></div>
+        <div class="card"><div class="card-title"><i class="fas fa-chart-area"></i> 포트폴리오 수익 추이</div><div id="perfChart" style="height:220px"></div></div>
+        <div class="card"><div class="card-title"><i class="fas fa-chart-line"></i> 최대 낙폭 (Drawdown)</div><div id="ddChart" style="height:140px"></div></div>
+        <div class="card"><div class="card-title"><i class="fas fa-calendar-alt"></i> 월별 수익률</div><div id="monthlyChart" style="height:180px"></div></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-            <div class="card"><div class="card-title"><i class="fas fa-chart-pie"></i> Sectors</div><div id="sectorChart" style="height:200px"></div></div>
-            <div class="card"><div class="card-title"><i class="fas fa-trophy"></i> Top Movers</div><div id="topMovers"></div></div>
+            <div class="card"><div class="card-title"><i class="fas fa-chart-pie"></i> 섹터 배분</div><div id="sectorChart" style="height:200px"></div></div>
+            <div class="card"><div class="card-title"><i class="fas fa-trophy"></i> 수익률 TOP</div><div id="topMovers"></div></div>
         </div>
     </div>
 
     <!-- ===== PAGE: Portfolio ===== -->
     <div id="page-portfolio" class="page">
+        <div id="portAdviceCard"></div>
         <div class="card">
             <div class="card-title" style="justify-content:space-between">
-                <span><i class="fas fa-wallet"></i> My Portfolio</span>
-                <button class="btn btn-primary btn-sm" onclick="openAddModal()"><i class="fas fa-plus"></i> Add</button>
+                <span><i class="fas fa-wallet"></i> 내 보유 주식</span>
+                <button class="btn btn-primary btn-sm" onclick="openAddModal()"><i class="fas fa-plus"></i> 추가</button>
             </div>
             <div id="portfolioList"></div>
         </div>
@@ -277,9 +284,11 @@ body{
             <button class="btn btn-primary" id="sigUS" onclick="switchMarket('US')" style="flex:1;justify-content:center"><i class="fas fa-flag-usa"></i> US</button>
             <button class="btn btn-outline" id="sigKR" onclick="switchMarket('KR')" style="flex:1;justify-content:center"><span style="font-size:.85rem">🇰🇷</span> KR</button>
         </div>
+        <!-- 장 현황 카드 -->
+        <div id="marketCommentary"></div>
         <div class="card">
-            <div class="card-title"><i class="fas fa-bolt"></i> AI Buy Signals <span id="sigMarketLabel" style="font-size:.65rem;color:var(--text3);font-weight:400;margin-left:.3rem">(US Market)</span></div>
-            <p style="font-size:.75rem;color:var(--text3);margin-bottom:.75rem">Multi-factor + ML model recommendations. Tap for details.</p>
+            <div class="card-title"><i class="fas fa-bolt"></i> AI 매수 추천 <span id="sigMarketLabel" style="font-size:.65rem;color:var(--text3);font-weight:400;margin-left:.3rem">(US Market)</span></div>
+            <p style="font-size:.75rem;color:var(--text3);margin-bottom:.75rem">멀티팩터 + ML 모델 기반 추천. 종목을 탭하면 상세 분석을 볼 수 있습니다.</p>
             <div id="signalsList"></div>
         </div>
         <div class="card"><div class="card-title"><i class="fas fa-fire"></i> Factor Heatmap</div><div id="heatmapChart" style="height:280px"></div></div>
@@ -1126,16 +1135,24 @@ function showSig(sig){
     const dailyChg=sig._changePct!=null?sig._changePct:0;
     const dailyStr=(dailyChg>=0?'+':'')+dailyChg.toFixed(2)+'%';
     const dailyColor=dailyChg>=0?'var(--success)':'var(--danger)';
+    const ratingScore=sig.sc;
+    const ratingTxt=ratingScore>=.9?'🟢 강력 매수':ratingScore>=.8?'🔵 매수':ratingScore>=.65?'🟡 관심 종목':'⚪ 보유 관망';
+    const ratingDesc=ratingScore>=.9?'AI가 매우 강하게 추천하는 종목입니다. 지금 분할 매수를 시작해볼 만 해요.':ratingScore>=.8?'좋은 매수 시점입니다. 전체 투자금의 10~15% 이내로 포지션을 잡아보세요.':ratingScore>=.65?'괜찮은 종목이지만 조금 더 지켜보는 것도 좋아요. 관심 목록에 담아두세요.':'현재 적극적인 매수보다는 관망이 낫습니다.';
+    const factorNames={mom:'모멘텀',val:'가치',qual:'퀄리티',risk:'리스크'};
+    const factorDescs={mom:'최근 주가 상승 추세',val:'저평가 정도',qual:'재무 건전성',risk:'변동성 안정성'};
     const dispTitle=isKR?sig.n+' <span style="font-size:.8rem;color:var(--text3)">'+sig.s.split('.')[0]+'</span>':'<span style="color:var(--orange)">'+sig.s+'</span> '+sig.n;
     document.getElementById('sigTitle').innerHTML=dispTitle;
+
+    const metrics=[['AI 점수',(sig.sc*100).toFixed(0)+'/100','var(--orange)'],['오늘 등락',dailyStr,dailyColor],['현재가',sig.cp?fmtS(sig.cp):'—','var(--text)'],['목표가',sig.tp?fmtS(sig.tp):'—','var(--success)'],['기대 수익','+'+up+'%','var(--success)'],['전일 종가',sig._prevClose?fmtS(sig._prevClose):'—','var(--text3)']];
+    const factorRows=Object.entries(sig.f).map(([k,v])=>{const nm=factorNames[k]||k;const desc=factorDescs[k]||'';return'<div style="background:var(--bg);padding:.55rem;border-radius:8px;border:1px solid var(--border)"><div style="font-size:.58rem;color:var(--text3)">'+nm+'</div><div style="font-size:.9rem;font-weight:700;color:'+(v>0?'var(--success)':'var(--danger)')+'">'+v.toFixed(1)+' '+(v>0.5?'↑':v<-0.5?'↓':'→')+'</div><div style="font-size:.58rem;color:var(--text3)">'+desc+'</div></div>';}).join('');
+
     document.getElementById('sigContent').innerHTML=
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:.75rem 0">'+
-        [['AI SCORE',(sig.sc*100).toFixed(0)+'/100','var(--orange)'],['TODAY',dailyStr,dailyColor],['CURRENT',sig.cp?fmtS(sig.cp):'—','var(--text)'],['TARGET',sig.tp?fmtS(sig.tp):'—','var(--success)'],['UPSIDE','+'+up+'%','var(--success)'],['PREV CLOSE',sig._prevClose?fmtS(sig._prevClose):'—','var(--text3)']]
-        .map(x=>'<div style="background:var(--bg);padding:.7rem;border-radius:10px;border:1px solid var(--border)"><div style="font-size:.65rem;color:var(--text3)">'+x[0]+'</div><div style="font-size:1.15rem;font-weight:800;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+
-        '</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-bottom:.6rem">'+
-        Object.entries(sig.f).map(([k,v])=>'<div style="background:var(--bg);padding:.5rem;border-radius:8px;text-align:center;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3);text-transform:uppercase">'+k+'</div><div style="font-size:.95rem;font-weight:700;color:'+(v>0?'var(--success)':'var(--danger)')+'">'+v.toFixed(1)+'</div></div>').join('')+
-        '</div><div style="background:var(--bg);padding:.7rem;border-radius:10px;font-size:.8rem;color:var(--text2);border:1px solid var(--border)"><strong style="color:var(--orange)">'+(isKR?'분석:':'Analysis:')+'</strong> '+sig.r+'</div>';
-    document.getElementById('sigAddBtn').textContent=isKR?'포트폴리오에 추가':'Add to Portfolio';
+        '<div style="background:rgba(232,121,58,0.07);border:1px solid rgba(232,121,58,0.2);border-radius:10px;padding:.75rem;margin:.6rem 0"><div style="font-size:.95rem;font-weight:700;margin-bottom:.2rem">'+ratingTxt+'</div><div style="font-size:.8rem;color:var(--text2);line-height:1.6">'+ratingDesc+'</div></div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin:.6rem 0">'+
+        metrics.map(x=>'<div style="background:var(--bg);padding:.65rem;border-radius:10px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">'+x[0]+'</div><div style="font-size:1.05rem;font-weight:800;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+
+        '</div><div style="font-size:.7rem;color:var(--text3);font-weight:600;margin-bottom:.35rem">팩터 분석 (각 점수 설명)</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;margin-bottom:.6rem">'+factorRows+
+        '</div><div style="background:var(--bg);padding:.7rem;border-radius:10px;font-size:.82rem;color:var(--text2);border:1px solid var(--border);line-height:1.65"><strong style="color:var(--orange)">AI 분석:</strong> '+sig.r+'</div>';
+    document.getElementById('sigAddBtn').textContent=isKR?'📥 포트폴리오에 추가':'📥 Add to Portfolio';
     document.getElementById('sigAddBtn').onclick=()=>{closeModals();openAddModal(sig)};
     document.getElementById('sigModal').classList.add('show');
 }
@@ -1144,6 +1161,70 @@ function showSig(sig){
 function getRegime(){const p=portfolio();if(p.length===0)return'WARMUP';const avg=p.reduce((a,s)=>(s.currentPrice-s.buyPrice)/s.buyPrice*100+a,0)/p.length;return avg>5?'NORMAL':avg>-5?'WARNING':'BREAKDOWN'}
 function regimeHTML(r){const m={'NORMAL':['var(--success)','regime-normal'],'WARNING':['var(--warning)','regime-warning'],'BREAKDOWN':['var(--danger)','regime-breakdown'],'WARMUP':['var(--text3)','regime-normal']};const[c,cls]=m[r]||m.WARMUP;return'<span class="regime '+cls+'">'+r+'</span>'}
 
+// ===== Human-friendly helpers =====
+function getTodayCtx(){const n=new Date(),d=n.getDay(),h=n.getHours();return{isWeekend:d===0||d===6,dayKR:['일','월','화','수','목','금','토'][d],hour:h,timeSlot:h<9?'장 전':h<10?'장 초반':h<14?'장 중반':h<16?'장 마감':h<22?'미국 장':'마감 후',dateStr:n.getFullYear()+'년 '+(n.getMonth()+1)+'월 '+n.getDate()+'일'};}
+function moodFor(regime){const m={'NORMAL':{icon:'☀️',title:'시장 안정',c:'var(--success)',desc:'현재 시장이 안정적입니다. 좋은 종목에 적극 투자할 시기예요.',action:'AI 추천 종목을 확인하고 새로운 매수를 고려해보세요.'},'WARNING':{icon:'⛅',title:'변동성 주의',c:'var(--warning)',desc:'변동성이 높아졌어요. 기존 보유 종목을 우선 점검하세요.',action:'신규 매수보다 보유 종목 관리에 집중하세요.'},'BREAKDOWN':{icon:'⛈️',title:'시장 하락',c:'var(--danger)',desc:'하락세입니다. 손실 관리가 최우선이에요.',action:'손절 라인을 점검하고 현금 비중을 늘리는 걸 고려하세요.'},'WARMUP':{icon:'🌱',title:'시작해볼까요?',c:'var(--info)',desc:'아직 보유 종목이 없어요. 첫 종목을 담아보세요!',action:'아래 AI 추천에서 마음에 드는 종목을 골라 포트폴리오에 추가해보세요.'}};return m[regime]||m['WARMUP'];}
+
+function renderBriefing(p,ret,regime){
+    const ctx=getTodayCtx(),mood=moodFor(regime);
+    const isKR=currentMarket==='KR';
+    const topSig=getSignals().filter(s=>s.cp>0).sort((a,b)=>b.sc-a.sc)[0];
+    const fmtS=v=>isKR?fmtKRW(v):fmtUSD(v);
+
+    const el=document.getElementById('todayBriefing');
+    if(!el)return;
+    const weekendNote=ctx.isWeekend?'<br><span style="color:var(--text3)">📌 오늘은 주말 — 다음 주 전략을 세우기 좋은 날이에요.</span>':'';
+    el.innerHTML='<div class="card" style="border-color:'+mood.c+';margin-bottom:.85rem"><div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.75rem"><span style="font-size:1.5rem">'+mood.icon+'</span><div><div style="font-size:.65rem;color:var(--text3)">'+ctx.dateStr+' · '+ctx.timeSlot+(ctx.isWeekend?' (주말)':'')+'</div><div style="font-size:.95rem;font-weight:800;color:'+mood.c+'">'+mood.title+'</div></div></div><p style="font-size:.84rem;color:var(--text2);line-height:1.7;margin-bottom:.55rem">'+mood.desc+'</p><div style="background:rgba(0,0,0,0.18);border-radius:10px;padding:.65rem;font-size:.8rem;color:var(--text);line-height:1.6"><strong style="color:'+mood.c+'">💡 오늘 할 일:</strong> '+mood.action+weekendNote+'</div></div>';
+
+    const pe=document.getElementById('todayPick');
+    if(!pe)return;
+    if(!topSig){pe.innerHTML='';return;}
+    const chg=topSig._changePct||0;
+    const nm=isKR?topSig.n:topSig.s;
+    const up=topSig.cp?((topSig.tp-topSig.cp)/topSig.cp*100).toFixed(1):0;
+    const icon=isKR?topSig.s.split('.')[0].slice(0,4):topSig.s.slice(0,4);
+    pe.innerHTML='<div class="card" style="border-color:rgba(232,121,58,0.35);margin-bottom:.85rem;cursor:pointer" onclick=\'showSig('+JSON.stringify(topSig).replace(/'/g,"\\'")+')\'><div class="card-title" style="margin-bottom:.45rem"><i class="fas fa-star" style="color:#ffd166"></i> 오늘의 AI 추천 1위</div><div style="display:flex;align-items:center;gap:.7rem"><div style="width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--orange),var(--orange-dark));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.6rem;color:white;flex-shrink:0">'+icon+'</div><div style="flex:1"><div style="font-weight:700;font-size:.92rem">'+nm+' <span class="badge badge-strong">AI '+( topSig.sc*100).toFixed(0)+'점</span></div><div style="font-size:.76rem;color:var(--text3);margin-top:.1rem">'+topSig.r+'</div></div><div style="text-align:right;flex-shrink:0"><div style="font-weight:700;font-size:.9rem">'+(topSig.cp?fmtS(topSig.cp):'—')+'</div><div style="font-size:.8rem;color:'+(chg>=0?'var(--success)':'var(--danger)')+'">'+( chg>=0?'+':'')+chg.toFixed(2)+'%</div><div style="font-size:.68rem;color:var(--info)">목표 +'+up+'%</div></div></div></div>';
+}
+
+function renderPortAdvice(p,ret){
+    const el=document.getElementById('portAdviceCard');
+    if(!el)return;
+    if(!p.length){el.innerHTML='<div class="card" style="border-color:rgba(79,195,247,0.3);margin-bottom:.85rem"><div class="card-title"><i class="fas fa-lightbulb" style="color:var(--info)"></i> 투자 시작 가이드</div><p style="font-size:.83rem;color:var(--text2);line-height:1.7">아직 보유 종목이 없어요. <strong style="color:var(--orange)">Signals</strong> 탭에서 AI 추천 종목을 확인하고 <strong style="color:var(--orange)">포트폴리오 추가</strong> 버튼을 눌러보세요!</p><button class="btn btn-primary btn-sm" style="margin-top:.6rem;width:100%" onclick="go(\'signals\',document.querySelectorAll(\'.tab-item\')[2])">AI 추천 보러가기 →</button></div>';return;}
+
+    const winners=p.filter(s=>(s.currentPrice-s.buyPrice)/s.buyPrice*100>0);
+    const losers=p.filter(s=>(s.currentPrice-s.buyPrice)/s.buyPrice*100<=0);
+    const bigW=p.reduce((a,b)=>(b.currentPrice-b.buyPrice)/b.buyPrice>(a.currentPrice-a.buyPrice)/a.buyPrice?b:a,p[0]);
+    const bigL=p.reduce((a,b)=>(b.currentPrice-b.buyPrice)/b.buyPrice<(a.currentPrice-a.buyPrice)/a.buyPrice?b:a,p[0]);
+    const wR=(bigW.currentPrice-bigW.buyPrice)/bigW.buyPrice*100;
+    const lR=(bigL.currentPrice-bigL.buyPrice)/bigL.buyPrice*100;
+
+    let adv='',ac='var(--info)';
+    if(ret>15){adv='수익이 훌륭해요! 목표 수익률에 도달한 종목은 분할 매도를 고려해보세요.';ac='var(--success)';}
+    else if(ret>5){adv='포트폴리오가 순항 중이에요. AI 추천 신규 종목도 살펴보세요.';ac='var(--orange)';}
+    else if(ret>-5){adv='손익이 0 근처예요. 각 종목의 투자 이유를 다시 점검해보세요.';ac='var(--warning)';}
+    else{adv='손실 구간이에요. 패닉 셀은 금물! 펀더멘탈이 변하지 않았다면 오히려 추가 매수 기회일 수 있어요.';ac='var(--danger)';}
+
+    const wN=isKRTicker(bigW.symbol)?bigW.name:bigW.symbol;
+    const lN=isKRTicker(bigL.symbol)?bigL.name:bigL.symbol;
+    el.innerHTML='<div class="card" style="border-color:'+ac+'30;margin-bottom:.85rem"><div class="card-title"><i class="fas fa-comment-dots"></i> 포트폴리오 진단</div><p style="font-size:.83rem;color:var(--text2);line-height:1.7;margin-bottom:.7rem">'+adv+'</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem"><div style="background:rgba(45,212,168,0.07);border:1px solid rgba(45,212,168,0.2);border-radius:10px;padding:.65rem"><div style="font-size:.62rem;color:var(--text3);margin-bottom:.2rem">🏆 최고 수익</div><div style="font-weight:700;font-size:.85rem">'+wN+'</div><div style="color:var(--success);font-weight:700">'+( wR>=0?'+':'')+wR.toFixed(1)+'%</div></div><div style="background:rgba(255,107,107,0.07);border:1px solid rgba(255,107,107,0.2);border-radius:10px;padding:.65rem"><div style="font-size:.62rem;color:var(--text3);margin-bottom:.2rem">📉 최저 수익</div><div style="font-weight:700;font-size:.85rem">'+lN+'</div><div style="color:var(--danger);font-weight:700">'+( lR>=0?'+':'')+lR.toFixed(1)+'%</div></div></div>'+(losers.length?'<div style="margin-top:.55rem;font-size:.75rem;color:var(--text3)">손실 종목 '+losers.length+'개 · 수익 종목 '+winners.length+'개</div>':'')+'</div>';
+}
+
+function renderMarketCommentary(){
+    const el=document.getElementById('marketCommentary');
+    if(!el)return;
+    const isKR=currentMarket==='KR';
+    const topBuy=getSignals().filter(s=>s.cp>0&&s.sc>=0.8).sort((a,b)=>b.sc-a.sc).slice(0,3);
+    const secScores={};
+    getSignals().forEach(s=>{if(!secScores[s.sec])secScores[s.sec]=[];secScores[s.sec].push(s.sc)});
+    const topSec=Object.entries(secScores).map(([k,v])=>({sec:k,avg:v.reduce((a,b)=>a+b,0)/v.length})).sort((a,b)=>b.avg-a.avg)[0];
+    const fmtS=v=>isKR?fmtKRW(v):fmtUSD(v);
+    const tip=isKR?'AI가 가장 주목하는 섹터는 <strong style="color:var(--orange)">'+(topSec?.sec||'IT')+'</strong>입니다.':'Strongest AI signals are in <strong style="color:var(--orange)">'+(topSec?.sec||'Tech')+'</strong>.';
+    const noData='<p style="font-size:.8rem;color:var(--text3)">가격 로딩 중... 새로고침 버튼을 눌러주세요.</p>';
+    const medals=['🥇','🥈','🥉'];
+    const rows=topBuy.map((sig,i)=>{const nm=isKR?sig.n:sig.s;const chg=sig._changePct||0;const up=sig.cp?((sig.tp-sig.cp)/sig.cp*100).toFixed(1):0;return'<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem 0;border-bottom:1px solid rgba(42,58,92,.3);cursor:pointer" onclick=\'showSig('+JSON.stringify(sig).replace(/'/g,"\\'")+')\'><span style="font-size:.95rem">'+medals[i]+'</span><div style="flex:1"><span style="font-weight:700;font-size:.84rem">'+nm+'</span><span style="font-size:.69rem;color:var(--text3);margin-left:.3rem">'+sig.r.slice(0,28)+(sig.r.length>28?'…':'')+'</span></div><div style="text-align:right"><div style="font-size:.8rem;color:'+(chg>=0?'var(--success)':'var(--danger)')+'">'+( chg>=0?'+':'')+chg.toFixed(2)+'%</div><div style="font-size:.67rem;color:var(--info)">목표 +'+up+'%</div></div></div>';}).join('');
+    el.innerHTML='<div class="card" style="border-color:rgba(79,195,247,0.3);margin-bottom:.85rem"><div class="card-title"><i class="fas fa-newspaper" style="color:var(--info)"></i> 장 현황 & 전략</div><p style="font-size:.83rem;color:var(--text2);line-height:1.7;margin-bottom:.7rem">'+tip+'</p>'+(topBuy.length?'<div style="font-size:.7rem;color:var(--text3);font-weight:600;margin-bottom:.3rem">지금 주목할 종목 TOP '+topBuy.length+'</div>'+rows:noData)+'<div style="margin-top:.6rem;padding:.55rem;background:rgba(0,0,0,0.15);border-radius:8px;font-size:.74rem;color:var(--text3)">💡 종목을 탭하면 AI 상세 분석이 열려요. 포트폴리오 추가 버튼으로 수익을 실시간 추적하세요.</div></div>';
+}
+
 // ===== RENDER ALL =====
 function renderAll(){renderDash();renderPort();renderSigs();renderScreener();renderAnalysis();renderTradeLog();
     const s=settings();['setCurrency','setModel','setHorizon'].forEach(id=>{const el=document.getElementById(id);if(el&&s[id.replace('set','').toLowerCase()])el.value=s[id.replace('set','').toLowerCase()]});}
@@ -1151,16 +1232,18 @@ function renderAll(){renderDash();renderPort();renderSigs();renderScreener();ren
 function renderDash(){
     const p=portfolio();let inv=0,cur=0;p.forEach(s=>{inv+=s.buyPrice*s.quantity;cur+=s.currentPrice*s.quantity});
     const pnl=cur-inv,ret=inv>0?pnl/inv*100:0,regime=getRegime();
+    renderBriefing(p,ret,regime);
+    renderPortAdvice(p,ret);
     document.getElementById('dashSummary').innerHTML=
-        [{l:'Total P&L',v:fmt(pnl),c:pc(pnl),b:'orange'},{l:'Return',v:pct(ret),c:pc(ret),b:'green'},{l:'Invested',v:fmt(inv),c:'',b:'blue'},{l:'Value',v:fmt(cur),c:'',b:'purple'},{l:'Regime',v:regimeHTML(regime),c:'',b:'cyan'}]
+        [{l:'총 손익',v:fmt(pnl),c:pc(pnl),b:'orange'},{l:'수익률',v:pct(ret),c:pc(ret),b:'green'},{l:'투자금',v:fmt(inv),c:'',b:'blue'},{l:'평가액',v:fmt(cur),c:'',b:'purple'},{l:'시장 국면',v:regimeHTML(regime),c:'',b:'cyan'}]
         .map(x=>'<div class="summary-item '+x.b+'"><div class="summary-label">'+x.l+'</div><div class="summary-value '+x.c+'">'+x.v+'</div></div>').join('');
 
     // Perf chart
-    if(p.length===0){Plotly.newPlot('perfChart',[],{...plotDark,annotations:[{text:'Add stocks to begin',showarrow:false,font:{size:13,color:'#5a5050'}}],xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false});
-        Plotly.newPlot('ddChart',[],{...plotDark,annotations:[{text:'No data',showarrow:false,font:{size:12,color:'#5a5050'}}],xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false});
+    if(p.length===0){Plotly.newPlot('perfChart',[],{...plotDark,annotations:[{text:'종목을 추가하면 수익 차트가 표시됩니다',showarrow:false,font:{size:12,color:'#5a5050'}}],xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false});
+        Plotly.newPlot('ddChart',[],{...plotDark,annotations:[{text:'데이터 없음',showarrow:false,font:{size:12,color:'#5a5050'}}],xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false});
         Plotly.newPlot('monthlyChart',[],{...plotDark,xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false});
         Plotly.newPlot('sectorChart',[],{...plotDark,xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false});
-        document.getElementById('topMovers').innerHTML='<div class="empty-state"><i class="fas fa-inbox"></i><p>No stocks</p></div>';return;}
+        document.getElementById('topMovers').innerHTML='<div class="empty-state"><i class="fas fa-inbox"></i><p>아직 종목이 없어요</p></div>';return;}
 
     const days=90,dates=[],vals=[],ddVals=[];let base=inv;
     for(let i=0;i<days;i++){const d=new Date();d.setDate(d.getDate()-(days-i));dates.push(d.toISOString().split('T')[0]);base*=(1+(Math.random()-.47)*.015);vals.push(base)}
@@ -1187,8 +1270,11 @@ function renderDash(){
 }
 
 function renderPort(){
-    const p=portfolio(),c=document.getElementById('portfolioList');
-    if(!p.length){c.innerHTML='<div class="empty-state"><i class="fas fa-wallet"></i><p>No stocks yet</p><p style="font-size:.75rem;margin-top:.3rem">Add from Signals or use + button</p></div>';return}
+    const p=portfolio();
+    const pAll=p;let inv2=0,cur2=0;p.forEach(s=>{inv2+=s.buyPrice*s.quantity;cur2+=s.currentPrice*s.quantity});
+    renderPortAdvice(pAll,(cur2-inv2)/(inv2||1)*100);
+    const c=document.getElementById('portfolioList');
+    if(!p.length){c.innerHTML='<div class="empty-state"><i class="fas fa-wallet"></i><p>아직 종목이 없어요</p><p style="font-size:.75rem;margin-top:.3rem">Signals 탭에서 종목을 추가해보세요</p></div>';return}
     c.innerHTML=p.map((s,i)=>{const pnl=(s.currentPrice-s.buyPrice)*s.quantity,ret=(s.currentPrice-s.buyPrice)/s.buyPrice*100;
         const f=v=>fmtAuto(v,s.symbol);
         const isKR=isKRTicker(s.symbol);
@@ -1199,6 +1285,7 @@ function renderPort(){
 }
 
 function renderSigs(){
+    renderMarketCommentary();
     const sigs=getSignals();
     const isKR=currentMarket==='KR';
     const fmtSig=v=>isKR?new Intl.NumberFormat('ko-KR',{style:'currency',currency:'KRW',maximumFractionDigits:0}).format(v):fmt(v);
