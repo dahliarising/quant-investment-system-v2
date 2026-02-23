@@ -341,7 +341,8 @@ body{
 
     <!-- ===== PAGE: Trade Log ===== -->
     <div id="page-tradelog" class="page">
-        <div class="card"><div class="card-title"><i class="fas fa-history"></i> Trade History</div><div id="tradeLog"></div></div>
+        <div id="realizedSummary"></div>
+        <div class="card"><div class="card-title"><i class="fas fa-history"></i> 거래 내역</div><div id="tradeLog"></div></div>
         <div class="card"><div class="card-title"><i class="fas fa-bullseye"></i> Prediction Tracking</div><div id="predTracking"></div></div>
         <div class="card"><div class="card-title"><i class="fas fa-chart-line"></i> Model Accuracy</div><div id="accuracyChart" style="height:220px"></div></div>
     </div>
@@ -376,10 +377,25 @@ body{
                 <input type="range" id="wRisk" min="0" max="1" step="0.05" value="0.25" oninput="updateWeight(this)" style="width:100%"></div>
         </div>
         <div class="card">
-            <div class="card-title"><i class="fas fa-shield-alt"></i> Risk Controls</div>
-            <div class="setting-row"><div><div class="setting-label">Max Position</div><div class="setting-desc">Single stock limit</div></div><span style="color:var(--orange);font-weight:700">15%</span></div>
-            <div class="setting-row"><div><div class="setting-label">Max Sector</div><div class="setting-desc">Sector concentration limit</div></div><span style="color:var(--orange);font-weight:700">40%</span></div>
-            <div class="setting-row"><div><div class="setting-label">Sector Neutral</div><div class="setting-desc">Neutralize sector bias</div></div><span style="color:var(--success);font-weight:700">ON</span></div>
+            <div class="card-title"><i class="fas fa-shield-alt"></i> 리스크 컨트롤 (실시간 적용)</div>
+            <div class="setting-row"><div><div class="setting-label">최대 포지션</div><div class="setting-desc">단일 종목 한도 — 초과시 경고</div></div><span style="color:var(--success);font-weight:700">20% ✅</span></div>
+            <div class="setting-row"><div><div class="setting-label">최대 섹터</div><div class="setting-desc">섹터 집중도 한도 — 초과시 경고</div></div><span style="color:var(--success);font-weight:700">40% ✅</span></div>
+            <div class="setting-row"><div><div class="setting-label">스냅샷 저장</div><div class="setting-desc">일별 포트폴리오 가치 자동 기록</div></div><span style="color:var(--success);font-weight:700">ON ✅</span></div>
+        </div>
+        <div class="card">
+            <div class="card-title"><i class="fas fa-bell"></i> 가격 알림</div>
+            <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
+                <input type="text" id="alertSym" placeholder="종목코드 (예: AAPL)" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem;color:var(--text);font-size:.85rem">
+                <input type="number" id="alertPrice" placeholder="목표가" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem;color:var(--text);font-size:.85rem">
+            </div>
+            <div style="display:flex;gap:.5rem;margin-bottom:.6rem">
+                <select id="alertType" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem;color:var(--text);font-size:.85rem">
+                    <option value="above">이 가격 이상이면 알림 📈</option>
+                    <option value="below">이 가격 이하면 알림 📉</option>
+                </select>
+                <button class="btn btn-primary btn-sm" onclick="addAlert()"><i class="fas fa-plus"></i> 추가</button>
+            </div>
+            <div id="alertList"></div>
         </div>
         <div class="card">
             <div class="card-title"><i class="fas fa-server"></i> System Info</div>
@@ -658,6 +674,74 @@ const hiddenGemsKR=[
     {s:'128940.KS',n:'한미약품',sec:'바이오',sc:.76,cp:0,mom:0.5,qual:0.9,r:'GLP-1 비만치료제'},
 ];
 
+// ===== Portfolio Snapshots, Alerts & Analytics =====
+const SNAP_KEY='qis_snaps_v1';
+const ALRT_KEY='qis_alerts_v1';
+
+function getSnapshots(){return load(SNAP_KEY)||[]}
+
+function saveSnapshot(benchPrice){
+    const p=portfolio();if(!p.length)return;
+    let inv=0,cur=0;p.forEach(s=>{inv+=s.buyPrice*s.quantity;cur+=s.currentPrice*s.quantity});
+    if(cur===0)return;
+    const snaps=getSnapshots();
+    const today=new Date().toISOString().split('T')[0];
+    const idx=snaps.findIndex(s=>s.d===today);
+    const entry={d:today,v:Math.round(cur*100)/100,i:Math.round(inv*100)/100};
+    if(benchPrice!=null)entry.b=Math.round(benchPrice*100)/100;
+    if(idx>=0)snaps[idx]=entry;else snaps.push(entry);
+    if(snaps.length>365)snaps.splice(0,snaps.length-365);
+    save(SNAP_KEY,snaps);
+}
+
+function computeSharpe(snaps){
+    if(snaps.length<5)return null;
+    const rets=[];
+    for(let i=1;i<snaps.length;i++){if(snaps[i-1].v>0)rets.push((snaps[i].v-snaps[i-1].v)/snaps[i-1].v);}
+    if(rets.length<3)return null;
+    const avg=rets.reduce((a,b)=>a+b,0)/rets.length;
+    const std=Math.sqrt(rets.reduce((a,r)=>a+(r-avg)**2,0)/rets.length);
+    return std>0?(avg/std)*Math.sqrt(252):null;
+}
+
+function computeMaxDD(vals){
+    let peak=vals[0],maxDD=0;
+    vals.forEach(v=>{peak=Math.max(peak,v);const dd=(v-peak)/peak*100;if(dd<maxDD)maxDD=dd;});
+    return maxDD;
+}
+
+function computeRealizedGains(tradeList){
+    const lots={};let realized=0;
+    [...tradeList].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(t=>{
+        if(t.action==='BUY'){if(!lots[t.symbol])lots[t.symbol]=[];lots[t.symbol].push({price:t.price,qty:t.qty});}
+        else if(t.action==='SELL'&&lots[t.symbol]&&lots[t.symbol].length){
+            let remain=t.qty;
+            while(remain>0&&lots[t.symbol].length){
+                const lot=lots[t.symbol][0];
+                const used=Math.min(lot.qty,remain);
+                realized+=(t.price-lot.price)*used;
+                lot.qty-=used;remain-=used;
+                if(lot.qty<=0)lots[t.symbol].shift();
+            }
+        }
+    });
+    return realized;
+}
+
+function getAlerts(){return load(ALRT_KEY)||[]}
+
+function checkAlerts(prices){
+    if(!prices)return;
+    const alerts=getAlerts();let changed=false;
+    alerts.forEach(a=>{
+        const pd=prices[a.sym];if(!pd||a.fired)return;
+        const sym=a.sym.includes('.KS')||a.sym.includes('.KQ')?a.sym.split('.')[0]:a.sym;
+        if(a.type==='above'&&pd.price>=a.target){toast('🔔 '+sym+' 목표가 도달!','success');a.fired=true;changed=true;}
+        else if(a.type==='below'&&pd.price<=a.target){toast('⚠️ '+sym+' 하락 알림!','error');a.fired=true;changed=true;}
+    });
+    if(changed)save(ALRT_KEY,alerts);
+}
+
 // Current market selection
 let currentMarket='US'; // 'US' or 'KR'
 function getSignals(){return currentMarket==='US'?signals:signalsKR}
@@ -761,6 +845,10 @@ function applyPrices(prices){
     applyPricesToList(prices,signalsKR,hiddenGemsKR);
     rebuildScreenerAll();
     save(PCK,{prices:priceCache,timestamp:Date.now()});
+    const benchTicker=currentMarket==='KR'?'069500.KS':'SPY';
+    const benchPrice=prices[benchTicker]?.price??null;
+    saveSnapshot(benchPrice);
+    checkAlerts(prices);
 }
 function rebuildScreenerAll(){
     const sigs=getSignals(),gems=getHiddenGems();
@@ -776,7 +864,9 @@ async function refreshPrices(){
     const portTickers=portfolio().map(s=>s.symbol).filter(t=>!ALL_TICKERS.includes(t)&&!ALL_TICKERS_KR.includes(t));
     // Deduplicate KR tickers (some appear in both signals and hiddenGems)
     const krUnique=[...new Set(ALL_TICKERS_KR)];
-    const allTickers=[...ALL_TICKERS,...krUnique,...portTickers];
+    // Include benchmark tickers for comparison chart
+    const benchmarks=['SPY','069500.KS'];
+    const allTickers=[...ALL_TICKERS,...krUnique,...portTickers,...benchmarks.filter(b=>!ALL_TICKERS.includes(b)&&!krUnique.includes(b))];
 
     const prices=await fetchPricesFromYahoo(allTickers);
     icon.classList.remove('fa-spin');
@@ -809,7 +899,8 @@ async function initPrices(){
     updateDataStatus('loading');
     const portTickers=portfolio().map(s=>s.symbol).filter(t=>!ALL_TICKERS.includes(t)&&!ALL_TICKERS_KR.includes(t));
     const krUnique=[...new Set(ALL_TICKERS_KR)];
-    const allTickers=[...ALL_TICKERS,...krUnique,...portTickers];
+    const benchmarks=['SPY','069500.KS'];
+    const allTickers=[...ALL_TICKERS,...krUnique,...portTickers,...benchmarks.filter(b=>!ALL_TICKERS.includes(b)&&!krUnique.includes(b))];
     const prices=await fetchPricesFromYahoo(allTickers);
     if(prices&&Object.keys(prices).length>0){
         applyPrices(prices);isLive=true;lastUpdate=new Date();
@@ -1118,8 +1209,22 @@ function addStock(){
     const bp=parseFloat(document.getElementById('aBuy').value),qty=parseInt(document.getElementById('aQty').value);
     const cp=parseFloat(document.getElementById('aCur').value),sec=document.getElementById('aSector').value;
     if(!sym||!bp||!qty||!cp){toast('Fill all fields','error');return}
-    const p=portfolio();p.push({symbol:sym,name:name||sym,buyPrice:bp,quantity:qty,currentPrice:cp,sector:sec,date:new Date().toISOString()});
-    save(SK,p);logTrade(sym,'BUY',bp,qty);closeModals();toast(sym+' added!','success');renderAll();
+    // Risk limit checks
+    const p=portfolio();
+    const newVal=cp*qty;
+    const existingVal=p.reduce((a,s)=>a+s.currentPrice*s.quantity,0);
+    const totalVal=existingVal+newVal;
+    const positionPct=totalVal>0?newVal/totalVal*100:0;
+    if(positionPct>20){
+        if(!confirm('⚠️ 포지션 크기 경고\n\n'+sym+': '+positionPct.toFixed(1)+'%\n권장 한도: 20%\n\n분산 투자를 위해 포지션을 줄이는 것을 권장합니다.\n\n계속 추가할까요?'))return;
+    }
+    const secVal=p.filter(s=>s.sector===sec).reduce((a,s)=>a+s.currentPrice*s.quantity,0)+newVal;
+    const secPct=totalVal>0?secVal/totalVal*100:0;
+    if(secPct>40){
+        if(!confirm('⚠️ 섹터 집중 경고\n\n'+sec+' 섹터: '+secPct.toFixed(1)+'%\n권장 한도: 40%\n\n다른 섹터 분산을 권장합니다.\n\n계속 추가할까요?'))return;
+    }
+    p.push({symbol:sym,name:name||sym,buyPrice:bp,quantity:qty,currentPrice:cp,sector:sec,date:new Date().toISOString()});
+    save(SK,p);logTrade(sym,'BUY',bp,qty);closeModals();toast(sym+' added! ✅','success');renderAll();
 }
 function openEditModal(i){closeModals();const s=portfolio()[i];document.getElementById('eIdx').value=i;document.getElementById('eCur').value=s.currentPrice;document.getElementById('eQty').value=s.quantity;document.getElementById('editModal').classList.add('show')}
 function updateStock(){const i=+document.getElementById('eIdx').value,p=portfolio();p[i].currentPrice=parseFloat(document.getElementById('eCur').value);p[i].quantity=parseInt(document.getElementById('eQty').value);save(SK,p);closeModals();toast('Updated','success');renderAll()}
@@ -1226,7 +1331,7 @@ function renderMarketCommentary(){
 }
 
 // ===== RENDER ALL =====
-function renderAll(){renderDash();renderPort();renderSigs();renderScreener();renderAnalysis();renderTradeLog();
+function renderAll(){renderDash();renderPort();renderSigs();renderScreener();renderAnalysis();renderTradeLog();renderAlerts();
     const s=settings();['setCurrency','setModel','setHorizon'].forEach(id=>{const el=document.getElementById(id);if(el&&s[id.replace('set','').toLowerCase()])el.value=s[id.replace('set','').toLowerCase()]});}
 
 function renderDash(){
@@ -1245,18 +1350,40 @@ function renderDash(){
         Plotly.newPlot('sectorChart',[],{...plotDark,xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false});
         document.getElementById('topMovers').innerHTML='<div class="empty-state"><i class="fas fa-inbox"></i><p>아직 종목이 없어요</p></div>';return;}
 
-    const days=90,dates=[],vals=[],ddVals=[];let base=inv;
-    for(let i=0;i<days;i++){const d=new Date();d.setDate(d.getDate()-(days-i));dates.push(d.toISOString().split('T')[0]);base*=(1+(Math.random()-.47)*.015);vals.push(base)}
-    vals[vals.length-1]=cur;
-    let peak=vals[0];ddVals.push(0);for(let i=1;i<vals.length;i++){peak=Math.max(peak,vals[i]);ddVals.push((vals[i]-peak)/peak*100)}
+    // Real snapshot-based charts
+    const snaps=getSnapshots();
+    let chartDates,chartVals,ddVals;
+    if(snaps.length>=2){
+        chartDates=snaps.map(s=>s.d);
+        chartVals=snaps.map(s=>s.v);
+        let peak2=chartVals[0];ddVals=[0];
+        for(let i=1;i<chartVals.length;i++){peak2=Math.max(peak2,chartVals[i]);ddVals.push((chartVals[i]-peak2)/peak2*100);}
+    }else{
+        const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+        chartDates=[yesterday.toISOString().split('T')[0],new Date().toISOString().split('T')[0]];
+        chartVals=[inv,cur];ddVals=[0,inv>0?(cur-inv)/inv*100:0];
+    }
+    // Benchmark overlay (SPY normalized to portfolio start)
+    const benchSnaps=snaps.filter(s=>s.b!=null);
+    const traces=[{x:chartDates,y:chartVals,name:'포트폴리오',type:'scatter',mode:'lines',line:{color:'#e8793a',width:2},fill:'tozeroy',fillcolor:'rgba(232,121,58,0.06)'}];
+    if(benchSnaps.length>=2){
+        const bStart=benchSnaps[0].b,pStart=benchSnaps[0].v;
+        const benchNorm=benchSnaps.map(s=>pStart*(s.b/bStart));
+        traces.push({x:benchSnaps.map(s=>s.d),y:benchNorm,name:'SPY/시장',type:'scatter',mode:'lines',line:{color:'#4fc3f7',width:1.5,dash:'dot'}});
+    }
+    Plotly.newPlot('perfChart',traces,{...plotDark,yaxis:{gridcolor:'rgba(42,58,92,.3)',tickformat:',.0f'},xaxis:{gridcolor:'rgba(42,58,92,.3)'},legend:{font:{color:'#7a6f63',size:10},bgcolor:'transparent',x:0,y:1}},{responsive:true,displayModeBar:false});
 
-    Plotly.newPlot('perfChart',[{x:dates,y:vals,type:'scatter',mode:'lines',line:{color:'#e8793a',width:2},fill:'tozeroy',fillcolor:'rgba(232,121,58,0.06)'}],{...plotDark,yaxis:{gridcolor:'rgba(42,58,92,.3)',tickformat:',.0f'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
+    Plotly.newPlot('ddChart',[{x:chartDates,y:ddVals,type:'scatter',mode:'lines',fill:'tozeroy',line:{color:'#ff6b6b',width:1.5},fillcolor:'rgba(255,107,107,0.06)'}],{...plotDark,margin:{t:5,r:10,b:25,l:40},yaxis:{gridcolor:'rgba(42,58,92,.3)',title:'DD%'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
 
-    Plotly.newPlot('ddChart',[{x:dates,y:ddVals,type:'scatter',mode:'lines',fill:'tozeroy',line:{color:'#ff6b6b',width:1.5},fillcolor:'rgba(255,107,107,0.06)'}],{...plotDark,margin:{t:5,r:10,b:25,l:40},yaxis:{gridcolor:'rgba(42,58,92,.3)',title:'DD%'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
-
-    // Monthly
-    const months=[],mRets=[];for(let i=5;i>=0;i--){const d=new Date();d.setMonth(d.getMonth()-i);months.push(d.toLocaleDateString('en',{month:'short',year:'2-digit'}));mRets.push((Math.random()-.42)*8)}
-    Plotly.newPlot('monthlyChart',[{x:months,y:mRets,type:'bar',marker:{color:mRets.map(r=>r>=0?'#2dd4a8':'#ff6b6b')},text:mRets.map(r=>(r>=0?'+':'')+r.toFixed(1)+'%'),textposition:'outside',textfont:{size:10,color:'#7a6f63'}}],{...plotDark,yaxis:{gridcolor:'rgba(42,58,92,.3)',title:'%'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
+    // Monthly returns from real snapshots
+    const mMap={};
+    snaps.forEach(s=>{const mk=s.d.substring(0,7);if(!mMap[mk]){mMap[mk]={first:s.v,last:s.v};}mMap[mk].last=s.v;});
+    const mKeys=Object.keys(mMap).sort();
+    const months=mKeys.map(k=>{const d=new Date(k+'-01');return d.toLocaleDateString('en',{month:'short',year:'2-digit'})});
+    const mRets=mKeys.map(k=>(mMap[k].last-mMap[k].first)/mMap[k].first*100);
+    const mData=months.length>=1?months:[new Date().toLocaleDateString('en',{month:'short',year:'2-digit'})];
+    const mRetsData=mRets.length>=1?mRets:[ret];
+    Plotly.newPlot('monthlyChart',[{x:mData,y:mRetsData,type:'bar',marker:{color:mRetsData.map(r=>r>=0?'#2dd4a8':'#ff6b6b')},text:mRetsData.map(r=>(r>=0?'+':'')+r.toFixed(1)+'%'),textposition:'outside',textfont:{size:10,color:'#7a6f63'}}],{...plotDark,yaxis:{gridcolor:'rgba(42,58,92,.3)',title:'%'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
 
     // Sector
     const secMap={};p.forEach(s=>{secMap[s.sector]=(secMap[s.sector]||0)+s.currentPrice*s.quantity});
@@ -1307,8 +1434,12 @@ function renderSigs(){
     const z=top8.map(s=>[s.f.mom,s.f.val,s.f.qual,s.f.risk]);
     Plotly.newPlot('heatmapChart',[{z,x:factors,y:tickers,type:'heatmap',colorscale:[[0,'#ff6b6b'],[.5,'#1a1a2e'],[1,'#2dd4a8']],zmid:0,text:z.map(r=>r.map(v=>v.toFixed(1))),texttemplate:'%{text}',textfont:{size:10},colorbar:{title:'Z',tickfont:{color:'#7a6f63'},titlefont:{color:'#7a6f63'}}}],{...plotDark,margin:{t:5,r:10,b:30,l:55},xaxis:{side:'top'}},{responsive:true,displayModeBar:false});
 
-    const fLabels=isKR?['모멘텀','퀄리티','성장','가치','저변동']:['Momentum','Quality','Growth','Value','Low Vol'];
-    Plotly.newPlot('factorChart',[{x:[8.5,7.2,6.8,5.5,4.1],y:fLabels,type:'bar',orientation:'h',marker:{color:['#e8793a','#f4a261','#a78bfa','#2dd4a8','#4fc3f7']},text:['8.5','7.2','6.8','5.5','4.1'],textposition:'outside',textfont:{color:'#7a6f63'}}],{...plotDark,margin:{t:5,r:35,b:25,l:75},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
+    // Factor performance bar: aggregate real factor scores from top signals
+    const fLabels=isKR?['모멘텀','퀄리티','가치','리스크 관리']:['Momentum','Quality','Value','Risk Mgmt'];
+    const fAgg=[0,0,0,0];const fN=Math.min(20,sigs.length);
+    for(let i=0;i<fN;i++){fAgg[0]+=sigs[i].f.mom||0;fAgg[1]+=sigs[i].f.qual||0;fAgg[2]+=sigs[i].f.val||0;fAgg[3]+=Math.max(0,sigs[i].f.risk||0);}
+    const fAvg=fAgg.map(v=>+(v/Math.max(fN,1)).toFixed(2));
+    Plotly.newPlot('factorChart',[{x:fAvg,y:fLabels,type:'bar',orientation:'h',marker:{color:fAvg.map(v=>v>0?'#2dd4a8':'#ff6b6b')},text:fAvg.map(v=>(v>=0?'+':'')+v.toFixed(2)),textposition:'outside',textfont:{color:'#7a6f63'}}],{...plotDark,margin:{t:5,r:40,b:25,l:90},xaxis:{gridcolor:'rgba(42,58,92,.3)',title:'Avg Z-Score'}},{responsive:true,displayModeBar:false});
 }
 
 function renderScreener(){
@@ -1356,15 +1487,27 @@ function renderAnalysis(){
     const avg=rets.reduce((a,b)=>a+b,0)/rets.length,best=Math.max(...rets),worst=Math.min(...rets);
     const wr=(rets.filter(r=>r>=0).length/rets.length*100).toFixed(0);
     const tv=p.reduce((s,x)=>s+x.currentPrice*x.quantity,0),mp=Math.max(...p.map(x=>x.currentPrice*x.quantity));
+    const anaSnaps=getSnapshots();const sharpe=computeSharpe(anaSnaps);
+    const portVals2=anaSnaps.map(s=>s.v);const maxDD2=portVals2.length>=2?computeMaxDD(portVals2):0;
+    const sharpeTxt=sharpe!=null?sharpe.toFixed(2):'N/A';
+    const sharpeC=sharpe!=null?(sharpe>=1?'color:var(--success)':sharpe>=0?'color:var(--warning)':'color:var(--danger)'):'';
     document.getElementById('riskMetrics').innerHTML=
-        [{l:'AVG RETURN',v:pct(avg),c:pc(avg)},{l:'WIN RATE',v:wr+'%',c:'color:var(--orange)'},{l:'BEST',v:pct(best),c:'color:var(--success)'},{l:'WORST',v:pct(worst),c:'color:var(--danger)'},{l:'POSITIONS',v:p.length,c:''},{l:'CONCENTRATION',v:(mp/tv*100).toFixed(1)+'%',c:''}]
+        [{l:'평균수익률',v:pct(avg),c:pc(avg)},{l:'승률',v:wr+'%',c:'color:var(--orange)'},{l:'샤프지수',v:sharpeTxt,c:sharpeC},{l:'최대낙폭',v:maxDD2.toFixed(1)+'%',c:'color:var(--danger)'},{l:'최고',v:pct(best),c:'color:var(--success)'},{l:'최저',v:pct(worst),c:'color:var(--danger)'}]
         .map(x=>'<div style="background:var(--bg);padding:.7rem;border-radius:10px;border:1px solid var(--border)"><div style="font-size:.65rem;color:var(--text3)">'+x.l+'</div><div style="font-size:1.1rem;font-weight:800;'+x.c+'">'+x.v+'</div></div>')
         .join('').replace(/^/,'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem">')+'</div>';
 
-    // SHAP
-    const feats=['ret_12m','vol_3m','trailingPE','ROE','ret_1m','ma_gap','profitMargin','momentum','down_vol','P/B'];
-    const imps=feats.map(()=>Math.random()*.15+.02).sort((a,b)=>b-a);
-    Plotly.newPlot('shapChart',[{y:feats.slice().reverse(),x:imps.slice().reverse(),type:'bar',orientation:'h',marker:{color:imps.slice().reverse().map(()=>Math.random()>.5?'#2dd4a8':'#ff6b6b')},text:imps.slice().reverse().map(v=>v.toFixed(3)),textposition:'outside',textfont:{color:'#7a6f63',size:10}}],{...plotDark,margin:{t:5,r:40,b:25,l:85},xaxis:{gridcolor:'rgba(42,58,92,.3)',title:'SHAP Value'}},{responsive:true,displayModeBar:false});
+    // Factor Importance (real weights from portfolio signals)
+    const fImps={mom:0,val:0,qual:0,risk:0};
+    const portSigs=p.map(s=>screenerAll.find(sg=>sg.s===s.symbol)).filter(Boolean);
+    const allSigsSlice=getSignals().slice(0,30);
+    portSigs.forEach(sg=>{Object.keys(fImps).forEach(k=>{fImps[k]+=Math.abs(sg.f[k]||0)*2;})});
+    allSigsSlice.forEach(sg=>{Object.keys(fImps).forEach(k=>{fImps[k]+=Math.abs(sg.f[k]||0)*0.5;})});
+    const fLabels=['모멘텀','퀄리티','가치','리스크','성장(추정)','저변동성'];
+    const fVals=[fImps.mom,fImps.qual,fImps.val,fImps.risk,fImps.mom*0.6+fImps.qual*0.4,Math.max(0,3-fImps.risk)*0.8];
+    const fTotal=fVals.reduce((a,b)=>a+Math.abs(b),0)||1;
+    const fNorm=fVals.map(v=>Math.abs(v)/fTotal);
+    const fSorted=fLabels.map((l,i)=>({l,v:fNorm[i],raw:fVals[i]})).sort((a,b)=>b.v-a.v);
+    Plotly.newPlot('shapChart',[{y:fSorted.map(s=>s.l).reverse(),x:fSorted.map(s=>s.v).reverse(),type:'bar',orientation:'h',marker:{color:fSorted.map(s=>s.raw>=0?'#2dd4a8':'#ff6b6b').reverse()},text:fSorted.map(s=>(s.v*100).toFixed(1)+'%').reverse(),textposition:'outside',textfont:{color:'#7a6f63',size:10}}],{...plotDark,margin:{t:5,r:50,b:25,l:90},xaxis:{gridcolor:'rgba(42,58,92,.3)',title:'기여도'}},{responsive:true,displayModeBar:false});
 
     // Scenario
     const first=p[0];
@@ -1385,10 +1528,26 @@ function renderAnalysis(){
 
 function renderTradeLog(){
     const t=trades(),c=document.getElementById('tradeLog');
+    // Realized gains summary card
+    const realized=computeRealizedGains(t);
+    const p=portfolio();
+    let unreal=0;p.forEach(s=>unreal+=(s.currentPrice-s.buyPrice)*s.quantity);
+    const rlEl=document.getElementById('realizedSummary');
+    if(rlEl&&t.length){
+        const rc=realized>=0?'var(--success)':'var(--danger)';
+        const uc=unreal>=0?'var(--success)':'var(--danger)';
+        rlEl.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.85rem">'+
+            '<div style="background:var(--bg);padding:.7rem;border-radius:10px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">실현 손익</div><div style="font-size:1rem;font-weight:800;color:'+rc+'">'+fmt(realized)+'</div></div>'+
+            '<div style="background:var(--bg);padding:.7rem;border-radius:10px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">평가 손익</div><div style="font-size:1rem;font-weight:800;color:'+uc+'">'+fmt(unreal)+'</div></div>'+
+            '<div style="background:var(--bg);padding:.7rem;border-radius:10px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">총 손익</div><div style="font-size:1rem;font-weight:800;color:'+((realized+unreal)>=0?'var(--success)':'var(--danger)')+'">'+fmt(realized+unreal)+'</div></div>'+
+            '</div>';
+    }else if(rlEl){rlEl.innerHTML='';}
     if(!t.length){c.innerHTML='<div class="empty-state"><i class="fas fa-history"></i><p>No trades yet</p></div>';
-    }else{c.innerHTML=t.slice().reverse().slice(0,20).map(tr=>
-        '<div class="trade-row"><div><span style="font-weight:700;color:var(--text)">'+tr.symbol+'</span> <span class="badge '+(tr.action==='BUY'?'badge-buy':'badge-hold')+'" style="'+(tr.action==='SELL'?'background:rgba(255,107,107,.12);color:var(--danger);border:1px solid rgba(255,107,107,.25)':'')+'">'+tr.action+'</span></div><div style="text-align:right"><div style="font-weight:600">'+fmt(tr.price)+' x '+tr.qty+'</div><div style="font-size:.7rem;color:var(--text3)">'+new Date(tr.date).toLocaleDateString()+'</div></div></div>'
-    ).join('')}
+    }else{c.innerHTML=t.slice().reverse().slice(0,20).map(tr=>{
+        const isKRt=isKRTicker(tr.symbol);
+        const fmtT=v=>isKRt?fmtKRW(v):fmtUSD(v);
+        return'<div class="trade-row"><div><span style="font-weight:700;color:var(--text)">'+(isKRt?tr.symbol.split('.')[0]:tr.symbol)+'</span> <span class="badge '+(tr.action==='BUY'?'badge-buy':'badge-hold')+'" style="'+(tr.action==='SELL'?'background:rgba(255,107,107,.12);color:var(--danger);border:1px solid rgba(255,107,107,.25)':'')+'">'+tr.action+'</span></div><div style="text-align:right"><div style="font-weight:600">'+fmtT(tr.price)+' x '+tr.qty+'</div><div style="font-size:.7rem;color:var(--text3)">'+new Date(tr.date).toLocaleDateString()+'</div></div></div>';
+    }).join('')}
 
     // Prediction tracking
     const p=portfolio();
@@ -1404,6 +1563,33 @@ function renderTradeLog(){
         Plotly.newPlot('accuracyChart',[{x:dates,y:acc,type:'scatter',mode:'lines+markers',line:{color:'#e8793a',width:2},marker:{size:5,color:'#f4a261'}}],{...plotDark,yaxis:{gridcolor:'rgba(42,58,92,.3)',title:'Accuracy %'},xaxis:{gridcolor:'rgba(42,58,92,.3)'}},{responsive:true,displayModeBar:false});
     }else{Plotly.newPlot('accuracyChart',[],{...plotDark,annotations:[{text:'More trades needed',showarrow:false,font:{size:12,color:'#5a5050'}}],xaxis:{visible:false},yaxis:{visible:false}},{responsive:true,displayModeBar:false})}
 }
+
+// ===== Price Alerts =====
+function addAlert(){
+    const sym=document.getElementById('alertSym').value.trim().toUpperCase();
+    const price=parseFloat(document.getElementById('alertPrice').value);
+    const type=document.getElementById('alertType').value;
+    if(!sym||!price){toast('종목코드와 목표가를 입력하세요','error');return}
+    const alerts=getAlerts();
+    alerts.push({sym,target:price,type,fired:false,created:new Date().toISOString()});
+    save(ALRT_KEY,alerts);
+    document.getElementById('alertSym').value='';
+    document.getElementById('alertPrice').value='';
+    toast('알림 설정 완료! 🔔','success');
+    renderAlerts();
+}
+function renderAlerts(){
+    const el=document.getElementById('alertList');if(!el)return;
+    const alerts=getAlerts();
+    if(!alerts.length){el.innerHTML='<p style="font-size:.8rem;color:var(--text3)">설정된 알림이 없습니다.</p>';return}
+    el.innerHTML=alerts.map((a,i)=>{
+        const sym=a.sym.includes('.')?a.sym.split('.')[0]:a.sym;
+        const ic=a.type==='above'?'📈':'📉';
+        const firedStyle=a.fired?'opacity:.5;text-decoration:line-through':'';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid rgba(42,58,92,.3);'+firedStyle+'"><div style="font-size:.82rem"><span style="font-weight:700">'+sym+'</span> '+ic+' <span style="color:var(--orange)">'+(a.sym.includes('.KS')||a.sym.includes('.KQ')?a.target.toLocaleString()+'원':'$'+a.target.toLocaleString())+'</span>'+(a.fired?' <span style="color:var(--success);font-size:.7rem">✓ 도달</span>':'')+'</div><button onclick="deleteAlert('+i+')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:.8rem"><i class="fas fa-times"></i></button></div>';
+    }).join('');
+}
+function deleteAlert(i){const a=getAlerts();a.splice(i,1);save(ALRT_KEY,a);renderAlerts();toast('알림 삭제','success')}
 
 // ===== Export =====
 function exportData(){const p=portfolio();if(!p.length){toast('No data','error');return}
