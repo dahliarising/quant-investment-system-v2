@@ -1550,7 +1550,6 @@ function renderTradeLog(){
     }).join('')}
 
     // Prediction tracking
-    const p=portfolio();
     document.getElementById('predTracking').innerHTML=p.length?
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">'+
         [{l:'Predictions',v:signals.length},{l:'Portfolio',v:p.length},{l:'Tracked',v:t.length},{l:'Model',v:settings().model.toUpperCase()}]
