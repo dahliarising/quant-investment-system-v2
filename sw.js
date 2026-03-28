@@ -1,6 +1,6 @@
 const CACHE_NAME = 'qis-v2';
 const ASSETS = [
-  './dashboard.html',
+  './index.html',
   './manifest.json',
 ];
 

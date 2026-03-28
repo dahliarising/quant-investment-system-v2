@@ -2,7 +2,7 @@
   "name": "Quant Investment System",
   "short_name": "QuantSys",
   "description": "AI Multi-Factor & ML Hybrid Investment Platform",
-  "start_url": "./dashboard.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0d1117",
   "theme_color": "#e8793a",

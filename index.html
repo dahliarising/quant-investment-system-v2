@@ -572,6 +572,31 @@ const plotDark={plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)',font:
 
 let isLive=false, lastUpdate=null, priceCache={};
 
+// Exchange rate (KRW/USD) - configurable with live fetch
+let cachedKRWRate=1380; // default fallback
+const RATE_CACHE_KEY='qis_krw_rate';
+function getKRWRate(){
+    const cached=localStorage.getItem(RATE_CACHE_KEY);
+    if(cached){try{const d=JSON.parse(cached);if(d.rate&&Date.now()-d.ts<6*3600*1000)return d.rate;}catch(e){}}
+    return cachedKRWRate;
+}
+async function fetchKRWRate(){
+    const proxies=typeof getHealthyProxies==='function'?getHealthyProxies():[];
+    const urls=['https://query1.finance.yahoo.com/v7/finance/quote?symbols=USDKRW=X&fields=regularMarketPrice'];
+    for(const url of urls){
+        for(const proxy of proxies){
+            try{
+                const res=await fetch(proxy(url),{signal:AbortSignal.timeout(8000)});
+                if(!res.ok)continue;
+                const data=await res.json();
+                const r=data?.quoteResponse?.result?.[0]?.regularMarketPrice;
+                if(r&&r>800&&r<2000){cachedKRWRate=r;localStorage.setItem(RATE_CACHE_KEY,JSON.stringify({rate:r,ts:Date.now()}));return r;}
+            }catch(e){continue;}
+        }
+    }
+    return getKRWRate();
+}
+
 // Signals data per sector (~10 each, fallback prices overwritten by real data)
 const signals=[
     // Tech (10)
@@ -958,6 +983,7 @@ const proxyDefs=[
     {fn:url=>`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,fails:0,last:0},
     {fn:url=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,fails:0,last:0},
     {fn:url=>`https://thingproxy.freeboard.io/fetch/${url}`,fails:0,last:0},
+    {fn:url=>`https://corsproxy.org/?${encodeURIComponent(url)}`,fails:0,last:0},
 ];
 function getHealthyProxies(){
     const now=Date.now();
@@ -980,7 +1006,7 @@ async function fetchPricesFromYahoo(tickers){
 
     for(const proxy of proxies){
         try{
-            const res=await fetch(proxy(yahooUrl),{signal:AbortSignal.timeout(8000)});
+            const res=await fetch(proxy(yahooUrl),{signal:AbortSignal.timeout(12000)});
             if(!res.ok){markProxyFail(proxy);continue;}
             const data=await res.json();
             if(data.quoteResponse&&data.quoteResponse.result){
@@ -1010,7 +1036,7 @@ async function fetchPricesFromYahoo(tickers){
                 for(const proxy of proxies){
                     try{
                         const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`;
-                        const res=await fetch(proxy(url),{signal:AbortSignal.timeout(6000)});
+                        const res=await fetch(proxy(url),{signal:AbortSignal.timeout(10000)});
                         if(!res.ok)continue;
                         const data=await res.json();
                         const meta=data.chart.result[0].meta;
@@ -1337,7 +1363,7 @@ async function searchStock(){
 
         // Simple MA gap
         const ma50=n>=50?closes.slice(-50).reduce((a,b)=>a+b,0)/50:price;
-        const ma200=n>=130?closes.slice(-130).reduce((a,b)=>a+b,0)/130:ma50;
+        const ma200=n>=200?closes.slice(-200).reduce((a,b)=>a+b,0)/200:price;
         const maGap=((price-ma50)/ma50*100);
 
         // 52-week high proximity
@@ -1427,7 +1453,7 @@ async function searchStock(){
                         ['Volatility',vol.toFixed(1)+'%',vol<25?'var(--success)':vol<40?'var(--warning)':'var(--danger)'],
                         ['52W High',nearHigh.toFixed(1)+'%',nearHigh>90?'var(--success)':'var(--warning)'],
                         ['Vol Trend',(volTrend>=0?'+':'')+volTrend.toFixed(0)+'%',volTrend>0?'var(--info)':'var(--text3)'],
-                    ]})()}.map(([l,v,c])=>`<div style="background:var(--bg);padding:.55rem;border-radius:8px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">${l}</div><div style="font-size:.85rem;font-weight:700;color:${c}">${v}</div></div>`).join('')}
+                    ]})().map(([l,v,c])=>`<div style="background:var(--bg);padding:.55rem;border-radius:8px;border:1px solid var(--border)"><div style="font-size:.6rem;color:var(--text3)">${l}</div><div style="font-size:.85rem;font-weight:700;color:${c}">${v}</div></div>`).join('')}
                 </div>
                 <div id="searchFundamentals" style="margin-bottom:.85rem">
                     <div style="font-size:.7rem;color:var(--text3);margin-bottom:.4rem"><i class="fas fa-info-circle"></i> 펀더멘털 정보 로딩중...</div>
@@ -1478,7 +1504,7 @@ async function searchStock(){
         ],{...plotDark,margin:{t:0,r:45,b:15,l:45},yaxis:{gridcolor:'rgba(42,58,92,.2)',range:[0,100],dtick:30,tickfont:{size:8}},xaxis:{showticklabels:false},showlegend:false,height:60},{responsive:true,displayModeBar:false});
 
         // Async: fetch fundamentals (dividend, P/E, market cap)
-        fetchFundamentals(ticker,parsed.isKR);
+        fetchFundamentals(ticker,parsed.isKR).catch(e=>console.warn('Fundamentals fetch failed:',e));
 
     }catch(e){
         box.innerHTML='<div style="text-align:center;padding:1.5rem"><i class="fas fa-wifi" style="font-size:2rem;color:var(--danger);margin-bottom:.5rem"></i><p style="color:var(--danger);font-weight:600">Network error</p><p style="color:var(--text3);font-size:.8rem">'+e.message+'</p></div>';
@@ -1491,7 +1517,7 @@ async function fetchFundamentals(ticker,isKR){
     const url=`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=trailingPE,forwardPE,dividendYield,trailingAnnualDividendRate,marketCap,earningsTimestamp,epsTrailingTwelveMonths,fiftyTwoWeekHigh,fiftyTwoWeekLow,averageVolume`;
     for(const proxy of proxies){
         try{
-            const res=await fetch(proxy(url),{signal:AbortSignal.timeout(8000)});
+            const res=await fetch(proxy(url),{signal:AbortSignal.timeout(12000)});
             if(!res.ok)continue;
             const data=await res.json();
             if(!data.quoteResponse||!data.quoteResponse.result||!data.quoteResponse.result[0]){continue;}
@@ -1555,7 +1581,7 @@ const sectors=['Tech','Healthcare','Consumer','Communication','Finance','Energy'
 
 // ===== Storage =====
 function load(k){try{return JSON.parse(localStorage.getItem(k))||null}catch{return null}}
-function save(k,v){localStorage.setItem(k,JSON.stringify(v))}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){console.warn('Storage save failed:',e);toast('저장 공간이 부족합니다','error')}}
 function portfolio(){return load(SK)||[]}
 function trades(){return load(TLK)||[]}
 function settings(){return load(STK)||{currency:'USD',model:'lgbm',horizon:'1y'}}
@@ -1671,19 +1697,19 @@ function addStock(){
     const sym=document.getElementById('aSymbol').value.trim().toUpperCase(),name=document.getElementById('aName').value.trim();
     const bp=parseFloat(document.getElementById('aBuy').value),qty=parseInt(document.getElementById('aQty').value);
     const cp=parseFloat(document.getElementById('aCur').value),sec=document.getElementById('aSector').value;
-    if(!sym||!bp||!qty||!cp){toast('Fill all fields','error');return}
+    if(!sym||isNaN(bp)||!qty||isNaN(cp)){toast('Fill all fields','error');return}
     // Risk limit checks
     const p=portfolio();
     const newVal=cp*qty;
     const existingVal=p.reduce((a,s)=>a+s.currentPrice*s.quantity,0);
     const totalVal=existingVal+newVal;
     const positionPct=totalVal>0?newVal/totalVal*100:0;
-    if(positionPct>20){
+    if(p.length>0&&positionPct>20){
         if(!confirm('⚠️ 포지션 크기 경고\n\n'+sym+': '+positionPct.toFixed(1)+'%\n권장 한도: 20%\n\n분산 투자를 위해 포지션을 줄이는 것을 권장합니다.\n\n계속 추가할까요?'))return;
     }
     const secVal=p.filter(s=>s.sector===sec).reduce((a,s)=>a+s.currentPrice*s.quantity,0)+newVal;
     const secPct=totalVal>0?secVal/totalVal*100:0;
-    if(secPct>40){
+    if(p.length>0&&secPct>40){
         if(!confirm('⚠️ 섹터 집중 경고\n\n'+sec+' 섹터: '+secPct.toFixed(1)+'%\n권장 한도: 40%\n\n다른 섹터 분산을 권장합니다.\n\n계속 추가할까요?'))return;
     }
     p.push({symbol:sym,name:name||sym,buyPrice:bp,quantity:qty,currentPrice:cp,sector:sec,date:new Date().toISOString()});
@@ -1861,7 +1887,10 @@ function renderBriefing(p,ret,regime){
     const nm=isKR?topSig.n:topSig.s;
     const up=topSig.cp?((topSig.tp-topSig.cp)/topSig.cp*100).toFixed(1):0;
     const icon=isKR?topSig.s.split('.')[0].slice(0,4):topSig.s.slice(0,4);
-    pe.innerHTML='<div class="card" style="border-color:rgba(232,121,58,0.35);margin-bottom:.85rem;cursor:pointer" onclick=\'showSig('+JSON.stringify(topSig).replace(/'/g,"\\'")+')\'><div class="card-title" style="margin-bottom:.45rem"><i class="fas fa-star" style="color:#ffd166"></i> 오늘의 AI 추천 1위</div><div style="display:flex;align-items:center;gap:.7rem"><div style="width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--orange),var(--orange-dark));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.6rem;color:white;flex-shrink:0">'+icon+'</div><div style="flex:1"><div style="font-weight:700;font-size:.92rem">'+nm+' <span class="badge badge-strong">AI '+( topSig.sc*100).toFixed(0)+'점</span></div><div style="font-size:.76rem;color:var(--text3);margin-top:.1rem">'+topSig.r+'</div></div><div style="text-align:right;flex-shrink:0"><div style="font-weight:700;font-size:.9rem">'+(topSig.cp?fmtS(topSig.cp):'—')+'</div><div style="font-size:.8rem;color:'+(chg>=0?'var(--success)':'var(--danger)')+'">'+( chg>=0?'+':'')+chg.toFixed(2)+'%</div><div style="font-size:.68rem;color:var(--info)">목표 +'+up+'%</div></div></div></div>';
+    // Note: innerHTML here only contains developer-controlled strings (stock names from hardcoded signals array, not user input)
+    pe.innerHTML='<div class="card" id="todayPickCard" style="border-color:rgba(232,121,58,0.35);margin-bottom:.85rem;cursor:pointer"><div class="card-title" style="margin-bottom:.45rem"><i class="fas fa-star" style="color:#ffd166"></i> 오늘의 AI 추천 1위</div><div style="display:flex;align-items:center;gap:.7rem"><div style="width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--orange),var(--orange-dark));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.6rem;color:white;flex-shrink:0">'+icon+'</div><div style="flex:1"><div style="font-weight:700;font-size:.92rem">'+nm+' <span class="badge badge-strong">AI '+( topSig.sc*100).toFixed(0)+'점</span></div><div style="font-size:.76rem;color:var(--text3);margin-top:.1rem">'+topSig.r+'</div></div><div style="text-align:right;flex-shrink:0"><div style="font-weight:700;font-size:.9rem">'+(topSig.cp?fmtS(topSig.cp):'—')+'</div><div style="font-size:.8rem;color:'+(chg>=0?'var(--success)':'var(--danger)')+'">'+( chg>=0?'+':'')+chg.toFixed(2)+'%</div><div style="font-size:.68rem;color:var(--info)">목표 +'+up+'%</div></div></div></div>';
+    const pickCard=document.getElementById('todayPickCard');
+    if(pickCard)pickCard.onclick=()=>showSig(topSig);
 }
 
 function renderPortAdvice(p,ret){
@@ -1899,8 +1928,18 @@ function renderMarketCommentary(){
     const tip=isKR?'AI가 가장 주목하는 섹터는 <strong style="color:var(--orange)">'+(topSec?.sec||'IT')+'</strong>입니다.':'Strongest AI signals are in <strong style="color:var(--orange)">'+(topSec?.sec||'Tech')+'</strong>.';
     const noData='<p style="font-size:.8rem;color:var(--text3)">가격 로딩 중... 새로고침 버튼을 눌러주세요.</p>';
     const medals=['🥇','🥈','🥉'];
-    const rows=topBuy.map((sig,i)=>{const nm=isKR?sig.n:sig.s;const chg=sig._changePct||0;const up=sig.cp?((sig.tp-sig.cp)/sig.cp*100).toFixed(1):0;return'<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem 0;border-bottom:1px solid rgba(42,58,92,.3);cursor:pointer" onclick=\'showSig('+JSON.stringify(sig).replace(/'/g,"\\'")+')\'><span style="font-size:.95rem">'+medals[i]+'</span><div style="flex:1"><span style="font-weight:700;font-size:.84rem">'+nm+'</span><span style="font-size:.69rem;color:var(--text3);margin-left:.3rem">'+sig.r.slice(0,28)+(sig.r.length>28?'…':'')+'</span></div><div style="text-align:right"><div style="font-size:.8rem;color:'+(chg>=0?'var(--success)':'var(--danger)')+'">'+( chg>=0?'+':'')+chg.toFixed(2)+'%</div><div style="font-size:.67rem;color:var(--info)">목표 +'+up+'%</div></div></div>';}).join('');
-    el.innerHTML='<div class="card" style="border-color:rgba(79,195,247,0.3);margin-bottom:.85rem"><div class="card-title"><i class="fas fa-newspaper" style="color:var(--info)"></i> 장 현황 & 전략</div><p style="font-size:.83rem;color:var(--text2);line-height:1.7;margin-bottom:.7rem">'+tip+'</p>'+(topBuy.length?'<div style="font-size:.7rem;color:var(--text3);font-weight:600;margin-bottom:.3rem">지금 주목할 종목 TOP '+topBuy.length+'</div>'+rows:noData)+'<div style="margin-top:.6rem;padding:.55rem;background:rgba(0,0,0,0.15);border-radius:8px;font-size:.74rem;color:var(--text3)">💡 종목을 탭하면 AI 상세 분석이 열려요. 포트폴리오 추가 버튼으로 수익을 실시간 추적하세요.</div></div>';
+    // Build rows with DOM events instead of inline onclick with JSON.stringify
+    const rowsContainer=document.createElement('div');
+    topBuy.forEach((sig,i)=>{const nm=isKR?sig.n:sig.s;const chg=sig._changePct||0;const up=sig.cp?((sig.tp-sig.cp)/sig.cp*100).toFixed(1):0;
+        const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:.5rem;padding:.5rem 0;border-bottom:1px solid rgba(42,58,92,.3);cursor:pointer';
+        row.onclick=()=>showSig(sig);
+        row.innerHTML='<span style="font-size:.95rem">'+medals[i]+'</span><div style="flex:1"><span style="font-weight:700;font-size:.84rem">'+nm+'</span><span style="font-size:.69rem;color:var(--text3);margin-left:.3rem">'+sig.r.slice(0,28)+(sig.r.length>28?'…':'')+'</span></div><div style="text-align:right"><div style="font-size:.8rem;color:'+(chg>=0?'var(--success)':'var(--danger)')+'">'+( chg>=0?'+':'')+chg.toFixed(2)+'%</div><div style="font-size:.67rem;color:var(--info)">목표 +'+up+'%</div></div>';
+        rowsContainer.appendChild(row);
+    });
+    // Note: innerHTML below uses developer-controlled data (hardcoded signals, not user input)
+    el.innerHTML='<div class="card" style="border-color:rgba(79,195,247,0.3);margin-bottom:.85rem"><div class="card-title"><i class="fas fa-newspaper" style="color:var(--info)"></i> 장 현황 & 전략</div><p style="font-size:.83rem;color:var(--text2);line-height:1.7;margin-bottom:.7rem">'+tip+'</p>'+(topBuy.length?'<div style="font-size:.7rem;color:var(--text3);font-weight:600;margin-bottom:.3rem">지금 주목할 종목 TOP '+topBuy.length+'</div><div id="mcRows"></div>':noData)+'<div style="margin-top:.6rem;padding:.55rem;background:rgba(0,0,0,0.15);border-radius:8px;font-size:.74rem;color:var(--text3)">💡 종목을 탭하면 AI 상세 분석이 열려요. 포트폴리오 추가 버튼으로 수익을 실시간 추적하세요.</div></div>';
+    const mcRowsEl=document.getElementById('mcRows');
+    if(mcRowsEl)while(rowsContainer.firstChild)mcRowsEl.appendChild(rowsContainer.firstChild);
 }
 
 // ===== RENDER ALL =====
@@ -1908,6 +1947,7 @@ function renderAll(){renderDash();renderPort();renderSigs();renderScreener();ren
     const s=settings();['setCurrency','setModel','setHorizon'].forEach(id=>{const el=document.getElementById(id);if(el&&s[id.replace('set','').toLowerCase()])el.value=s[id.replace('set','').toLowerCase()]});
     // Restore saved factor weights
     if(s.weights){const wMap={wMom:'mom',wVal:'val',wQual:'qual',wRisk:'risk'};Object.entries(wMap).forEach(([elId,key])=>{const el=document.getElementById(elId);if(el&&s.weights[key]!=null){el.value=s.weights[key];document.getElementById(elId+'Val').textContent=s.weights[key].toFixed(2);}});}
+}
 
 function renderDash(){
     const p=portfolio();
@@ -1917,10 +1957,11 @@ function renderDash(){
         if(isKRTicker(s.symbol)){invKRW+=s.buyPrice*s.quantity;curKRW+=s.currentPrice*s.quantity;}
         else{invUSD+=s.buyPrice*s.quantity;curUSD+=s.currentPrice*s.quantity;}
     });
-    // For display, use selected currency (approximate KRW/USD = 1350)
-    const rate=settings().currency==='KRW'?1350:1;
-    const inv=invUSD*rate+invKRW*(settings().currency==='KRW'?1:1/1350);
-    const cur=curUSD*rate+curKRW*(settings().currency==='KRW'?1:1/1350);
+    // For display, use selected currency with live KRW/USD rate
+    const krwRate=getKRWRate();
+    const rate=settings().currency==='KRW'?krwRate:1;
+    const inv=invUSD*rate+invKRW*(settings().currency==='KRW'?1:1/krwRate);
+    const cur=curUSD*rate+curKRW*(settings().currency==='KRW'?1:1/krwRate);
     const pnl=cur-inv,ret=inv>0?pnl/inv*100:0,regime=getRegime();
     renderBriefing(p,ret,regime);
     renderPortAdvice(p,ret);
@@ -2007,12 +2048,19 @@ function renderSigs(){
     const dispName=sig=>isKR?sig.n:sig.s;
     const dispCode=sig=>isKR?sig.s.split('.')[0]:sig.s.slice(0,3);
 
-    document.getElementById('signalsList').innerHTML=sigs.sort((a,b)=>b.sc-a.sc).map(sig=>{
+    // Build signal list with DOM events instead of inline onclick with JSON.stringify
+    const sigListEl=document.getElementById('signalsList');
+    sigListEl.textContent='';
+    sigs.sort((a,b)=>b.sc-a.sc).forEach(sig=>{
         const chg=sig._changePct!=null?sig._changePct:(sig.cp&&sig.tp?((sig.tp-sig.cp)/sig.cp*100):0);
         const chgDir=chg>=0?'up':'down';
         const bc=sig.sc>=.9?'badge-strong':sig.sc>=.8?'badge-buy':'badge-hold';
         const bt=isKR?(sig.sc>=.9?'강력매수':sig.sc>=.8?'매수':'보유'):(sig.sc>=.9?'Strong Buy':sig.sc>=.8?'Buy':'Hold');
-        return'<div class="stock-item" onclick=\'showSig('+JSON.stringify(sig).replace(/'/g,"\\'")+')\'><div class="stock-left"><div class="stock-icon">'+dispCode(sig)+'</div><div><div class="stock-name">'+dispName(sig)+' <span class="badge '+bc+'">'+bt+'</span></div><div class="stock-sub">'+(isKR?sig.s.split('.')[0]+' · '+sig.sec:sig.n)+'</div></div></div><div class="stock-right"><div class="stock-price">'+(sig.cp?fmtSig(sig.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div></div>'}).join('');
+        const row=document.createElement('div');row.className='stock-item';
+        row.onclick=()=>showSig(sig);
+        row.innerHTML='<div class="stock-left"><div class="stock-icon">'+dispCode(sig)+'</div><div><div class="stock-name">'+dispName(sig)+' <span class="badge '+bc+'">'+bt+'</span></div><div class="stock-sub">'+(isKR?sig.s.split('.')[0]+' · '+sig.sec:sig.n)+'</div></div></div><div class="stock-right"><div class="stock-price">'+(sig.cp?fmtSig(sig.cp):'—')+'</div><div class="stock-change '+chgDir+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</div></div>';
+        sigListEl.appendChild(row);
+    });
 
     // Factor heatmap
     const top8=sigs.slice(0,8);
@@ -2306,7 +2354,8 @@ function runStrategy(){closeModals();const m=document.getElementById('stratModal
 
 function resetData(){if(confirm('Delete all data?')){localStorage.removeItem(SK);localStorage.removeItem(TLK);localStorage.removeItem(PCK);toast('Cleared','success');renderAll()}}
 
-// Initial load: fetch real prices then render
+// Initial load: fetch exchange rate and real prices then render
+fetchKRWRate().catch(()=>{});
 initPrices();
 
 // Register service worker for PWA
