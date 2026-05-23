@@ -100,3 +100,50 @@ def test_pending_earnings_excludes_past(tmp_db_path: Path) -> None:
     earnings.upsert_earnings(tmp_db_path, "AAPL", [date(2026, 5, 22)], eps_avg=1.5, revenue_avg=9e10)
     rows = earnings.pending_earnings(tmp_db_path, today=today, days_ahead=7)
     assert rows == []
+
+
+@pytest.mark.unit
+def test_fetch_earnings_date_parses_yfinance_calendar() -> None:
+    fake_calendar = {
+        "Earnings Date": [date(2026, 7, 30)],
+        "Earnings Average": 7.528,
+        "Revenue Average": 60209152310,
+    }
+    with patch("corvin_jarvis.earnings._yf_ticker_calendar", return_value=fake_calendar):
+        result = earnings.fetch_earnings_date("META")
+    assert result == {
+        "symbol": "META",
+        "dates": [date(2026, 7, 30)],
+        "eps_avg": 7.528,
+        "revenue_avg": 60209152310,
+        "error": None,
+    }
+
+
+@pytest.mark.unit
+def test_fetch_earnings_date_handles_missing_fields() -> None:
+    fake_calendar = {
+        "Earnings Date": [date(2026, 8, 28)],
+    }
+    with patch("corvin_jarvis.earnings._yf_ticker_calendar", return_value=fake_calendar):
+        result = earnings.fetch_earnings_date("NVDA")
+    assert result["dates"] == [date(2026, 8, 28)]
+    assert result["eps_avg"] is None
+    assert result["revenue_avg"] is None
+    assert result["error"] is None
+
+
+@pytest.mark.unit
+def test_fetch_earnings_date_handles_empty_calendar() -> None:
+    with patch("corvin_jarvis.earnings._yf_ticker_calendar", return_value={}):
+        result = earnings.fetch_earnings_date("XXX")
+    assert result["dates"] == []
+    assert result["error"] is None
+
+
+@pytest.mark.unit
+def test_fetch_earnings_date_handles_exception() -> None:
+    with patch("corvin_jarvis.earnings._yf_ticker_calendar", side_effect=RuntimeError("api down")):
+        result = earnings.fetch_earnings_date("ZZZ")
+    assert result["dates"] == []
+    assert "api down" in result["error"]

@@ -67,6 +67,39 @@ def upsert_earnings(
     return len(rows)
 
 
+def _yf_ticker_calendar(symbol: str) -> dict[str, Any]:
+    """yfinance.Ticker(symbol).calendar wrapper (mock 가능하도록 분리)."""
+    import yfinance as yf
+    cal = yf.Ticker(symbol).calendar
+    return cal if isinstance(cal, dict) else {}
+
+
+def fetch_earnings_date(symbol: str) -> dict[str, Any]:
+    """yfinance에서 어닝 정보 fetch. 실패 시 dates=[] + error 메시지."""
+    try:
+        cal = _yf_ticker_calendar(symbol)
+        raw_dates = cal.get("Earnings Date") or []
+        parsed_dates: list[date] = []
+        for d in raw_dates:
+            if isinstance(d, date):
+                parsed_dates.append(d)
+            elif isinstance(d, str):
+                try:
+                    parsed_dates.append(date.fromisoformat(d))
+                except ValueError:
+                    continue
+        return {
+            "symbol": symbol,
+            "dates": parsed_dates,
+            "eps_avg": cal.get("Earnings Average"),
+            "revenue_avg": cal.get("Revenue Average"),
+            "error": None,
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"symbol": symbol, "dates": [], "eps_avg": None,
+                "revenue_avg": None, "error": str(e)}
+
+
 def pending_earnings(
     db_path: Path,
     today: date,
