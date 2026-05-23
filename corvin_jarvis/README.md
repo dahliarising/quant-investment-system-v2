@@ -42,6 +42,21 @@ python3 corvin_jarvis/reconcile.py refresh
 | `regime.py` | Risk regime detector (VIX+FX+correlation) — Tier 2.2 |
 | `predict.py` | Lognormal forecast — P(price < threshold) — Tier 2.3 |
 | `attribution.py` | Weekly outcome attribution (wiki vs actual) — Tier 2.4 |
+| `rebalance.py` | Drift detection + trade proposal (advisory) — Tier 2.5 |
+
+## Rebalancing Engine (Tier 2.5)
+
+목표 비중과 실제 차이 (drift) 감지 + 매수/매도 shares 제안 (advisory only).
+
+```python
+from corvin_jarvis import rebalance
+
+targets = {"META": 0.30, "MSFT": 0.30, "NVDA": 0.20, "CASH": 0.20}
+drifts = rebalance.detect_drift(holdings, targets, prices, tolerance=0.05)
+trades = rebalance.propose_trades(holdings, targets, prices, tolerance=0.05)
+```
+
+drift_pp는 percentage points (target과의 차이). |drift_pp| > tolerance*100이면 entry 생성.
 
 ## Outcome Attribution (Tier 2.4)
 
