@@ -37,6 +37,27 @@ python3 corvin_jarvis/reconcile.py refresh
 | `timeseries.py` | SQLite 누적 저장 (quote_history) — Phase 5 |
 | `earnings.py` | 어닝 캘린더 수집 + D-7/D-3/D-1 alert — Tier 1.3 |
 | `narrative.py` | narrative-shift-detector readonly adapter — Tier 1.4 |
+| `qa.py` | Q&A retrieval toolkit (RAG) — Tier 1.5 |
+
+## Q&A Retrieval Toolkit (Tier 1.5)
+
+Discord 질문에 답하기 위한 retrieval-augmented context builder. Corvin LLM이 답변을 합성하기 전 raw context를 모은다.
+
+- `recent_history_summary(symbol, days)`: timeseries.db N일 통계 (start/end/min/max/pct)
+- `relative_strength(symbol, benchmark, days)`: 벤치마크 대비 상대 성과 + verdict
+- `wiki_search(query, top_k)`: corvin-sessions/*.md grep + snippet
+- `explain_move(symbol)`: 위 셋 + earnings + narrative 종합 dict
+
+사용 예 ("왜 META 떨어졌어?" 답변 준비):
+```python
+from corvin_jarvis import qa
+from pathlib import Path
+out = qa.explain_move(
+    Path("corvin_jarvis/state/timeseries.db"),
+    symbol="META",
+    days=7,
+)
+```
 
 ## Narrative Z-score (Tier 1.4)
 
