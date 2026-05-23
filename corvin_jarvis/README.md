@@ -40,6 +40,22 @@ python3 corvin_jarvis/reconcile.py refresh
 | `qa.py` | Q&A retrieval toolkit (RAG) — Tier 1.5 |
 | `whatif.py` | 가상 거래 시뮬레이터 (advisory only) — Tier 2.1 |
 | `regime.py` | Risk regime detector (VIX+FX+correlation) — Tier 2.2 |
+| `predict.py` | Lognormal forecast — P(price < threshold) — Tier 2.3 |
+
+## Predictive Alerts (Tier 2.3)
+
+시계열 누적 60일+ 후 활성. log-normal endpoint approx로 미래 N일 후 가격 임계 이탈 확률 계산.
+
+config.json `predictive_levels`:
+```json
+"predictive_levels": {
+  "META": {"threshold": 580.0, "horizon_days": 3, "min_prob": 0.1}
+}
+```
+
+확률 ≥ min_prob 이면 alerts.json에 merge. severity는 P에 비례 (≥50% critical, ≥30% high, ≥15% medium).
+
+⚠️ 통계 추정 — 실거래 결정의 단독 근거 X. advisory only.
 
 ## Regime Detector (Tier 2.2)
 

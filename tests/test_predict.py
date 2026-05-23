@@ -114,3 +114,51 @@ def test_probability_below_zero_sigma_returns_step() -> None:
     """sigma=0 (degenerate) → threshold ≥ current면 1, 아니면 0."""
     assert predict.probability_below(600.0, 700.0, mu=0.0, sigma=0.0, horizon_days=3) == 1.0
     assert predict.probability_below(600.0, 500.0, mu=0.0, sigma=0.0, horizon_days=3) == 0.0
+
+
+# ---- build_predictive_alerts ----
+
+
+@pytest.mark.unit
+def test_build_predictive_alerts_high_probability_triggers(tmp_db_path: Path) -> None:
+    """변동성 큰 종목 + threshold 근처 → high P → alert."""
+    # 변동성 ±2% 일별
+    prices = [600.0, 612.0, 588.0, 605.0, 593.0, 610.0, 595.0, 608.0, 591.0, 604.0]
+    _seed_prices(tmp_db_path, "META", prices)
+    levels = {"META": {"threshold": 588.0, "horizon_days": 3, "min_prob": 0.10}}
+    alerts = predict.build_predictive_alerts(tmp_db_path, levels)
+    assert len(alerts) == 1
+    a = alerts[0]
+    assert a["category"] == "predictive"
+    assert a["metric"] == "META"
+    assert 0.1 <= a["value"] <= 1.0
+    assert "META" in a["message"]
+
+
+@pytest.mark.unit
+def test_build_predictive_alerts_skip_low_probability(tmp_db_path: Path) -> None:
+    """threshold 매우 멀고 변동성 낮으면 → P 거의 0 → no alert."""
+    prices = [600.0, 601.0, 600.5, 599.8, 600.2]  # 매우 안정
+    _seed_prices(tmp_db_path, "MSFT", prices)
+    levels = {"MSFT": {"threshold": 400.0, "horizon_days": 3, "min_prob": 0.1}}
+    alerts = predict.build_predictive_alerts(tmp_db_path, levels)
+    assert alerts == []
+
+
+@pytest.mark.unit
+def test_build_predictive_alerts_skip_insufficient_data(tmp_db_path: Path) -> None:
+    timeseries.init_db(tmp_db_path)
+    levels = {"X": {"threshold": 100.0, "horizon_days": 3, "min_prob": 0.1}}
+    alerts = predict.build_predictive_alerts(tmp_db_path, levels)
+    assert alerts == []
+
+
+@pytest.mark.unit
+def test_build_predictive_alerts_severity_scales_with_prob(tmp_db_path: Path) -> None:
+    prices = [600.0 + (i % 2) * 20 - 10 for i in range(15)]  # ±$10 oscillation
+    _seed_prices(tmp_db_path, "NVDA", prices)
+    # near-money threshold → high P → expect medium/high severity
+    levels = {"NVDA": {"threshold": 595.0, "horizon_days": 5, "min_prob": 0.05}}
+    alerts = predict.build_predictive_alerts(tmp_db_path, levels)
+    if alerts:
+        assert alerts[0]["severity"] in {"medium", "high", "critical"}

@@ -1,6 +1,12 @@
 {
   "_comment": "Corvin Jarvis configuration — 폐하가 thresholds/channels 조정 가능",
   "watchlist": ["TSLA", "AAPL", "GOOGL", "005930", "000660"],
+  "predictive_levels": {
+    "_comment": "lognormal endpoint approx — 시계열 60일 누적 필요",
+    "META": {"threshold": 580.0, "horizon_days": 3, "min_prob": 0.1},
+    "MSFT": {"threshold": 405.0, "horizon_days": 3, "min_prob": 0.1},
+    "NVDA": {"threshold": 200.0, "horizon_days": 3, "min_prob": 0.1}
+  },
   "alert_thresholds": {
     "index_pct_change": {
       "kospi": 1.5,

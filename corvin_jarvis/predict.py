@@ -56,3 +56,59 @@ def probability_below(
     vol = sigma * math.sqrt(horizon_days)
     z = (log_ratio - drift) / vol
     return round(_norm_cdf(z), 6)
+
+
+def _severity_from_prob(p: float) -> str:
+    if p >= 0.5:
+        return "critical"
+    if p >= 0.3:
+        return "high"
+    if p >= 0.15:
+        return "medium"
+    return "low"
+
+
+def build_predictive_alerts(
+    db_path: Path,
+    levels: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """levels = {symbol: {threshold, horizon_days, min_prob}}.
+
+    각 symbol의 log-return mean/std로 lognormal endpoint P 계산 후
+    min_prob 이상이면 alert 생성.
+    """
+    alerts: list[dict[str, Any]] = []
+    for symbol, spec in levels.items():
+        threshold = float(spec["threshold"])
+        horizon = int(spec["horizon_days"])
+        min_prob = float(spec.get("min_prob", 0.1))
+        returns = log_returns(db_path, symbol, days=60)
+        if len(returns) < 3:
+            continue
+        latest_history = timeseries.read_history(db_path, symbol=symbol, limit=1)
+        if not latest_history or latest_history[-1]["price"] is None:
+            continue
+        current = float(latest_history[-1]["price"])
+        mu = statistics.fmean(returns)
+        try:
+            sigma = statistics.stdev(returns)
+        except statistics.StatisticsError:
+            sigma = 0.0
+        prob = probability_below(current, threshold, mu=mu, sigma=sigma, horizon_days=horizon)
+        if prob < min_prob:
+            continue
+        direction = "이탈" if threshold < current else "도달"
+        alerts.append({
+            "category": "predictive",
+            "metric": symbol,
+            "severity": _severity_from_prob(prob),
+            "message": (
+                f"{symbol} ${threshold:.2f} {direction} 확률 "
+                f"{prob*100:.1f}% (D+{horizon}d, current=${current:.2f}, "
+                f"σ={sigma*100:.2f}%/d, n={len(returns)})"
+            ),
+            "value": round(prob, 4),
+            "threshold": min_prob,
+            "delta_from_prev": None,
+        })
+    return alerts

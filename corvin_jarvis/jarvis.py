@@ -24,6 +24,7 @@ sys.path.insert(0, str(BASE_DIR.parent))
 from compare import run_compare  # noqa: E402
 from corvin_jarvis import earnings  # noqa: E402
 from corvin_jarvis import narrative  # noqa: E402
+from corvin_jarvis import predict  # noqa: E402
 from corvin_jarvis import regime  # noqa: E402
 from geo_signal import build_geo_signal  # noqa: E402
 from narrate import build_context  # noqa: E402
@@ -310,6 +311,37 @@ def merge_narrative_alerts() -> int:
     return len(n_alerts)
 
 
+def merge_predictive_alerts() -> int:
+    """config.json predictive_levels로 forecasting alerts merge."""
+    cfg_file = BASE_DIR / "config.json"
+    if not cfg_file.exists():
+        return 0
+    try:
+        cfg = json.loads(cfg_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return 0
+    levels = cfg.get("predictive_levels", {})
+    levels = {k: v for k, v in levels.items() if isinstance(v, dict)}
+    if not levels:
+        return 0
+    db_path = STATE_DIR / "timeseries.db"
+    p_alerts = predict.build_predictive_alerts(db_path, levels)
+    if not p_alerts:
+        return 0
+    if ALERTS_FILE.exists():
+        data = _load(ALERTS_FILE) or {}
+        data.setdefault("alerts", []).extend(p_alerts)
+        data["count"] = len(data["alerts"])
+    else:
+        data = {
+            "alerts": p_alerts, "count": len(p_alerts),
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+    ALERTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    log.info("Predictive alerts merged: %d", len(p_alerts))
+    return len(p_alerts)
+
+
 def detect_and_merge_regime_alert() -> dict[str, Any]:
     """regime 라벨링 + 전환 시 alert merge. 반환: regime dict."""
     snapshot = _load(LATEST_FILE) or {}
@@ -345,6 +377,7 @@ def run_jarvis() -> Path:
     run_compare()
     refresh_earnings_and_merge_alerts()
     merge_narrative_alerts()
+    merge_predictive_alerts()
     detect_and_merge_regime_alert()
     build_geo_signal()
     build_context()
