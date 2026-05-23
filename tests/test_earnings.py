@@ -147,3 +147,50 @@ def test_fetch_earnings_date_handles_exception() -> None:
         result = earnings.fetch_earnings_date("ZZZ")
     assert result["dates"] == []
     assert "api down" in result["error"]
+
+
+@pytest.mark.unit
+def test_build_earnings_alerts_d_minus_7(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    today = date(2026, 5, 23)
+    earnings.upsert_earnings(tmp_db_path, "META", [date(2026, 5, 30)], eps_avg=7.5, revenue_avg=6e10)
+    alerts = earnings.build_earnings_alerts(tmp_db_path, today=today)
+    assert len(alerts) == 1
+    a = alerts[0]
+    assert a["category"] == "earnings"
+    assert a["metric"] == "META"
+    assert a["severity"] == "medium"  # D-7
+    assert "D-7" in a["message"]
+
+
+@pytest.mark.unit
+def test_build_earnings_alerts_d_minus_1_high_severity(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    today = date(2026, 5, 23)
+    earnings.upsert_earnings(tmp_db_path, "AAPL", [date(2026, 5, 24)], eps_avg=1.5, revenue_avg=9e10)
+    alerts = earnings.build_earnings_alerts(tmp_db_path, today=today)
+    assert len(alerts) == 1
+    assert alerts[0]["severity"] == "high"  # D-1
+    assert "D-1" in alerts[0]["message"]
+
+
+@pytest.mark.unit
+def test_build_earnings_alerts_skips_non_threshold_days(tmp_db_path: Path) -> None:
+    """D-5 같은 비 alert day는 skip."""
+    earnings.init_earnings_table(tmp_db_path)
+    today = date(2026, 5, 23)
+    earnings.upsert_earnings(tmp_db_path, "NVDA", [date(2026, 5, 28)], eps_avg=1.0, revenue_avg=5e10)
+    alerts = earnings.build_earnings_alerts(tmp_db_path, today=today)
+    assert alerts == []
+
+
+@pytest.mark.unit
+def test_build_earnings_alerts_multiple_symbols(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    today = date(2026, 5, 23)
+    earnings.upsert_earnings(tmp_db_path, "META", [date(2026, 5, 30)], eps_avg=7.5, revenue_avg=6e10)
+    earnings.upsert_earnings(tmp_db_path, "AAPL", [date(2026, 5, 26)], eps_avg=1.5, revenue_avg=9e10)
+    earnings.upsert_earnings(tmp_db_path, "MSFT", [date(2026, 5, 24)], eps_avg=3.2, revenue_avg=7e10)
+    alerts = earnings.build_earnings_alerts(tmp_db_path, today=today)
+    metrics = {a["metric"]: a["severity"] for a in alerts}
+    assert metrics == {"META": "medium", "AAPL": "high", "MSFT": "high"}

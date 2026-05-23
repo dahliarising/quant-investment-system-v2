@@ -119,3 +119,35 @@ def pending_earnings(
         conn.row_factory = sqlite3.Row
         rows = conn.execute(sql, (today.isoformat(), end.isoformat())).fetchall()
     return [dict(r) for r in rows]
+
+
+def _severity_for_offset(offset_days: int) -> str:
+    """D-7 → medium, D-3/D-1 → high."""
+    return "high" if offset_days <= 3 else "medium"
+
+
+def build_earnings_alerts(
+    db_path: Path,
+    today: date,
+) -> list[dict[str, Any]]:
+    """D-7/D-3/D-1 어닝 alert 생성. 기존 compare.py Alert 포맷 호환."""
+    alerts: list[dict[str, Any]] = []
+    rows = pending_earnings(db_path, today=today, days_ahead=max(ALERT_OFFSETS))
+    for r in rows:
+        edate = date.fromisoformat(r["earnings_date"])
+        delta = (edate - today).days
+        if delta not in ALERT_OFFSETS:
+            continue
+        sev = _severity_for_offset(delta)
+        eps = r.get("eps_avg")
+        eps_str = f" EPS est ${eps:.2f}" if eps is not None else ""
+        alerts.append({
+            "category": "earnings",
+            "metric": r["symbol"],
+            "severity": sev,
+            "message": f"{r['symbol']} 어닝 D-{delta} ({edate.isoformat()}){eps_str}",
+            "value": delta,
+            "threshold": None,
+            "delta_from_prev": None,
+        })
+    return alerts
