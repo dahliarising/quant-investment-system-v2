@@ -124,3 +124,27 @@ def wiki_search(
         if len(hits) >= top_k:
             break
     return hits
+
+
+def explain_move(
+    db_path: Path,
+    symbol: str,
+    days: int = 7,
+    benchmark: str = "sp500",
+    wiki_dir: Path = DEFAULT_WIKI_DIR,
+) -> dict[str, Any]:
+    """종목 가격 움직임에 대한 RAG retrieval 종합 dict.
+
+    구성:
+    - history: recent_history_summary
+    - relative: relative_strength vs benchmark
+    - wiki_hits: corvin-sessions에서 symbol 관련 최근 메모
+
+    LLM(Corvin)이 이 dict로 답변 합성. raw retrieval만 책임.
+    """
+    return {
+        "symbol": symbol,
+        "history": recent_history_summary(db_path, symbol=symbol, days=days),
+        "relative": relative_strength(db_path, symbol=symbol, benchmark=benchmark, days=days),
+        "wiki_hits": wiki_search(symbol, wiki_dir=wiki_dir, top_k=3),
+    }
