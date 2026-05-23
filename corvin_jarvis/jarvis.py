@@ -24,6 +24,7 @@ sys.path.insert(0, str(BASE_DIR.parent))
 from compare import run_compare  # noqa: E402
 from corvin_jarvis import earnings  # noqa: E402
 from corvin_jarvis import narrative  # noqa: E402
+from corvin_jarvis import attribution  # noqa: E402
 from corvin_jarvis import predict  # noqa: E402
 from corvin_jarvis import regime  # noqa: E402
 from geo_signal import build_geo_signal  # noqa: E402
@@ -311,6 +312,21 @@ def merge_narrative_alerts() -> int:
     return len(n_alerts)
 
 
+def run_weekly_attribution(force: bool = False) -> Path | None:
+    """일요일이면 weekly outcome attribution report 생성 → state/attribution-YYYYWW.json."""
+    now_kst = datetime.now(KST)
+    if not force and now_kst.weekday() != 6:  # 6 = Sunday
+        return None
+    wiki = Path("/Users/thethethe/Claude/llm-wiki/wiki/corvin-sessions")
+    db_path = STATE_DIR / "timeseries.db"
+    report = attribution.weekly_report(wiki, db_path, today=now_kst.date(), lookback_days=7)
+    iso_year, iso_week, _ = now_kst.date().isocalendar()
+    out_file = STATE_DIR / f"attribution-{iso_year}W{iso_week:02d}.json"
+    out_file.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+    log.info("Weekly attribution report → %s (%d sessions)", out_file.name, report["sessions_analyzed"])
+    return out_file
+
+
 def merge_predictive_alerts() -> int:
     """config.json predictive_levels로 forecasting alerts merge."""
     cfg_file = BASE_DIR / "config.json"
@@ -379,6 +395,7 @@ def run_jarvis() -> Path:
     merge_narrative_alerts()
     merge_predictive_alerts()
     detect_and_merge_regime_alert()
+    run_weekly_attribution()
     build_geo_signal()
     build_context()
 

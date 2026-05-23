@@ -41,6 +41,20 @@ python3 corvin_jarvis/reconcile.py refresh
 | `whatif.py` | 가상 거래 시뮬레이터 (advisory only) — Tier 2.1 |
 | `regime.py` | Risk regime detector (VIX+FX+correlation) — Tier 2.2 |
 | `predict.py` | Lognormal forecast — P(price < threshold) — Tier 2.3 |
+| `attribution.py` | Weekly outcome attribution (wiki vs actual) — Tier 2.4 |
+
+## Outcome Attribution (Tier 2.4)
+
+매주 일요일 (`weekday==6`) 자동 실행. 지난 7일 wiki sessions의 ticker 언급 → 실제 timeseries 변동 추적.
+
+```python
+attribution.weekly_report(wiki_dir, db_path, today, lookback_days=7)
+# {"sessions_analyzed": N, "entries": [{file, date, symbols, moves}]}
+```
+
+state: `state/attribution-YYYYWww.json` (ISO week).
+
+⚠️ 텍스트 파싱은 heuristic — false positives 발생. Corvin LLM이 결과 해석 시 stop-words 확장 / context로 filter 권장.
 
 ## Predictive Alerts (Tier 2.3)
 
