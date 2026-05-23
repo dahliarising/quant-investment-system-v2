@@ -22,6 +22,7 @@ import yfinance as yf
 # scripts/kr_data.py 재사용
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from kr_data import get_kr_index_data, get_kr_stock_data, is_korean_ticker  # noqa: E402
@@ -191,8 +192,9 @@ def fetch_watchlist(symbols: list[str]) -> list[dict[str, Any]]:
 def _fetch_position_quote(holding: dict[str, Any]) -> PositionQuote:
     sym = holding["symbol"]
     shares = float(holding["shares"])
-    avg = float(holding["avgPrice"])
     cur = holding.get("currency", "USD")
+    avg_key = "avgPriceKRW" if cur == "KRW" else "avgPriceUSD"
+    avg = float(holding.get("avgPrice") or holding[avg_key])
 
     try:
         if is_korean_ticker(sym):
