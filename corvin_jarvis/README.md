@@ -43,6 +43,13 @@ python3 corvin_jarvis/reconcile.py refresh
 | `predict.py` | Lognormal forecast — P(price < threshold) — Tier 2.3 |
 | `attribution.py` | Weekly outcome attribution (wiki vs actual) — Tier 2.4 |
 | `rebalance.py` | Drift detection + trade proposal (advisory) — Tier 2.5 |
+| `accounts.py` | Multi-account aggregation — Tier 3.1 |
+| `tax.py` | KR tax-aware (250만원 한도 + 장기보유 + harvesting) — Tier 3.2 |
+| `cashflow.py` | 6개월 cash flow forecast — Tier 3.3 |
+| `sungsu.py` | Operation Sungsu 2027 bridge — Tier 3.4 |
+| `counterfactual.py` | Monthly prediction calibration — Tier 4.3 |
+| `debate.py` | Bull/Bear context for multi-agent debate — Tier 4.1 |
+| `voice.py` | Voice interface stub (ElevenLabs 미허가) — Tier 4.2 |
 
 ## Rebalancing Engine (Tier 2.5)
 
