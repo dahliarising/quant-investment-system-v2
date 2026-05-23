@@ -36,3 +36,90 @@ def test_init_db_is_idempotent(tmp_db_path: Path) -> None:
     timeseries.init_db(tmp_db_path)
     timeseries.init_db(tmp_db_path)
     assert tmp_db_path.exists()
+
+
+@pytest.mark.unit
+def test_write_snapshot_inserts_index_rows(tmp_db_path: Path) -> None:
+    timeseries.init_db(tmp_db_path)
+    snapshot = {
+        "timestamp_utc": "2026-05-21T00:00:00+00:00",
+        "timestamp_kst": "2026-05-21T09:00:00+09:00",
+        "indices": {
+            "kospi": {"price": 7208.95, "pct_change": -0.86, "source": "FDR", "error": None},
+            "sp500": {"price": 7432.97, "pct_change": 1.08, "source": "yfinance", "error": None},
+        },
+        "commodities": {},
+        "fx": {},
+        "portfolio": [],
+        "watchlist": [],
+    }
+    timeseries.write_snapshot(tmp_db_path, snapshot)
+    with sqlite3.connect(tmp_db_path) as conn:
+        rows = conn.execute(
+            "SELECT category, symbol, price, pct_change FROM quote_history ORDER BY symbol"
+        ).fetchall()
+    assert rows == [
+        ("index", "kospi", 7208.95, -0.86),
+        ("index", "sp500", 7432.97, 1.08),
+    ]
+
+
+@pytest.mark.unit
+def test_write_snapshot_inserts_portfolio_with_pnl(tmp_db_path: Path) -> None:
+    timeseries.init_db(tmp_db_path)
+    snapshot = {
+        "timestamp_utc": "2026-05-21T00:00:00+00:00",
+        "timestamp_kst": "2026-05-21T09:00:00+09:00",
+        "indices": {},
+        "commodities": {},
+        "fx": {},
+        "portfolio": [
+            {
+                "symbol": "META", "shares": 7, "avg_price": 597.61, "currency": "USD",
+                "current_price": 605.06, "pnl_pct": 1.25, "market_value": 4235.42,
+                "error": None,
+            }
+        ],
+        "watchlist": [],
+    }
+    timeseries.write_snapshot(tmp_db_path, snapshot)
+    with sqlite3.connect(tmp_db_path) as conn:
+        row = conn.execute(
+            "SELECT category, symbol, price, pnl_pct, market_value, shares FROM quote_history"
+        ).fetchone()
+    assert row == ("portfolio", "META", 605.06, 1.25, 4235.42, 7.0)
+
+
+@pytest.mark.unit
+def test_write_snapshot_handles_watchlist(tmp_db_path: Path) -> None:
+    timeseries.init_db(tmp_db_path)
+    snapshot = {
+        "timestamp_utc": "2026-05-21T00:00:00+00:00",
+        "timestamp_kst": "2026-05-21T09:00:00+09:00",
+        "indices": {}, "commodities": {}, "fx": {}, "portfolio": [],
+        "watchlist": [
+            {"symbol": "TSLA", "price": 350.0, "pct_change": 2.5, "source": "yfinance", "error": None}
+        ],
+    }
+    timeseries.write_snapshot(tmp_db_path, snapshot)
+    with sqlite3.connect(tmp_db_path) as conn:
+        row = conn.execute(
+            "SELECT category, symbol, price, pct_change FROM quote_history"
+        ).fetchone()
+    assert row == ("watchlist", "TSLA", 350.0, 2.5)
+
+
+@pytest.mark.unit
+def test_write_snapshot_skips_null_price(tmp_db_path: Path) -> None:
+    """price가 None이면 row 자체를 skip (error 케이스)."""
+    timeseries.init_db(tmp_db_path)
+    snapshot = {
+        "timestamp_utc": "2026-05-21T00:00:00+00:00",
+        "timestamp_kst": "2026-05-21T09:00:00+09:00",
+        "indices": {"vix": {"price": None, "pct_change": None, "source": "yfinance", "error": "rate limit"}},
+        "commodities": {}, "fx": {}, "portfolio": [], "watchlist": [],
+    }
+    timeseries.write_snapshot(tmp_db_path, snapshot)
+    with sqlite3.connect(tmp_db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM quote_history").fetchone()[0]
+    assert count == 0
