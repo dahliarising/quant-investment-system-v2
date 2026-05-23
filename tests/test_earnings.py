@@ -194,3 +194,34 @@ def test_build_earnings_alerts_multiple_symbols(tmp_db_path: Path) -> None:
     alerts = earnings.build_earnings_alerts(tmp_db_path, today=today)
     metrics = {a["metric"]: a["severity"] for a in alerts}
     assert metrics == {"META": "medium", "AAPL": "high", "MSFT": "high"}
+
+
+@pytest.mark.unit
+def test_refresh_earnings_calendar_persists_data(tmp_db_path: Path) -> None:
+    fake = {
+        "META": {"dates": [date(2026, 7, 30)], "eps_avg": 7.5, "revenue_avg": 6e10, "error": None, "symbol": "META"},
+        "MSFT": {"dates": [date(2026, 7, 24)], "eps_avg": 3.2, "revenue_avg": 7e10, "error": None, "symbol": "MSFT"},
+    }
+    def fake_fetch(sym: str) -> dict:
+        return fake[sym]
+
+    with patch("corvin_jarvis.earnings.fetch_earnings_date", side_effect=fake_fetch):
+        result = earnings.refresh_earnings_calendar(tmp_db_path, ["META", "MSFT"])
+    assert result["fetched"] == 2
+    assert result["errors"] == []
+    with sqlite3.connect(tmp_db_path) as conn:
+        n = conn.execute("SELECT COUNT(*) FROM earnings_calendar").fetchone()[0]
+    assert n == 2
+
+
+@pytest.mark.unit
+def test_refresh_earnings_calendar_records_errors(tmp_db_path: Path) -> None:
+    def fake_fetch(sym: str) -> dict:
+        if sym == "BAD":
+            return {"symbol": "BAD", "dates": [], "eps_avg": None, "revenue_avg": None, "error": "rate limit"}
+        return {"symbol": sym, "dates": [date(2026, 7, 30)], "eps_avg": 1.0, "revenue_avg": 1e10, "error": None}
+
+    with patch("corvin_jarvis.earnings.fetch_earnings_date", side_effect=fake_fetch):
+        result = earnings.refresh_earnings_calendar(tmp_db_path, ["GOOD", "BAD"])
+    assert result["fetched"] == 1
+    assert result["errors"] == [{"symbol": "BAD", "error": "rate limit"}]

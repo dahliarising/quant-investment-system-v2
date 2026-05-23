@@ -126,6 +126,29 @@ def _severity_for_offset(offset_days: int) -> str:
     return "high" if offset_days <= 3 else "medium"
 
 
+def refresh_earnings_calendar(
+    db_path: Path,
+    symbols: list[str],
+) -> dict[str, Any]:
+    """모든 symbols에 대해 fetch + upsert. errors는 별도 수집."""
+    fetched = 0
+    errors: list[dict[str, str]] = []
+    for sym in symbols:
+        result = fetch_earnings_date(sym)
+        if result["error"]:
+            errors.append({"symbol": sym, "error": result["error"]})
+            continue
+        if not result["dates"]:
+            continue
+        upsert_earnings(
+            db_path, sym, result["dates"],
+            eps_avg=result.get("eps_avg"),
+            revenue_avg=result.get("revenue_avg"),
+        )
+        fetched += 1
+    return {"fetched": fetched, "errors": errors}
+
+
 def build_earnings_alerts(
     db_path: Path,
     today: date,
