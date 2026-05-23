@@ -125,3 +125,47 @@ def test_apply_buy_at_market_requires_market_price() -> None:
 
     out = whatif.apply_trade(holdings, trade, market_prices={"META": 605.06})
     assert out[0]["avgPriceUSD"] == 605.06
+
+
+# ---- concentration ----
+
+
+@pytest.mark.unit
+def test_compute_concentration_three_positions() -> None:
+    """META 7*605, MSFT 6*420, NVDA 6*135 → values 4235, 2520, 810. total 7565."""
+    holdings = [
+        _holding("META", 7, 605.0),
+        _holding("MSFT", 6, 420.0),
+        _holding("NVDA", 6, 135.0),
+    ]
+    prices = {"META": 605.0, "MSFT": 420.0, "NVDA": 135.0}
+    c = whatif.compute_concentration(holdings, prices)
+    assert c["positions"] == 3
+    assert c["total_value"] == pytest.approx(7565, abs=1)
+    assert c["top_symbol"] == "META"
+    assert c["top_weight_pct"] == pytest.approx(56.0, abs=0.5)
+    # HHI = (4235/7565)^2 + (2520/7565)^2 + (810/7565)^2 ≈ 0.314+0.111+0.011 ≈ 0.436
+    assert c["hhi"] == pytest.approx(0.436, abs=0.005)
+
+
+@pytest.mark.unit
+def test_compute_concentration_currency_breakdown() -> None:
+    holdings = [
+        _holding("META", 7, 605.0, "USD"),
+        _holding("005930", 10, 70000.0, "KRW"),
+    ]
+    prices = {"META": 605.0, "005930": 70000.0}
+    c = whatif.compute_concentration(holdings, prices)
+    # USD=4235, KRW=700000 → at 1500 fx, KRW USD-eq = 466.67
+    # total_usd_eq = 4235 + 466.67 ≈ 4701.67
+    assert "currency_mix_pct" in c
+    assert c["currency_mix_pct"]["USD"] > c["currency_mix_pct"]["KRW"]
+
+
+@pytest.mark.unit
+def test_compute_concentration_empty() -> None:
+    c = whatif.compute_concentration([], {})
+    assert c["positions"] == 0
+    assert c["total_value"] == 0
+    assert c["top_symbol"] is None
+    assert c["hhi"] == 0.0

@@ -111,3 +111,65 @@ def apply_trade(
             "currency": "USD",
         })
     return out
+
+
+# Default FX for currency normalization (advisory only — 정밀 변환은 pulse FX 사용)
+_DEFAULT_USD_KRW = 1500.0
+
+
+def compute_concentration(
+    holdings: list[dict[str, Any]],
+    market_prices: dict[str, float],
+    usd_krw: float = _DEFAULT_USD_KRW,
+) -> dict[str, Any]:
+    """holdings의 비중 지표 dict.
+
+    - positions, total_value (USD-equivalent)
+    - top_symbol, top_weight_pct
+    - hhi (Herfindahl-Hirschman Index, 0~1)
+    - currency_mix_pct: {USD, KRW, ...}
+    """
+    if not holdings:
+        return {
+            "positions": 0, "total_value": 0,
+            "top_symbol": None, "top_weight_pct": 0.0,
+            "hhi": 0.0, "currency_mix_pct": {},
+        }
+
+    values_usd: list[tuple[str, float, str]] = []
+    for h in holdings:
+        sym = h["symbol"]
+        shares = float(h["shares"])
+        cur = h.get("currency", "USD")
+        price = market_prices.get(sym)
+        if price is None:
+            continue
+        local_value = shares * price
+        usd_eq = local_value / usd_krw if cur == "KRW" else local_value
+        values_usd.append((sym, usd_eq, cur))
+
+    if not values_usd:
+        return {
+            "positions": len(holdings), "total_value": 0,
+            "top_symbol": None, "top_weight_pct": 0.0,
+            "hhi": 0.0, "currency_mix_pct": {},
+        }
+
+    total = sum(v for _, v, _ in values_usd)
+    weights = [(s, v / total, c) for s, v, c in values_usd]
+    weights.sort(key=lambda x: x[1], reverse=True)
+    top_sym, top_w, _ = weights[0]
+    hhi = sum(w * w for _, w, _ in weights)
+
+    currency_mix: dict[str, float] = {}
+    for _, w, cur in weights:
+        currency_mix[cur] = currency_mix.get(cur, 0.0) + w * 100
+
+    return {
+        "positions": len(values_usd),
+        "total_value": round(total, 2),
+        "top_symbol": top_sym,
+        "top_weight_pct": round(top_w * 100, 2),
+        "hhi": round(hhi, 4),
+        "currency_mix_pct": {k: round(v, 2) for k, v in currency_mix.items()},
+    }
