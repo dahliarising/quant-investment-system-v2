@@ -35,6 +35,26 @@ python3 corvin_jarvis/reconcile.py refresh
 | `run_jarvis.sh` | cron entry script |
 | `state/*` | runtime state (snapshots, alerts, briefings, logs) |
 | `timeseries.py` | SQLite 누적 저장 (quote_history) — Phase 5 |
+| `earnings.py` | 어닝 캘린더 수집 + D-7/D-3/D-1 alert — Tier 1.3 |
+
+## 어닝 캘린더 (Tier 1.3)
+
+매 jarvis 사이클에 holdings + watchlist의 US 종목 어닝일을 yfinance에서 fetch하여 `state/timeseries.db`의 `earnings_calendar` 테이블에 upsert.
+
+- **D-7**: severity = medium
+- **D-3 / D-1**: severity = high
+- 한국 종목 (숫자 코드, `.KS`, `.KQ`)은 yfinance.calendar 부적합 → 자동 skip
+
+수동 조회:
+```python
+from corvin_jarvis import earnings
+from datetime import date
+from pathlib import Path
+
+db = Path("corvin_jarvis/state/timeseries.db")
+earnings.refresh_earnings_calendar(db, ["META", "MSFT", "NVDA"])
+alerts = earnings.build_earnings_alerts(db, today=date.today())
+```
 
 ## 시계열 DB
 
