@@ -123,3 +123,35 @@ def test_write_snapshot_skips_null_price(tmp_db_path: Path) -> None:
     with sqlite3.connect(tmp_db_path) as conn:
         count = conn.execute("SELECT COUNT(*) FROM quote_history").fetchone()[0]
     assert count == 0
+
+
+@pytest.mark.unit
+def test_read_history_returns_rows_for_symbol(tmp_db_path: Path) -> None:
+    timeseries.init_db(tmp_db_path)
+    for hour in range(3):
+        snapshot = {
+            "timestamp_utc": f"2026-05-21T0{hour}:00:00+00:00",
+            "timestamp_kst": f"2026-05-21T0{hour+9}:00:00+09:00",
+            "indices": {"kospi": {"price": 7200.0 + hour, "pct_change": -0.5, "source": "FDR", "error": None}},
+            "commodities": {}, "fx": {}, "portfolio": [], "watchlist": [],
+        }
+        timeseries.write_snapshot(tmp_db_path, snapshot)
+    rows = timeseries.read_history(tmp_db_path, symbol="kospi", limit=10)
+    assert len(rows) == 3
+    assert [r["price"] for r in rows] == [7200.0, 7201.0, 7202.0]
+
+
+@pytest.mark.unit
+def test_read_history_filter_by_category(tmp_db_path: Path) -> None:
+    timeseries.init_db(tmp_db_path)
+    snapshot = {
+        "timestamp_utc": "2026-05-21T00:00:00+00:00",
+        "timestamp_kst": "2026-05-21T09:00:00+09:00",
+        "indices": {"kospi": {"price": 7200.0, "pct_change": -0.5, "source": "FDR", "error": None}},
+        "commodities": {"gold": {"price": 3200.0, "pct_change": 0.5, "source": "yfinance", "error": None}},
+        "fx": {}, "portfolio": [], "watchlist": [],
+    }
+    timeseries.write_snapshot(tmp_db_path, snapshot)
+    rows = timeseries.read_history(tmp_db_path, category="commodity", limit=10)
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "gold"

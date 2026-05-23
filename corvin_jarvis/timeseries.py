@@ -96,3 +96,34 @@ def write_snapshot(db_path: Path, snapshot: dict[str, Any]) -> int:
         )
     log.info("timeseries wrote %d rows for ts=%s", len(rows), ts_kst)
     return len(rows)
+
+
+def read_history(
+    db_path: Path,
+    symbol: str | None = None,
+    category: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """quote_history에서 ts_utc 오름차순으로 조회. 가장 최근 limit개."""
+    if not db_path.exists():
+        return []
+    clauses: list[str] = []
+    params: list[Any] = []
+    if symbol is not None:
+        clauses.append("symbol = ?")
+        params.append(symbol)
+    if category is not None:
+        clauses.append("category = ?")
+        params.append(category)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = (
+        "SELECT ts_utc, ts_kst, category, symbol, price, pct_change, "
+        "pnl_pct, market_value, shares, source, error "
+        "FROM quote_history" + where + " ORDER BY ts_utc DESC LIMIT ?"
+    )
+    params.append(limit)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    rows.reverse()
+    return rows
