@@ -134,3 +134,89 @@ def compute_correlation(
     cov = sum((x - mean_a) * (y - mean_b) for x, y in zip(a_vals, b_vals)) / len(a_vals)
     denom = math.sqrt(var_a * var_b)
     return round(cov / denom, 4) if denom else None
+
+
+def _alert_for_transition(prev_label: str, new: dict[str, Any]) -> dict[str, Any] | None:
+    """라벨 전환 시 alert dict 생성 (compare.py 포맷 호환)."""
+    new_label = new["label"]
+    score = new["score"]
+    abs_score = abs(score)
+    if abs_score >= 70:
+        sev = "critical"
+    elif abs_score >= 40:
+        sev = "high"
+    else:
+        sev = "medium"
+    drivers_str = " · ".join(new["drivers"][:3]) if new["drivers"] else ""
+    return {
+        "category": "regime",
+        "metric": new_label,
+        "severity": sev,
+        "message": f"Regime 전환 {prev_label} → {new_label} (score {score:+.0f}). {drivers_str}",
+        "value": score,
+        "threshold": None,
+        "delta_from_prev": None,
+    }
+
+
+def detect_regime(
+    snapshot: dict[str, Any],
+    timeseries_db: Path,
+    state_file: Path,
+    lookback_days: int = 30,
+) -> dict[str, Any]:
+    """snapshot + timeseries DB → 라벨 + transition 판정 + alert (전환 시).
+
+    snapshot 구조: pulse.py의 latest.json (indices.vix, fx.usd_krw 등)
+    state_file: last_regime.json 경로 — 직전 라벨 비교용.
+    """
+    vix_q = snapshot.get("indices", {}).get("vix", {})
+    fx_q = snapshot.get("fx", {}).get("usd_krw", {})
+    vix = vix_q.get("price")
+    fx_pct = fx_q.get("pct_change")
+
+    # VIX Z-score (timeseries.db에서 30일)
+    vix_z: float | None = None
+    if timeseries_db.exists():
+        try:
+            with sqlite3.connect(timeseries_db) as conn:
+                rows = conn.execute(
+                    "SELECT price FROM quote_history WHERE symbol='vix' "
+                    "AND ts_utc >= datetime('now', ?) "
+                    "ORDER BY ts_utc ASC",
+                    (f"-{lookback_days} days",),
+                ).fetchall()
+                vals = [float(r[0]) for r in rows if r[0] is not None]
+                if len(vals) >= 3 and vix is not None:
+                    mu = statistics.fmean(vals)
+                    sd = statistics.stdev(vals)
+                    if sd > 0:
+                        vix_z = (vix - mu) / sd
+        except sqlite3.Error:  # noqa: PERF203
+            pass
+
+    correl = compute_correlation(timeseries_db, "kospi", "sp500", days=lookback_days)
+    out = label_from_signals(vix=vix, vix_zscore=vix_z, usd_krw_pct=fx_pct, correlation=correl)
+
+    prev_label: str | None = None
+    if state_file.exists():
+        try:
+            prev = json.loads(state_file.read_text())
+            prev_label = prev.get("label")
+        except (json.JSONDecodeError, OSError):
+            prev_label = None
+
+    transition = bool(prev_label and prev_label != out["label"])
+    out["transition"] = transition
+    out["previous_label"] = prev_label
+    out["alert"] = _alert_for_transition(prev_label, out) if transition else None
+
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps({
+        "label": out["label"],
+        "score": out["score"],
+        "drivers": out["drivers"],
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+    }, ensure_ascii=False, indent=2))
+
+    return out

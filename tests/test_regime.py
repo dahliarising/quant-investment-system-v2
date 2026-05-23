@@ -1,6 +1,7 @@
 """Tests for corvin_jarvis.regime detector."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -105,3 +106,78 @@ def test_correlation_handles_constant_series(tmp_db_path: Path) -> None:
     )
     c = regime.compute_correlation(tmp_db_path, "a", "b", days=10)
     assert c is None  # zero variance — undefined
+
+
+# ---- detect_regime orchestrator + persistence ----
+
+
+@pytest.mark.unit
+def test_detect_regime_returns_label_dict(tmp_db_path: Path, tmp_path: Path) -> None:
+    snapshot = {
+        "indices": {"vix": {"price": 16.7, "pct_change": -0.36}},
+        "fx": {"usd_krw": {"price": 1520.0, "pct_change": 1.07}},
+    }
+    state_file = tmp_path / "last_regime.json"
+    out = regime.detect_regime(snapshot, tmp_db_path, state_file=state_file)
+    assert out["label"] in regime.LABELS
+    assert "score" in out
+    assert "drivers" in out
+    assert out["transition"] is False  # 처음 호출, no previous state
+
+
+@pytest.mark.unit
+def test_detect_regime_marks_transition_on_change(tmp_db_path: Path, tmp_path: Path) -> None:
+    state_file = tmp_path / "last_regime.json"
+    state_file.write_text(json.dumps({"label": "risk_off", "score": -50, "timestamp": "2026-05-22"}))
+
+    snapshot = {
+        "indices": {"vix": {"price": 11.0, "pct_change": -1.0}},
+        "fx": {"usd_krw": {"price": 1450.0, "pct_change": 0.1}},
+    }
+    out = regime.detect_regime(snapshot, tmp_db_path, state_file=state_file)
+    assert out["label"] in {"risk_on", "euphoria"}
+    assert out["transition"] is True
+    assert out["previous_label"] == "risk_off"
+
+
+@pytest.mark.unit
+def test_detect_regime_no_transition_when_same_label(tmp_db_path: Path, tmp_path: Path) -> None:
+    state_file = tmp_path / "last_regime.json"
+    state_file.write_text(json.dumps({"label": "neutral", "score": 5, "timestamp": "2026-05-22"}))
+
+    snapshot = {
+        "indices": {"vix": {"price": 18.0, "pct_change": 0.5}},
+        "fx": {"usd_krw": {"price": 1500.0, "pct_change": 0.3}},
+    }
+    out = regime.detect_regime(snapshot, tmp_db_path, state_file=state_file)
+    assert out["label"] == "neutral"
+    assert out["transition"] is False
+
+
+@pytest.mark.unit
+def test_detect_regime_persists_state(tmp_db_path: Path, tmp_path: Path) -> None:
+    state_file = tmp_path / "last_regime.json"
+    snapshot = {
+        "indices": {"vix": {"price": 16.0}},
+        "fx": {"usd_krw": {"price": 1500.0, "pct_change": 0.1}},
+    }
+    regime.detect_regime(snapshot, tmp_db_path, state_file=state_file)
+    assert state_file.exists()
+    saved = json.loads(state_file.read_text())
+    assert saved["label"] in regime.LABELS
+    assert "timestamp" in saved
+
+
+@pytest.mark.unit
+def test_detect_regime_builds_transition_alert(tmp_db_path: Path, tmp_path: Path) -> None:
+    state_file = tmp_path / "last_regime.json"
+    state_file.write_text(json.dumps({"label": "neutral", "score": 5}))
+    snapshot = {
+        "indices": {"vix": {"price": 40.0}},
+        "fx": {"usd_krw": {"price": 1600.0, "pct_change": 3.0}},
+    }
+    out = regime.detect_regime(snapshot, tmp_db_path, state_file=state_file)
+    alert = out["alert"]
+    assert alert is not None
+    assert alert["category"] == "regime"
+    assert alert["severity"] in {"high", "critical"}
