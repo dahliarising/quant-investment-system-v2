@@ -82,3 +82,48 @@ def test_relative_strength_handles_missing_data(tmp_db_path: Path) -> None:
     rs = qa.relative_strength(tmp_db_path, symbol="X", benchmark="Y", days=10)
     assert rs["verdict"] == "unknown"
     assert rs["symbol_pct"] is None
+
+
+@pytest.mark.unit
+def test_wiki_search_finds_matching_files(tmp_path: Path) -> None:
+    wiki = tmp_path / "corvin-sessions"
+    wiki.mkdir()
+    (wiki / "2026-05-19-portfolio-resync.md").write_text(
+        "META 7주 보유. 5/19 portfolio sync. avgPrice 597.61\n"
+    )
+    (wiki / "2026-05-20-strategy.md").write_text(
+        "오늘 KOSPI 7200 하락. META 관망 zone.\n"
+    )
+    (wiki / "2026-04-22-old.md").write_text("샘성전자 매도 완료\n")
+
+    hits = qa.wiki_search("META", wiki_dir=wiki, top_k=5)
+    assert len(hits) == 2
+    paths = {h["path"].name for h in hits}
+    assert "2026-05-19-portfolio-resync.md" in paths
+    assert "2026-05-20-strategy.md" in paths
+    assert all("META" in h["snippet"] for h in hits)
+
+
+@pytest.mark.unit
+def test_wiki_search_respects_top_k(tmp_path: Path) -> None:
+    wiki = tmp_path / "corvin-sessions"
+    wiki.mkdir()
+    for i in range(5):
+        (wiki / f"2026-05-{20+i}-x.md").write_text(f"META mention {i}\n")
+    hits = qa.wiki_search("META", wiki_dir=wiki, top_k=2)
+    assert len(hits) == 2
+
+
+@pytest.mark.unit
+def test_wiki_search_returns_empty_when_no_match(tmp_path: Path) -> None:
+    wiki = tmp_path / "corvin-sessions"
+    wiki.mkdir()
+    (wiki / "a.md").write_text("nothing here\n")
+    hits = qa.wiki_search("META", wiki_dir=wiki, top_k=5)
+    assert hits == []
+
+
+@pytest.mark.unit
+def test_wiki_search_handles_missing_dir(tmp_path: Path) -> None:
+    hits = qa.wiki_search("META", wiki_dir=tmp_path / "nonexistent", top_k=5)
+    assert hits == []

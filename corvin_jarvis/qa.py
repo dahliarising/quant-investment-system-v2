@@ -93,3 +93,34 @@ def relative_strength(
         "relative_pp": round(rel, 3),
         "verdict": verdict,
     }
+
+
+def wiki_search(
+    query: str,
+    wiki_dir: Path = DEFAULT_WIKI_DIR,
+    top_k: int = 5,
+    snippet_chars: int = 200,
+) -> list[dict[str, Any]]:
+    """corvin-sessions/*.md 안에서 query를 case-insensitive grep.
+
+    파일별로 첫 매칭 라인 주변 snippet 반환. 최근 파일(파일명 정렬 DESC) 우선.
+    """
+    if not wiki_dir.exists() or not wiki_dir.is_dir():
+        return []
+    q = query.lower()
+    hits: list[dict[str, Any]] = []
+    for md in sorted(wiki_dir.glob("*.md"), reverse=True):
+        try:
+            text = md.read_text(errors="ignore")
+        except OSError:
+            continue
+        idx = text.lower().find(q)
+        if idx < 0:
+            continue
+        start = max(0, idx - snippet_chars // 2)
+        end = min(len(text), idx + snippet_chars // 2)
+        snippet = text[start:end].strip().replace("\n", " ")
+        hits.append({"path": md, "snippet": snippet})
+        if len(hits) >= top_k:
+            break
+    return hits
