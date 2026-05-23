@@ -173,3 +173,34 @@ def compute_concentration(
         "hhi": round(hhi, 4),
         "currency_mix_pct": {k: round(v, 2) for k, v in currency_mix.items()},
     }
+
+
+def simulate(
+    trade_text: str,
+    holdings: list[dict[str, Any]],
+    market_prices: dict[str, float],
+    usd_krw: float = _DEFAULT_USD_KRW,
+) -> dict[str, Any]:
+    """End-to-end what-if 시뮬레이션.
+
+    text → Trade → apply → before/after concentration → delta dict.
+    실 portfolio.json은 변경 안 함 (advisory only).
+    """
+    trade = parse_trade(trade_text)
+    before = compute_concentration(holdings, market_prices, usd_krw=usd_krw)
+    new_holdings = apply_trade(holdings, trade, market_prices=market_prices)
+    after = compute_concentration(new_holdings, market_prices, usd_krw=usd_krw)
+
+    delta = {
+        "positions": after["positions"] - before["positions"],
+        "total_value": round(after["total_value"] - before["total_value"], 2),
+        "top_weight_pct": round(after["top_weight_pct"] - before["top_weight_pct"], 2),
+        "hhi": round(after["hhi"] - before["hhi"], 4),
+    }
+    return {
+        "trade": trade,
+        "before": before,
+        "after": after,
+        "delta": delta,
+        "holdings_after": new_holdings,
+    }

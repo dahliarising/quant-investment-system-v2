@@ -38,6 +38,30 @@ python3 corvin_jarvis/reconcile.py refresh
 | `earnings.py` | 어닝 캘린더 수집 + D-7/D-3/D-1 alert — Tier 1.3 |
 | `narrative.py` | narrative-shift-detector readonly adapter — Tier 1.4 |
 | `qa.py` | Q&A retrieval toolkit (RAG) — Tier 1.5 |
+| `whatif.py` | 가상 거래 시뮬레이터 (advisory only) — Tier 2.1 |
+
+## What-if 시뮬레이터 (Tier 2.1)
+
+자연어 가상 거래 → portfolio 비중/HHI 변화 정량화. `portfolio.json`은 **건드리지 않음**.
+
+```python
+from corvin_jarvis import whatif
+
+sim = whatif.simulate(
+    "buy TSLA 5 @ 426",
+    holdings,       # portfolio.json["holdings"]
+    market_prices,  # {sym: price}
+)
+print(sim["delta"])
+# {'positions': 1, 'total_value': 2130, 'top_weight_pct': -11.0, 'hhi': -0.1068}
+```
+
+명령 형식: `{buy|sell} SYMBOL SHARES [@ PRICE]` (price 없으면 market_prices에서 lookup).
+
+지표:
+- **HHI** (0~1): 0.18 미만 = unconcentrated, 0.25 이상 = highly concentrated
+- **top_weight_pct**: 최대 비중 종목 비율
+- **currency_mix_pct**: USD/KRW USD-equivalent 분포
 
 ## Q&A Retrieval Toolkit (Tier 1.5)
 

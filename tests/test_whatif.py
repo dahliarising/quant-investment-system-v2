@@ -169,3 +169,50 @@ def test_compute_concentration_empty() -> None:
     assert c["total_value"] == 0
     assert c["top_symbol"] is None
     assert c["hhi"] == 0.0
+
+
+# ---- simulate orchestrator ----
+
+
+@pytest.mark.unit
+def test_simulate_buy_returns_before_after_diff() -> None:
+    holdings = [
+        _holding("META", 7, 605.0),
+        _holding("MSFT", 6, 420.0),
+    ]
+    prices = {"META": 605.0, "MSFT": 420.0, "TSLA": 350.0}
+    sim = whatif.simulate("buy TSLA 3 @ 350", holdings, prices)
+    assert sim["trade"].symbol == "TSLA"
+    assert sim["before"]["positions"] == 2
+    assert sim["after"]["positions"] == 3
+    # top_weight 감소했을 가능성 (분산)
+    assert sim["after"]["hhi"] < sim["before"]["hhi"]
+
+
+@pytest.mark.unit
+def test_simulate_sell_full_position_concentrates() -> None:
+    holdings = [
+        _holding("META", 7, 605.0),
+        _holding("MSFT", 6, 420.0),
+    ]
+    prices = {"META": 605.0, "MSFT": 420.0}
+    sim = whatif.simulate("sell MSFT 6 @ 420", holdings, prices)
+    assert sim["after"]["positions"] == 1
+    assert sim["after"]["top_symbol"] == "META"
+    assert sim["after"]["top_weight_pct"] == 100.0
+
+
+@pytest.mark.unit
+def test_simulate_returns_dict_with_required_keys() -> None:
+    sim = whatif.simulate(
+        "buy META 1 @ 605",
+        [], {"META": 605.0},
+    )
+    assert set(sim.keys()) >= {"trade", "before", "after", "delta"}
+    assert "top_weight_pct" in sim["delta"]
+
+
+@pytest.mark.unit
+def test_simulate_propagates_parse_error() -> None:
+    with pytest.raises(ValueError):
+        whatif.simulate("invalid text", [], {})
