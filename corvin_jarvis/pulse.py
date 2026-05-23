@@ -77,6 +77,7 @@ class Snapshot:
     fx: dict[str, dict[str, Any]] = field(default_factory=dict)
     portfolio: list[dict[str, Any]] = field(default_factory=list)
     portfolio_summary: dict[str, Any] = field(default_factory=dict)
+    watchlist: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _yf_quote(ticker: str) -> Quote:
@@ -281,11 +282,20 @@ def run_pulse() -> Path:
     snapshot.fx = fetch_fx()
     log.info("Fetching portfolio quotes...")
     snapshot.portfolio, snapshot.portfolio_summary = fetch_portfolio()
+    log.info("Fetching watchlist...")
+    snapshot.watchlist = fetch_watchlist(load_watchlist())
 
     snapshot_path = SNAPSHOTS_DIR / f"{now_kst.strftime('%Y%m%d-%H%M')}.json"
     snapshot_dict = asdict(snapshot)
     snapshot_path.write_text(json.dumps(snapshot_dict, indent=2, default=str, ensure_ascii=False))
     LATEST_FILE.write_text(json.dumps(snapshot_dict, indent=2, default=str, ensure_ascii=False))
+
+    try:
+        from corvin_jarvis import timeseries
+        rows_written = timeseries.write_snapshot(TIMESERIES_DB, snapshot_dict)
+        log.info("timeseries: %d rows persisted", rows_written)
+    except Exception as e:  # noqa: BLE001
+        log.warning("timeseries write failed (non-fatal): %s", e)
 
     log.info("Pulse 완료 — %s", snapshot_path.name)
     return snapshot_path
@@ -304,6 +314,9 @@ def _print_summary(snapshot_path: Path) -> None:
              data["portfolio_summary"].get("position_count"),
              data["portfolio_summary"].get("total_value_krw"),
              data["portfolio_summary"].get("total_value_usd"))
+    for w in data.get("watchlist", []):
+        if w.get("price") is not None:
+            log.info("  [WL]  %-8s %s  (%+.2f%%)", w["symbol"], w["price"], w.get("pct_change") or 0)
 
 
 if __name__ == "__main__":
