@@ -64,3 +64,53 @@ def test_log_returns_skip_zero_or_negative(tmp_db_path: Path) -> None:
         timeseries.write_snapshot(tmp_db_path, snap)
     rs = predict.log_returns(tmp_db_path, "X", days=10)
     assert all(math.isfinite(r) for r in rs)
+
+
+# ---- probability_below ----
+
+
+@pytest.mark.unit
+def test_probability_below_when_threshold_equals_current() -> None:
+    """current=threshold일 때 P ≈ 0.5 (zero drift 가정)."""
+    p = predict.probability_below(
+        current_price=600.0, threshold=600.0,
+        mu=0.0, sigma=0.02, horizon_days=3,
+    )
+    assert 0.45 < p < 0.55
+
+
+@pytest.mark.unit
+def test_probability_below_far_below_is_high() -> None:
+    """threshold가 현재가보다 50% 낮으면 P ≈ 0 (low probability)."""
+    p = predict.probability_below(
+        current_price=600.0, threshold=300.0,
+        mu=0.0, sigma=0.02, horizon_days=3,
+    )
+    assert p < 0.001
+
+
+@pytest.mark.unit
+def test_probability_below_far_above_is_high() -> None:
+    """threshold가 현재가보다 훨씬 높으면 P ≈ 1."""
+    p = predict.probability_below(
+        current_price=600.0, threshold=1000.0,
+        mu=0.0, sigma=0.02, horizon_days=3,
+    )
+    assert p > 0.99
+
+
+@pytest.mark.unit
+def test_probability_below_realistic_drop() -> None:
+    """current=605, threshold=598 (-1.2%), sigma=2%/day, 3일 → ~10-35%."""
+    p = predict.probability_below(
+        current_price=605.0, threshold=598.0,
+        mu=0.0, sigma=0.02, horizon_days=3,
+    )
+    assert 0.05 < p < 0.45
+
+
+@pytest.mark.unit
+def test_probability_below_zero_sigma_returns_step() -> None:
+    """sigma=0 (degenerate) → threshold ≥ current면 1, 아니면 0."""
+    assert predict.probability_below(600.0, 700.0, mu=0.0, sigma=0.0, horizon_days=3) == 1.0
+    assert predict.probability_below(600.0, 500.0, mu=0.0, sigma=0.0, horizon_days=3) == 0.0

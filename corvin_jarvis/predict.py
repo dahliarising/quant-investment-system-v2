@@ -28,3 +28,31 @@ def log_returns(db_path: Path, symbol: str, days: int = 60) -> list[float]:
         if prev > 0 and cur > 0:
             out.append(math.log(cur / prev))
     return out
+
+
+def _norm_cdf(x: float) -> float:
+    """Standard normal CDF via math.erf."""
+    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+
+def probability_below(
+    current_price: float,
+    threshold: float,
+    mu: float,
+    sigma: float,
+    horizon_days: int,
+) -> float:
+    """P(S_N < threshold | S_0 = current_price), log-normal endpoint approx.
+
+    log(S_N) ~ Normal(log(S_0) + N*mu, N*sigma^2).
+    sigma=0 degenerate → step function.
+    """
+    if sigma <= 0:
+        return 1.0 if threshold >= current_price else 0.0
+    if current_price <= 0 or threshold <= 0:
+        return 0.0
+    log_ratio = math.log(threshold / current_price)
+    drift = horizon_days * mu
+    vol = sigma * math.sqrt(horizon_days)
+    z = (log_ratio - drift) / vol
+    return round(_norm_cdf(z), 6)
