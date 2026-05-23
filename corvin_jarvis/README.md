@@ -39,6 +39,25 @@ python3 corvin_jarvis/reconcile.py refresh
 | `narrative.py` | narrative-shift-detector readonly adapter — Tier 1.4 |
 | `qa.py` | Q&A retrieval toolkit (RAG) — Tier 1.5 |
 | `whatif.py` | 가상 거래 시뮬레이터 (advisory only) — Tier 2.1 |
+| `regime.py` | Risk regime detector (VIX+FX+correlation) — Tier 2.2 |
+
+## Regime Detector (Tier 2.2)
+
+Snapshot + timeseries → market regime 라벨. 매 jarvis 사이클에 분류:
+
+- **crisis** (score ≤ -60): VIX 35+, FX shock
+- **risk_off** (-60 < score ≤ -30): VIX 25-35, 환율 약세
+- **neutral** (-30 < score < 30): VIX 18-25, 안정
+- **risk_on** (30 ≤ score < 60): VIX 13-18, 환율 안정
+- **euphoria** (60 ≤ score): VIX < 13, complacency
+
+전환 시 alerts.json에 자동 merge (`category="regime"`). state는 `state/last_regime.json`에 영속화.
+
+```python
+from corvin_jarvis import regime
+out = regime.detect_regime(snapshot, timeseries_db, state_file)
+# {"label": "neutral", "score": 0.0, "drivers": [...], "transition": False, "alert": None}
+```
 
 ## What-if 시뮬레이터 (Tier 2.1)
 

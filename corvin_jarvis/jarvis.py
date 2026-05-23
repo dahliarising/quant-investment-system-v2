@@ -24,6 +24,7 @@ sys.path.insert(0, str(BASE_DIR.parent))
 from compare import run_compare  # noqa: E402
 from corvin_jarvis import earnings  # noqa: E402
 from corvin_jarvis import narrative  # noqa: E402
+from corvin_jarvis import regime  # noqa: E402
 from geo_signal import build_geo_signal  # noqa: E402
 from narrate import build_context  # noqa: E402
 from pulse import run_pulse  # noqa: E402
@@ -309,6 +310,33 @@ def merge_narrative_alerts() -> int:
     return len(n_alerts)
 
 
+def detect_and_merge_regime_alert() -> dict[str, Any]:
+    """regime 라벨링 + 전환 시 alert merge. 반환: regime dict."""
+    snapshot = _load(LATEST_FILE) or {}
+    if not snapshot:
+        log.warning("no latest snapshot — skip regime detection")
+        return {}
+    db_path = STATE_DIR / "timeseries.db"
+    state_file = STATE_DIR / "last_regime.json"
+    out = regime.detect_regime(snapshot, db_path, state_file=state_file)
+    log.info("Regime: %s (score=%+.0f, transition=%s)",
+             out["label"], out["score"], out["transition"])
+    if out.get("alert"):
+        if ALERTS_FILE.exists():
+            data = _load(ALERTS_FILE) or {}
+            data.setdefault("alerts", []).append(out["alert"])
+            data["count"] = len(data["alerts"])
+        else:
+            data = {
+                "alerts": [out["alert"]],
+                "count": 1,
+                "generated_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        ALERTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+        log.info("Regime transition alert merged")
+    return out
+
+
 def run_jarvis() -> Path:
     BRIEFING_HISTORY.mkdir(parents=True, exist_ok=True)
     log.info("=== Jarvis Orchestrator 시작 ===")
@@ -317,6 +345,7 @@ def run_jarvis() -> Path:
     run_compare()
     refresh_earnings_and_merge_alerts()
     merge_narrative_alerts()
+    detect_and_merge_regime_alert()
     build_geo_signal()
     build_context()
 
