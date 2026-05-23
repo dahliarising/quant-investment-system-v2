@@ -36,6 +36,24 @@ python3 corvin_jarvis/reconcile.py refresh
 | `state/*` | runtime state (snapshots, alerts, briefings, logs) |
 | `timeseries.py` | SQLite 누적 저장 (quote_history) — Phase 5 |
 | `earnings.py` | 어닝 캘린더 수집 + D-7/D-3/D-1 alert — Tier 1.3 |
+| `narrative.py` | narrative-shift-detector readonly adapter — Tier 1.4 |
+
+## Narrative Z-score (Tier 1.4)
+
+`narrative-shift-detector/data/signals.db`에 **readonly**로 접근하여 KR 시장 레벨 narrative shift 계산.
+
+- `sentiment_tone`, `foreign_net_buy`: 30일 이동 Z-score
+- |Z| ≥ 1.5: medium · 2.0: high · 3.0: critical
+- 별도 alert로 alerts.json에 merge
+
+⚠️ **종목별 narrative 미지원**: signals.db는 KR 시장 통합 데이터만 보유. 종목별 narrative는 별도 source (GDELT per-ticker, FNSPID 등) 필요.
+
+수동 사용:
+```python
+from corvin_jarvis import narrative
+print(narrative.latest_signal(narrative.DEFAULT_SIGNALS_DB, market="KR"))
+print(narrative.compute_zscore(narrative.DEFAULT_SIGNALS_DB, metric="sentiment_tone"))
+```
 
 ## 어닝 캘린더 (Tier 1.3)
 

@@ -23,6 +23,7 @@ sys.path.insert(0, str(BASE_DIR.parent))
 
 from compare import run_compare  # noqa: E402
 from corvin_jarvis import earnings  # noqa: E402
+from corvin_jarvis import narrative  # noqa: E402
 from geo_signal import build_geo_signal  # noqa: E402
 from narrate import build_context  # noqa: E402
 from pulse import run_pulse  # noqa: E402
@@ -285,6 +286,29 @@ def refresh_earnings_and_merge_alerts() -> int:
     return len(e_alerts)
 
 
+def merge_narrative_alerts() -> int:
+    """narrative-shift-detector signals.db Z-score alerts merge."""
+    n_alerts = narrative.build_narrative_alerts(
+        narrative.DEFAULT_SIGNALS_DB, threshold=2.0, lookback_days=30, market="KR",
+    )
+    if not n_alerts:
+        log.info("No narrative Z-score alerts (|Z|<2σ)")
+        return 0
+    if ALERTS_FILE.exists():
+        data = _load(ALERTS_FILE) or {}
+        data.setdefault("alerts", []).extend(n_alerts)
+        data["count"] = len(data["alerts"])
+    else:
+        data = {
+            "alerts": n_alerts,
+            "count": len(n_alerts),
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+    ALERTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    log.info("Narrative alerts merged: %d", len(n_alerts))
+    return len(n_alerts)
+
+
 def run_jarvis() -> Path:
     BRIEFING_HISTORY.mkdir(parents=True, exist_ok=True)
     log.info("=== Jarvis Orchestrator 시작 ===")
@@ -292,6 +316,7 @@ def run_jarvis() -> Path:
     run_pulse()
     run_compare()
     refresh_earnings_and_merge_alerts()
+    merge_narrative_alerts()
     build_geo_signal()
     build_context()
 
