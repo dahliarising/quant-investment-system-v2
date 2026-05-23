@@ -89,3 +89,48 @@ def label_from_signals(
         "score": round(score, 1),
         "drivers": drivers,
     }
+
+
+def compute_correlation(
+    db_path: Path,
+    sym_a: str,
+    sym_b: str,
+    days: int = 30,
+) -> float | None:
+    """timeseries.db에서 두 symbol의 일별 가격 Pearson correlation.
+
+    가격이 시간순으로 일치하는 row만 사용. 표준편차 0이면 None.
+    """
+    if not db_path.exists():
+        return None
+    sql = (
+        "SELECT ts_kst, symbol, price FROM quote_history "
+        "WHERE symbol IN (?, ?) AND price IS NOT NULL "
+        "ORDER BY ts_kst ASC"
+    )
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(sql, (sym_a, sym_b)).fetchall()
+    # ts_kst → {sym: price}
+    by_ts: dict[str, dict[str, float]] = {}
+    for ts, sym, price in rows:
+        by_ts.setdefault(ts, {})[sym] = float(price)
+    a_vals, b_vals = [], []
+    for ts in sorted(by_ts):
+        bucket = by_ts[ts]
+        if sym_a in bucket and sym_b in bucket:
+            a_vals.append(bucket[sym_a])
+            b_vals.append(bucket[sym_b])
+    if len(a_vals) < 2:
+        return None
+    try:
+        var_a = statistics.pvariance(a_vals)
+        var_b = statistics.pvariance(b_vals)
+    except statistics.StatisticsError:
+        return None
+    if var_a == 0 or var_b == 0:
+        return None
+    mean_a = statistics.fmean(a_vals)
+    mean_b = statistics.fmean(b_vals)
+    cov = sum((x - mean_a) * (y - mean_b) for x, y in zip(a_vals, b_vals)) / len(a_vals)
+    denom = math.sqrt(var_a * var_b)
+    return round(cov / denom, 4) if denom else None
