@@ -98,3 +98,40 @@ def test_compute_zscore_returns_none_when_insufficient(tmp_path: Path) -> None:
 def test_compute_zscore_rejects_invalid_metric(fake_signals_db: Path) -> None:
     with pytest.raises(ValueError):
         narrative.compute_zscore(fake_signals_db, metric="injection); DROP TABLE--", lookback_days=30)
+
+
+@pytest.mark.unit
+def test_build_narrative_alerts_no_extreme(fake_signals_db: Path) -> None:
+    """fixture에선 |Z| ≈ 1.3-1.4, threshold=2.0 → alert 없음."""
+    alerts = narrative.build_narrative_alerts(fake_signals_db, threshold=2.0)
+    assert alerts == []
+
+
+@pytest.mark.unit
+def test_build_narrative_alerts_triggers_on_extreme(tmp_path: Path) -> None:
+    """sentiment_tone에 큰 spike 추가 → |Z|>2σ alert 발생."""
+    db = tmp_path / "spike.db"
+    with sqlite3.connect(db) as conn:
+        conn.executescript(SCHEMA)
+        base = [
+            ("2026-05-15", "AM", 22.0, 100000, 0.1, "KR"),
+            ("2026-05-15", "PM", 22.5, 110000, 0.05, "KR"),
+            ("2026-05-16", "AM", 22.2, 120000, 0.0, "KR"),
+            ("2026-05-16", "PM", 22.3, 95000, 0.1, "KR"),
+            ("2026-05-17", "AM", 22.1, 105000, 0.05, "KR"),
+            # 극단 spike (latest)
+            ("2026-05-18", "AM", 35.0, -500000, -3.5, "KR"),
+        ]
+        conn.executemany("INSERT INTO signals VALUES (?, ?, ?, ?, ?, ?)", base)
+    alerts = narrative.build_narrative_alerts(db, threshold=2.0)
+    assert len(alerts) >= 1
+    sentiments = [a for a in alerts if a["metric"] == "sentiment_tone"]
+    assert len(sentiments) == 1
+    assert sentiments[0]["category"] == "narrative"
+    assert sentiments[0]["severity"] in {"high", "critical"}
+
+
+@pytest.mark.unit
+def test_build_narrative_alerts_handles_missing_db(tmp_path: Path) -> None:
+    alerts = narrative.build_narrative_alerts(tmp_path / "nope.db", threshold=2.0)
+    assert alerts == []

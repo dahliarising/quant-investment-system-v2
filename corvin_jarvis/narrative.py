@@ -73,6 +73,48 @@ def compute_zscore(
         conn.close()
 
 
+def _severity_from_z(z: float) -> str:
+    az = abs(z)
+    if az >= 3.0:
+        return "critical"
+    if az >= 2.0:
+        return "high"
+    if az >= 1.5:
+        return "medium"
+    return "low"
+
+
+def build_narrative_alerts(
+    db_path: Path,
+    threshold: float = 2.0,
+    lookback_days: int = 30,
+    market: str = "KR",
+) -> list[dict[str, Any]]:
+    """sentiment_tone과 foreign_net_buy의 |Z| > threshold 이면 alert."""
+    alerts: list[dict[str, Any]] = []
+    for metric in ("sentiment_tone", "foreign_net_buy"):
+        z = compute_zscore(db_path, metric=metric, lookback_days=lookback_days, market=market)
+        if z is None:
+            continue
+        if abs(z["zscore"]) < threshold:
+            continue
+        direction = "📈 spike" if z["zscore"] > 0 else "📉 plunge"
+        alerts.append({
+            "category": "narrative",
+            "metric": metric,
+            "severity": _severity_from_z(z["zscore"]),
+            "message": (
+                f"{market} {metric} {direction} "
+                f"Z={z['zscore']:+.2f}σ (latest={z['latest']}, "
+                f"μ={z['mean']:.3f}, σ={z['stdev']:.3f}, n={z['n']})"
+            ),
+            "value": round(z["zscore"], 3),
+            "threshold": threshold,
+            "delta_from_prev": None,
+        })
+    return alerts
+
+
 def latest_signal(db_path: Path, market: str = "KR") -> dict[str, Any] | None:
     """가장 최근 (date DESC, session DESC) 행 반환. 없으면 None."""
     conn = _readonly_connect(db_path)
