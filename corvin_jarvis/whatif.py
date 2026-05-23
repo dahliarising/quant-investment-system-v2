@@ -51,3 +51,63 @@ def parse_trade(text: str) -> Trade:
         shares=shares,
         price=price,
     )
+
+
+def apply_trade(
+    holdings: list[dict[str, Any]],
+    trade: Trade,
+    market_prices: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
+    """holdings에 trade 적용 후 새 list 반환 (immutable).
+
+    - buy: 기존 position 있으면 weighted-avg; 없으면 신규 생성
+    - sell: shares 감소; full sell이면 제거; over-sell이면 ValueError
+    - market 거래 (price=None): market_prices에서 lookup; 없으면 ValueError
+    """
+    price = trade.price
+    if price is None:
+        if market_prices is None or trade.symbol not in market_prices:
+            raise ValueError(f"market price for {trade.symbol} unavailable")
+        price = market_prices[trade.symbol]
+
+    out: list[dict[str, Any]] = []
+    matched = False
+    for h in holdings:
+        if h["symbol"] != trade.symbol:
+            out.append(dict(h))  # shallow copy
+            continue
+        matched = True
+        current_shares = float(h["shares"])
+        if trade.side == "buy":
+            new_shares = current_shares + trade.shares
+            cur_avg = float(h.get("avgPriceUSD") or h.get("avgPriceKRW") or 0)
+            new_avg = (current_shares * cur_avg + trade.shares * price) / new_shares
+            new = dict(h)
+            new["shares"] = new_shares
+            avg_key = "avgPriceKRW" if h.get("currency") == "KRW" else "avgPriceUSD"
+            new[avg_key] = round(new_avg, 4)
+            out.append(new)
+        else:  # sell
+            if trade.shares > current_shares:
+                raise ValueError(
+                    f"sell {trade.shares} {trade.symbol} exceeds held {current_shares}"
+                )
+            remaining = current_shares - trade.shares
+            if remaining > 0:
+                new = dict(h)
+                new["shares"] = remaining
+                out.append(new)
+            # else: drop position
+
+    if not matched:
+        if trade.side == "sell":
+            raise ValueError(f"{trade.symbol} not held — cannot sell")
+        avg_key = "avgPriceUSD"
+        out.append({
+            "symbol": trade.symbol,
+            "shares": trade.shares,
+            avg_key: round(price, 4),
+            "avgPriceKRW": round(price * 1500, 4),
+            "currency": "USD",
+        })
+    return out
