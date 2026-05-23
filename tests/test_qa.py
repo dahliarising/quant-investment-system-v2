@@ -52,3 +52,33 @@ def test_recent_history_summary_missing_symbol(tmp_db_path: Path) -> None:
     summary = qa.recent_history_summary(tmp_db_path, symbol="UNKNOWN", days=10)
     assert summary["n"] == 0
     assert summary["start_price"] is None
+
+
+@pytest.mark.unit
+def test_relative_strength_outperform(tmp_db_path: Path) -> None:
+    """META +5%, SP500 +2% → RS = +3pp"""
+    _seed_history(tmp_db_path, "META", [600.0, 610.0, 615.0, 620.0, 630.0])
+    _seed_history(tmp_db_path, "sp500", [5000.0, 5050.0, 5070.0, 5080.0, 5100.0], category="index")
+    rs = qa.relative_strength(tmp_db_path, symbol="META", benchmark="sp500", days=10)
+    assert rs["symbol_pct"] == pytest.approx(5.0, abs=0.01)
+    assert rs["benchmark_pct"] == pytest.approx(2.0, abs=0.01)
+    assert rs["relative_pp"] == pytest.approx(3.0, abs=0.01)
+    assert rs["verdict"] == "outperform"
+
+
+@pytest.mark.unit
+def test_relative_strength_underperform(tmp_db_path: Path) -> None:
+    """META -2%, SP500 +1% → RS = -3pp"""
+    _seed_history(tmp_db_path, "META", [600.0, 595.0, 590.0, 595.0, 588.0])
+    _seed_history(tmp_db_path, "sp500", [5000.0, 5025.0, 5040.0, 5050.0, 5050.0], category="index")
+    rs = qa.relative_strength(tmp_db_path, symbol="META", benchmark="sp500", days=10)
+    assert rs["verdict"] == "underperform"
+    assert rs["relative_pp"] < 0
+
+
+@pytest.mark.unit
+def test_relative_strength_handles_missing_data(tmp_db_path: Path) -> None:
+    timeseries.init_db(tmp_db_path)
+    rs = qa.relative_strength(tmp_db_path, symbol="X", benchmark="Y", days=10)
+    assert rs["verdict"] == "unknown"
+    assert rs["symbol_pct"] is None

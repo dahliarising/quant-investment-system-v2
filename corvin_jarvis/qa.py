@@ -58,3 +58,38 @@ def recent_history_summary(
         "max_price": max(prices),
         "pct_change": round(pct, 3),
     }
+
+
+def relative_strength(
+    db_path: Path,
+    symbol: str,
+    benchmark: str = "sp500",
+    days: int = 7,
+) -> dict[str, Any]:
+    """symbol vs benchmark 상대 성과 비교.
+
+    verdict: outperform (+1pp 이상) / underperform (-1pp 이하) / neutral / unknown
+    """
+    s = recent_history_summary(db_path, symbol=symbol, days=days)
+    b = recent_history_summary(db_path, symbol=benchmark, days=days)
+    if s["pct_change"] is None or b["pct_change"] is None:
+        return {
+            "symbol": symbol, "benchmark": benchmark,
+            "symbol_pct": None, "benchmark_pct": None,
+            "relative_pp": None, "verdict": "unknown",
+        }
+    rel = s["pct_change"] - b["pct_change"]
+    if rel > 1.0:
+        verdict = "outperform"
+    elif rel < -1.0:
+        verdict = "underperform"
+    else:
+        verdict = "neutral"
+    return {
+        "symbol": symbol,
+        "benchmark": benchmark,
+        "symbol_pct": s["pct_change"],
+        "benchmark_pct": b["pct_change"],
+        "relative_pp": round(rel, 3),
+        "verdict": verdict,
+    }
