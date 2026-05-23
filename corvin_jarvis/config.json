@@ -1,0 +1,50 @@
+{
+  "_comment": "Corvin Jarvis configuration — 폐하가 thresholds/channels 조정 가능",
+  "watchlist": ["TSLA", "AAPL", "GOOGL", "005930", "000660"],
+  "alert_thresholds": {
+    "index_pct_change": {
+      "kospi": 1.5,
+      "kosdaq": 2.0,
+      "sp500": 1.0,
+      "nasdaq": 1.5
+    },
+    "vix": {
+      "absolute_level": 25,
+      "daily_jump_pct": 15
+    },
+    "commodity_pct_change": {
+      "brent": 5.0,
+      "gold": 2.5,
+      "copper": 3.0
+    },
+    "fx": {
+      "usd_krw_absolute": 1500,
+      "usd_krw_daily_pct": 1.0
+    },
+    "portfolio_position": {
+      "pnl_alert_pct": 10.0,
+      "stop_loss_pct": -8.0,
+      "take_profit_pct": 25.0
+    }
+  },
+  "schedule": {
+    "_comment": "KST hours when Jarvis wakes up. 0=미명, 9=KR open, 15=KR close, 22=US open",
+    "active_hours_kst": [8, 9, 10, 11, 13, 15, 17, 22, 23, 0, 2, 5],
+    "geopolitical_check_every_n_pulses": 4
+  },
+  "notification": {
+    "channels": ["discord", "log_only"],
+    "_TODO_user_input": "Discord channel_id 필요 — 어느 채널에 자발적 alert을 받으실지?",
+    "discord_channel_id": null,
+    "imessage_recipient": "+821092824761",
+    "minimum_alert_severity": "medium"
+  },
+  "trade_execution": {
+    "mode": "advisory_only",
+    "_note": "CLAUDE.md: 실제 매매 주문 금지 (모의만)"
+  },
+  "narrative_continuity": {
+    "wiki_dir": "/Users/thethethe/Claude/llm-wiki/wiki/corvin-sessions/",
+    "last_strategy_lookback_days": 7
+  }
+}
