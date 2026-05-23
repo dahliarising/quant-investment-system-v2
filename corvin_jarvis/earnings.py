@@ -35,3 +35,54 @@ def init_earnings_table(db_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA)
     log.info("earnings_calendar table ready at %s", db_path)
+
+
+def upsert_earnings(
+    db_path: Path,
+    symbol: str,
+    dates: list[date],
+    eps_avg: float | None = None,
+    revenue_avg: float | None = None,
+) -> int:
+    """주어진 (symbol, date) 쌍 upsert. 동일 PK는 UPDATE. 반환: row 수."""
+    init_earnings_table(db_path)
+    if not dates:
+        return 0
+    now_iso = datetime.now().isoformat(timespec="seconds")
+    rows = [
+        (symbol, d.isoformat(), eps_avg, revenue_avg, now_iso)
+        for d in dates
+    ]
+    with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            """INSERT INTO earnings_calendar
+                 (symbol, earnings_date, eps_avg, revenue_avg, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(symbol, earnings_date) DO UPDATE SET
+                 eps_avg = excluded.eps_avg,
+                 revenue_avg = excluded.revenue_avg,
+                 updated_at = excluded.updated_at""",
+            rows,
+        )
+    return len(rows)
+
+
+def pending_earnings(
+    db_path: Path,
+    today: date,
+    days_ahead: int = 14,
+) -> list[dict[str, Any]]:
+    """today 이상 ~ today+days_ahead 이내의 어닝 row 반환 (오름차순)."""
+    if not db_path.exists():
+        return []
+    end = today + timedelta(days=days_ahead)
+    sql = (
+        "SELECT symbol, earnings_date, eps_avg, revenue_avg "
+        "FROM earnings_calendar "
+        "WHERE earnings_date >= ? AND earnings_date <= ? "
+        "ORDER BY earnings_date ASC"
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, (today.isoformat(), end.isoformat())).fetchall()
+    return [dict(r) for r in rows]

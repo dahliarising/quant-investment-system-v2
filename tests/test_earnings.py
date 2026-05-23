@@ -37,3 +37,66 @@ def test_init_earnings_table_idempotent(tmp_db_path: Path) -> None:
     earnings.init_earnings_table(tmp_db_path)
     earnings.init_earnings_table(tmp_db_path)
     assert tmp_db_path.exists()
+
+
+@pytest.mark.unit
+def test_upsert_earnings_inserts_new_row(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    n = earnings.upsert_earnings(
+        tmp_db_path, "META", [date(2026, 7, 30)],
+        eps_avg=7.528, revenue_avg=60209152310,
+    )
+    assert n == 1
+    with sqlite3.connect(tmp_db_path) as conn:
+        row = conn.execute(
+            "SELECT symbol, earnings_date, eps_avg FROM earnings_calendar"
+        ).fetchone()
+    assert row == ("META", "2026-07-30", 7.528)
+
+
+@pytest.mark.unit
+def test_upsert_earnings_idempotent(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    earnings.upsert_earnings(tmp_db_path, "META", [date(2026, 7, 30)], eps_avg=7.5, revenue_avg=6e10)
+    earnings.upsert_earnings(tmp_db_path, "META", [date(2026, 7, 30)], eps_avg=7.6, revenue_avg=6.1e10)
+    with sqlite3.connect(tmp_db_path) as conn:
+        rows = conn.execute(
+            "SELECT eps_avg FROM earnings_calendar WHERE symbol='META' AND earnings_date='2026-07-30'"
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == 7.6  # 두 번째 호출이 update
+
+
+@pytest.mark.unit
+def test_upsert_earnings_handles_multiple_dates(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    n = earnings.upsert_earnings(
+        tmp_db_path, "MSFT",
+        [date(2026, 7, 24), date(2026, 10, 23)],
+        eps_avg=3.2, revenue_avg=7e10,
+    )
+    assert n == 2
+
+
+@pytest.mark.unit
+def test_pending_earnings_returns_within_window(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    today = date(2026, 5, 23)
+    earnings.upsert_earnings(tmp_db_path, "META", [date(2026, 5, 24)], eps_avg=7.5, revenue_avg=6e10)
+    earnings.upsert_earnings(tmp_db_path, "MSFT", [date(2026, 5, 26)], eps_avg=3.2, revenue_avg=7e10)
+    earnings.upsert_earnings(tmp_db_path, "NVDA", [date(2026, 8, 28)], eps_avg=1.0, revenue_avg=5e10)
+
+    rows = earnings.pending_earnings(tmp_db_path, today=today, days_ahead=7)
+    syms = [r["symbol"] for r in rows]
+    assert "META" in syms
+    assert "MSFT" in syms
+    assert "NVDA" not in syms
+
+
+@pytest.mark.unit
+def test_pending_earnings_excludes_past(tmp_db_path: Path) -> None:
+    earnings.init_earnings_table(tmp_db_path)
+    today = date(2026, 5, 23)
+    earnings.upsert_earnings(tmp_db_path, "AAPL", [date(2026, 5, 22)], eps_avg=1.5, revenue_avg=9e10)
+    rows = earnings.pending_earnings(tmp_db_path, today=today, days_ahead=7)
+    assert rows == []
