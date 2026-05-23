@@ -12,3 +12,7 @@ logs/
 .vscode/
 *.pkl
 *.h5
+
+# Corvin runtime state
+corvin_jarvis/state/timeseries.db
+corvin_jarvis/state/timeseries.db-journal

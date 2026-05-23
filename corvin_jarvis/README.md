@@ -1,0 +1,97 @@
+# 🦅 Corvin Jarvis
+
+자율 자산관리 에이전트. 매시간 시장+포트폴리오를 스캔하고 임계값 breach 시 자발적 알림.
+
+## 빠른 시작
+
+```bash
+# 1회 실행 (전체 파이프라인)
+bash corvin_jarvis/run_jarvis.sh
+
+# 또는 개별 phase
+python3 corvin_jarvis/pulse.py        # 데이터 ingest만
+python3 corvin_jarvis/compare.py      # threshold 감지
+python3 corvin_jarvis/narrate.py      # 전략 연속성 컨텍스트
+python3 corvin_jarvis/jarvis.py       # 위 셋 + briefing.md 생성
+python3 corvin_jarvis/discord_push.py # alert push
+
+# 포트폴리오 업데이트 (advisory only — 실주문 X)
+python3 corvin_jarvis/reconcile.py buy META 3 620.50 USD
+python3 corvin_jarvis/reconcile.py sell 005930.KS 22 270500 KRW
+python3 corvin_jarvis/reconcile.py refresh
+```
+
+## 파일
+
+| 파일 | 역할 |
+|---|---|
+| `config.json` | alert thresholds + notification |
+| `pulse.py` | 시장/원자재/FX/portfolio quote ingest |
+| `compare.py` | threshold breach 감지 + severity 분류 |
+| `narrate.py` | wiki 세션 기반 continuity context |
+| `jarvis.py` | orchestrator (pulse + compare + narrate + briefing.md) |
+| `discord_push.py` | webhook push + dedup + cooldown |
+| `reconcile.py` | portfolio.json safe update |
+| `run_jarvis.sh` | cron entry script |
+| `state/*` | runtime state (snapshots, alerts, briefings, logs) |
+| `timeseries.py` | SQLite 누적 저장 (quote_history) — Phase 5 |
+
+## 시계열 DB
+
+매 pulse마다 `state/timeseries.db` (SQLite)에 quote를 누적 저장 — predictive/what-if/attribution 기능의 토대.
+
+테이블 `quote_history`:
+- `category`: index / commodity / fx / portfolio / watchlist
+- `symbol`, `price`, `pct_change`
+- portfolio 전용: `pnl_pct`, `market_value`, `shares`
+- `ts_utc`, `ts_kst`, `source`, `error`
+
+조회 예시:
+```python
+from corvin_jarvis import timeseries
+from pathlib import Path
+
+rows = timeseries.read_history(
+    Path("corvin_jarvis/state/timeseries.db"),
+    symbol="META",
+    limit=30,
+)
+```
+
+## Watchlist
+
+`config.json`의 `watchlist` 리스트에 추가한 종목은 보유 외에도 매 pulse마다 가격 추적됩니다. 한국 종목은 자동 감지하여 pykrx/FDR 사용.
+
+예시:
+```json
+{
+  "watchlist": ["TSLA", "AAPL", "005930"]
+}
+```
+
+## 활성화 체크리스트
+
+- [ ] **Discord webhook**: `CORVIN_DISCORD_WEBHOOK` env var 또는 config.json
+- [ ] **portfolio.json 동기화**: 실제 보유와 일치 확인
+- [ ] **cron 등록**: `run_jarvis.sh`를 `crontab -e` 또는 Claude Code schedule에
+- [ ] **임계값 튜닝**: config.json `alert_thresholds` 폐하 선호 반영
+
+## Cron 예시
+
+```bash
+# crontab -e
+# KST 08-23, 매시간 정각
+0 8-23 * * * /Users/thethethe/Claude/quant_investment_system_v2/corvin_jarvis/run_jarvis.sh
+
+# 또는 Claude Code schedule (daily_briefing 패턴):
+#   taskName: corvin-jarvis-hourly
+#   cron: "0 8-23 * * *"
+#   command: bash /Users/thethethe/Claude/quant_investment_system_v2/corvin_jarvis/run_jarvis.sh
+```
+
+## 정책 (CLAUDE.md 준수)
+
+- 실제 매매 주문 **금지** — advisory only
+- 모의 portfolio 업데이트는 `reconcile.py`로 명시적 실행만
+- 모든 매매 기록은 `state/trades.json`에 append-only
+- portfolio.json 변경 시 `state/portfolio_backups/`에 자동 백업
