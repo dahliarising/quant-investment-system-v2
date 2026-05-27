@@ -125,6 +125,72 @@ def _rank_alerts(alerts: list[dict[str, Any]], held: set[str]) -> list[dict[str,
     )
 
 
+_SECTOR_KO = {
+    "semiconductor": "반도체", "battery": "2차전지", "bio": "바이오",
+    "auto": "자동차", "internet": "인터넷", "steel": "철강",
+    "shipbuilding": "조선", "defense": "방산", "bigtech": "빅테크",
+    "finance": "금융", "pharma": "제약",
+}
+
+
+def _friendly_name(alert: dict[str, Any], fallback: str) -> str:
+    """alert message의 '종목명(코드)' 패턴에서 사람이 읽는 종목명 추출. 없으면 fallback."""
+    msg = alert.get("message", "")
+    if "(" in msg:
+        name = msg.split("(", 1)[0].replace("✅", "").replace("🟡", "").strip()
+        if name:
+            return name
+    return fallback
+
+
+def _interpret(alert: dict[str, Any]) -> str:
+    """alert을 일상어 한 줄 해석으로 변환 (전문용어 제거)."""
+    cat = alert.get("category", "")
+    metric = alert.get("metric", "")
+    v = alert.get("value")
+    v = v if isinstance(v, (int, float)) else 0.0
+    up = v > 0
+    parts = metric.split("_")
+
+    if cat == "universe":
+        sym = parts[1] if len(parts) > 1 else metric
+        name = _friendly_name(alert, sym)
+        return f"{name} 주가가 {abs(v):.1f}% {'급등' if up else '급락'} — 큰 변동이라 주목"
+    if cat == "sector":
+        sec = parts[1] if len(parts) > 1 else ""
+        return f"{_SECTOR_KO.get(sec, sec)} 업종이 평균 {abs(v):.1f}% {'동반 상승' if up else '동반 하락'} — 섹터 전체 움직임"
+    if cat == "leading_rs":
+        sym = parts[1] if len(parts) > 1 else metric
+        name = _friendly_name(alert, sym)
+        return f"{name}이(가) 시장 지수보다 {abs(v):.1f}%p {'더 강함 → 주도주' if up else '더 약함 → 소외주'}"
+    if cat == "portfolio":
+        sym = parts[-1]
+        if metric.startswith("stop_loss"):
+            return f"보유 {sym} 손절선 도달 — 손실 관리 검토 필요"
+        if metric.startswith("take_profit"):
+            return f"보유 {sym} 익절선 도달 — 차익실현 검토"
+        return f"보유 {sym} 평가손익 {v:+.1f}% — 관찰 수준(아직 급한 액션 아님)"
+    if cat == "index":
+        return f"{metric.upper()} 지수 {abs(v):.1f}% {'상승' if up else '하락'} — 시장 전체 분위기"
+    if cat == "commodity":
+        return f"{metric.upper()}(원자재) {abs(v):.1f}% {'상승' if up else '하락'}"
+    if cat == "fx":
+        return "원/달러 환율 1500원 위 — 원화 약세(보유 미국주식엔 환차익 우호)"
+    if cat == "risk":
+        return "공포지수(VIX) 상승 — 시장 불안 신호"
+    if cat == "acceleration":
+        return "직전보다 변동성 가속 — 빠르게 상황 변화 중"
+    if cat == "narrative":
+        if "foreign" in metric:
+            return "외국인이 한국주식을 평소보다 훨씬 많이 순매수 — 이례적 급증(증시 강세 신호)"
+        return "시장 자금·심리 흐름에 이례적 변화 감지"
+    if cat == "earnings":
+        return "실적 발표 임박 — 변동성 주의"
+    if cat == "regime":
+        return "시장 국면(위험선호↔회피) 전환 신호"
+    return alert.get("message", "")
+
+
 def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
                     title: str = "", limit: int = 5) -> str:
     if not alerts:
@@ -139,6 +205,10 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
             lines.append(f"{emoji} {a['message'][:120]}")
         if extra > 0:
             lines.append(f"…외 {extra}건")
+        lines.append("")
+        lines.append("📖 해석")
+        for a in shown:
+            lines.append(f"• {_interpret(a)}")
         return "\n".join(lines)
     lines = [f"## {header}", f"\n신규 alert **{len(alerts)}건**:\n"]
     for a in shown:
@@ -146,6 +216,9 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
     if extra > 0:
         lines.append(f"\n…외 {extra}건")
     lines.append("\n_상세: briefing.md_")
+    lines.append("\n**📖 해석**")
+    for a in shown:
+        lines.append(f"- {_interpret(a)}")
     return "\n".join(lines)
 
 

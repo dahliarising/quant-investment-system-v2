@@ -72,3 +72,39 @@ def test_format_message_respects_title_and_limit():
     msg = notify._format_message(alerts, compact=True, title="📋 다이제스트", limit=3)
     assert msg.startswith("📋 다이제스트")
     assert "…외 7건" in msg
+
+
+def test_interpret_universe():
+    a = {"category": "universe", "metric": "universe_000660_confirmed", "value": 9.31,
+         "message": "✅ SK하이닉스(000660) 급등 +9.31%", "severity": "high"}
+    txt = notify._interpret(a)
+    assert "SK하이닉스" in txt and "급등" in txt   # 코드(000660) 대신 종목명
+
+
+def test_interpret_narrative_foreign():
+    a = {"category": "narrative", "metric": "foreign_net_buy", "value": 2.38,
+         "message": "KR foreign_net_buy spike Z=+2.38", "severity": "high"}
+    txt = notify._interpret(a)
+    assert "외국인" in txt
+
+
+def test_interpret_leading_rs_positive_is_leader():
+    a = {"category": "leading_rs", "metric": "rs_000660_confirmed", "value": 7.06,
+         "message": "✅ SK하이닉스 상대강도 강세", "severity": "medium"}
+    txt = notify._interpret(a)
+    assert "주도주" in txt
+
+
+def test_interpret_portfolio_mentions_symbol():
+    a = {"category": "portfolio", "metric": "pnl_NVDA", "value": 16.49,
+         "message": "NVDA 수익 +16.49%", "severity": "medium"}
+    txt = notify._interpret(a)
+    assert "NVDA" in txt
+
+
+def test_format_message_appends_interpretation():
+    alerts = [{"category": "universe", "metric": "universe_000660_confirmed", "value": 9.31,
+               "message": "✅ SK하이닉스(000660) 급등 +9.31%", "severity": "high"}]
+    msg = notify._format_message(alerts, compact=False, title="t", limit=8)
+    assert "📖 해석" in msg
+    assert "000660" in msg
