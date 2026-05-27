@@ -56,7 +56,11 @@
     "_TODO_user_input": "Discord channel_id 필요 — 어느 채널에 자발적 alert을 받으실지?",
     "discord_channel_id": null,
     "imessage_recipient": "+821092824761",
-    "minimum_alert_severity": "medium"
+    "minimum_alert_severity": "medium",
+    "urgent_min_severity": "high",
+    "digest_min_severity": "medium",
+    "digest_max_items": 8,
+    "max_per_push": 8
   },
   "trade_execution": {
     "mode": "advisory_only",
