@@ -131,6 +131,7 @@ _SECTOR_KO = {
     "auto": "자동차", "internet": "인터넷", "steel": "철강",
     "shipbuilding": "조선", "defense": "방산", "bigtech": "빅테크",
     "finance": "금융", "pharma": "제약",
+    "humanoid": "휴머노이드", "space": "우주", "stem_cell": "줄기세포", "quantum": "양자",
 }
 
 
