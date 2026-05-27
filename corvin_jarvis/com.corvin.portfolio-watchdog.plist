@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.corvin.portfolio-watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/thethethe/Claude/quant_investment_system_v2/corvin_jarvis/portfolio_watchdog.py</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>9</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/thethethe/Claude/quant_investment_system_v2</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/thethethe/Claude/quant_investment_system_v2/corvin_jarvis/state/watchdog.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/thethethe/Claude/quant_investment_system_v2/corvin_jarvis/state/watchdog.stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

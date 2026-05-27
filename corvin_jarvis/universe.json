@@ -1,0 +1,49 @@
+{
+  "_comment": "Corvin DCA universe — 33 tickers across 3 tiers. 폐하 추가/삭제 가능. tier=1(50%) 2(35%) 3(15%).",
+  "_updated": "2026-05-24",
+  "_source": "Discord 답변 2026-05-23 슈퍼사이클 분석 + 폐하 현재 보유 종목(META/MSFT/NVDA)",
+  "_exchange_codes": "NAS=NASDAQ, NYS=NYSE, AMS=AMEX. KR 종목(6자리)은 exchange 불필요.",
+  "tier_weights": {"1": 0.50, "2": 0.35, "3": 0.15},
+  "tier_themes": {
+    "1": "현재 진행 슈퍼사이클 — AI/반도체/HBM/방산/조선 (안정 코어)",
+    "2": "2-3년 변곡점 후보 — 원자력/SMR + 휴머노이드 로봇",
+    "3": "High-beta moonshot — 양자컴퓨팅/우주방산/바이오 조정"
+  },
+  "tickers": [
+    {"symbol": "NVDA",   "tier": 1, "exchange": "NAS", "name": "NVIDIA",                  "theme": "AI GPU 절대강자"},
+    {"symbol": "AVGO",   "tier": 1, "exchange": "NAS", "name": "Broadcom",                "theme": "AI custom silicon + 네트워킹"},
+    {"symbol": "TSM",    "tier": 1, "exchange": "NYS", "name": "TSMC",                    "theme": "선단 파운드리 독점"},
+    {"symbol": "MU",     "tier": 1, "exchange": "NAS", "name": "Micron",                  "theme": "HBM 메모리 사이클"},
+    {"symbol": "META",   "tier": 1, "exchange": "NAS", "name": "Meta Platforms",          "theme": "AI 광고 + Reality Labs (보유)"},
+    {"symbol": "MSFT",   "tier": 1, "exchange": "NAS", "name": "Microsoft",               "theme": "Azure + Copilot (보유)"},
+    {"symbol": "GOOGL",  "tier": 1, "exchange": "NAS", "name": "Alphabet",                "theme": "Gemini + TPU 자체칩"},
+    {"symbol": "IBM",    "tier": 1, "exchange": "NYS", "name": "IBM",                     "theme": "엔터프라이즈 AI + Quantum 옵션"},
+    {"symbol": "LMT",    "tier": 1, "exchange": "NYS", "name": "Lockheed Martin",         "theme": "방산 패권"},
+    {"symbol": "RTX",    "tier": 1, "exchange": "NYS", "name": "RTX Corp",                "theme": "방산 + 항공엔진"},
+    {"symbol": "005930", "tier": 1,                    "name": "삼성전자",                "theme": "HBM 회복 + 파운드리"},
+    {"symbol": "000660", "tier": 1,                    "name": "SK하이닉스",              "theme": "HBM 슈퍼사이클 선두"},
+    {"symbol": "329180", "tier": 1,                    "name": "HD현대중공업",            "theme": "한국 조선 슈퍼사이클"},
+    {"symbol": "010140", "tier": 1,                    "name": "삼성중공업",              "theme": "LNG선/FPSO 수주 호조"},
+    {"symbol": "012450", "tier": 1,                    "name": "한화에어로스페이스",      "theme": "K-방산 글로벌 확산"},
+
+    {"symbol": "CEG",    "tier": 2, "exchange": "NAS", "name": "Constellation Energy",    "theme": "AI 데이터센터 원자력 PPA"},
+    {"symbol": "VST",    "tier": 2, "exchange": "NYS", "name": "Vistra",                  "theme": "원전+가스 hybrid utility"},
+    {"symbol": "CCJ",    "tier": 2, "exchange": "NYS", "name": "Cameco",                  "theme": "우라늄 원료 메이저"},
+    {"symbol": "SMR",    "tier": 2, "exchange": "NYS", "name": "NuScale Power",           "theme": "SMR 선두 (NRC 인허가)"},
+    {"symbol": "OKLO",   "tier": 2, "exchange": "NYS", "name": "Oklo",                    "theme": "차세대 SMR (Sam Altman 백킹)"},
+    {"symbol": "BWXT",   "tier": 2, "exchange": "NYS", "name": "BWX Technologies",        "theme": "해군 원자로 + SMR 제조"},
+    {"symbol": "TSLA",   "tier": 2, "exchange": "NAS", "name": "Tesla",                   "theme": "Optimus 휴머노이드 thesis"},
+    {"symbol": "ABBNY",  "tier": 2, "exchange": "NAS", "name": "ABB Ltd ADR",             "theme": "산업용 로봇 + 전기화 (OTC ADR)"},
+    {"symbol": "454910", "tier": 2,                    "name": "두산로보틱스",            "theme": "협동로봇 + 휴머노이드 R&D"},
+    {"symbol": "277810", "tier": 2,                    "name": "레인보우로보틱스",        "theme": "삼성전자 휴머노이드 파트너"},
+
+    {"symbol": "IONQ",   "tier": 3, "exchange": "NYS", "name": "IonQ",                    "theme": "트랩드이온 양자컴퓨팅"},
+    {"symbol": "RGTI",   "tier": 3, "exchange": "NAS", "name": "Rigetti Computing",       "theme": "초전도 양자 (변동성 매우 큼)"},
+    {"symbol": "QBTS",   "tier": 3, "exchange": "NYS", "name": "D-Wave Quantum",          "theme": "양자 어닐링"},
+    {"symbol": "RKLB",   "tier": 3, "exchange": "NAS", "name": "Rocket Lab",              "theme": "소형 발사체 + Neutron 개발"},
+    {"symbol": "AVAV",   "tier": 3, "exchange": "NAS", "name": "AeroVironment",           "theme": "전술 드론 (Switchblade)"},
+    {"symbol": "KTOS",   "tier": 3, "exchange": "NAS", "name": "Kratos Defense",          "theme": "무인 전투기 + 드론 표적"},
+    {"symbol": "LLY",    "tier": 3, "exchange": "NYS", "name": "Eli Lilly",               "theme": "GLP-1 조정 후 재진입 후보"},
+    {"symbol": "NVO",    "tier": 3, "exchange": "NYS", "name": "Novo Nordisk",            "theme": "GLP-1 valuation reset"}
+  ]
+}
