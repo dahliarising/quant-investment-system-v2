@@ -129,21 +129,26 @@ def _rank_alerts(alerts: list[dict[str, Any]], held: set[str]) -> list[dict[str,
     )
 
 
-def _format_message(alerts: list[dict[str, Any]], compact: bool = False) -> str:
+def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
+                    title: str = "", limit: int = 5) -> str:
     if not alerts:
         return ""
-    header = f"🦅 Corvin Jarvis — {datetime.now().strftime('%H:%M KST')}"
+    header = title or f"🦅 Corvin Jarvis — {datetime.now().strftime('%H:%M KST')}"
+    shown = alerts[:limit]
+    extra = len(alerts) - len(shown)
     if compact:
         lines = [header, f"신규 alert {len(alerts)}건:"]
-        for a in alerts[:5]:
+        for a in shown:
             emoji = SEV_EMOJI[a["severity"]]
             lines.append(f"{emoji} {a['message'][:120]}")
-        if len(alerts) > 5:
-            lines.append(f"…외 {len(alerts) - 5}건")
+        if extra > 0:
+            lines.append(f"…외 {extra}건")
         return "\n".join(lines)
     lines = [f"## {header}", f"\n신규 alert **{len(alerts)}건**:\n"]
-    for a in alerts:
+    for a in shown:
         lines.append(f"{SEV_EMOJI[a['severity']]} **[{a['severity'].upper()}]** {a['message']}")
+    if extra > 0:
+        lines.append(f"\n…외 {extra}건")
     lines.append("\n_상세: briefing.md_")
     return "\n".join(lines)
 
@@ -191,24 +196,39 @@ def _queue_file(content: str, alert_count: int) -> None:
     PENDING_FILE.write_text(json.dumps(pending, indent=2, ensure_ascii=False))
 
 
-def notify(cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyResult:
+def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyResult:
     alerts = _load_json(ALERTS_FILE).get("alerts", [])
-    min_sev = _min_severity()
+    cfg = _config().get("notification", {})
+    held = _held_symbols()
+
+    if mode == "digest":
+        min_sev = cfg.get("digest_min_severity", "medium")
+        limit = int(cfg.get("digest_max_items", 8))
+        title = f"📋 Corvin 일일 다이제스트 — {datetime.now().strftime('%m/%d %H:%M KST')}"
+    else:
+        min_sev = cfg.get("urgent_min_severity", "high")
+        limit = int(cfg.get("max_per_push", 8))
+        title = f"🦅 Corvin 긴급 — {datetime.now().strftime('%H:%M KST')}"
 
     sev_filtered = _filter_severity(alerts, min_sev)
     skipped_sev = len(alerts) - len(sev_filtered)
-    fresh, skipped_dedup = _filter_dedup(sev_filtered, cooldown_s)
 
+    if mode == "digest":
+        fresh, skipped_dedup = sev_filtered, 0
+    else:
+        fresh, skipped_dedup = _filter_dedup(sev_filtered, cooldown_s)
+
+    fresh = _rank_alerts(fresh, held)
     log.info(
-        "alerts=%d sev_pass=%d fresh=%d (skip_sev=%d, skip_dedup=%d)",
-        len(alerts), len(sev_filtered), len(fresh), skipped_sev, skipped_dedup,
+        "mode=%s alerts=%d sev_pass=%d fresh=%d (skip_sev=%d, skip_dedup=%d)",
+        mode, len(alerts), len(sev_filtered), len(fresh), skipped_sev, skipped_dedup,
     )
 
     if not fresh:
         return NotifyResult(pushed=0, skipped_dedup=skipped_dedup, skipped_severity=skipped_sev, channels_delivered=[])
 
-    msg_long = _format_message(fresh, compact=False)
-    msg_short = _format_message(fresh, compact=True)
+    msg_long = _format_message(fresh, compact=False, title=title, limit=limit)
+    msg_short = _format_message(fresh, compact=True, title=title, limit=limit)
     delivered: list[str] = []
 
     webhook = _webhook_url()
@@ -240,5 +260,6 @@ def notify(cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyResult:
 
 
 if __name__ == "__main__":
-    result = notify()
-    log.info("결과: %s", result)
+    mode = sys.argv[1] if len(sys.argv) > 1 else "urgent"
+    result = notify(mode=mode)
+    log.info("결과(%s): %s", mode, result)
