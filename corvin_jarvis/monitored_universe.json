@@ -27,6 +27,15 @@
     {"symbol": "AVGO", "market": "US", "sector": "semiconductor", "name": "Broadcom"},
     {"symbol": "TSLA", "market": "US", "sector": "auto", "name": "Tesla"},
     {"symbol": "LLY", "market": "US", "sector": "pharma", "name": "Eli Lilly"},
-    {"symbol": "JPM", "market": "US", "sector": "finance", "name": "JPMorgan"}
+    {"symbol": "NVO", "market": "US", "sector": "pharma", "name": "Novo Nordisk"},
+    {"symbol": "JPM", "market": "US", "sector": "finance", "name": "JPMorgan"},
+    {"symbol": "V", "market": "US", "sector": "finance", "name": "Visa"},
+    {"symbol": "BAC", "market": "US", "sector": "finance", "name": "Bank of America"},
+    {"symbol": "MA", "market": "US", "sector": "finance", "name": "Mastercard"},
+    {"symbol": "AMD", "market": "US", "sector": "semiconductor", "name": "AMD"},
+    {"symbol": "TSM", "market": "US", "sector": "semiconductor", "name": "TSMC"},
+    {"symbol": "MU", "market": "US", "sector": "semiconductor", "name": "Micron"},
+    {"symbol": "QCOM", "market": "US", "sector": "semiconductor", "name": "Qualcomm"},
+    {"symbol": "ORCL", "market": "US", "sector": "bigtech", "name": "Oracle"}
   ]
 }
