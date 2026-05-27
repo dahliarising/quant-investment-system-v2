@@ -391,7 +391,7 @@ def merge_signal_alerts() -> int:
         data["count"] = len(data["alerts"])
     else:
         data = {"alerts": s_alerts, "count": len(s_alerts),
-                "generated_at": datetime.now().isoformat(timespec="seconds")}
+                "generated_at": now.isoformat(timespec="seconds")}
     ALERTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
     log.info("Signal alerts merged: %d", len(s_alerts))
     return len(s_alerts)
