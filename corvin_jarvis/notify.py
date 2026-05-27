@@ -30,6 +30,7 @@ STATE_DIR = BASE_DIR / "state"
 ALERTS_FILE = STATE_DIR / "alerts.json"
 BRIEFING_FILE = STATE_DIR / "briefing.md"
 CONFIG_FILE = BASE_DIR / "config.json"
+PORTFOLIO_FILE = BASE_DIR.parent / "portfolio.json"
 DEDUP_FILE = STATE_DIR / "push_dedup.json"
 PENDING_FILE = STATE_DIR / "push_pending.json"
 LOG_FILE = STATE_DIR / "notify.log"
@@ -108,6 +109,24 @@ def _filter_dedup(alerts: list[dict[str, Any]], cooldown_s: int) -> tuple[list[d
         fresh.append(a)
     DEDUP_FILE.write_text(json.dumps(dedup, indent=2))
     return fresh, skipped
+
+
+def _held_symbols() -> set[str]:
+    pf = _load_json(PORTFOLIO_FILE)
+    return {str(h["symbol"]) for h in pf.get("holdings", []) if h.get("symbol")}
+
+
+def _actionability(alert: dict[str, Any], held: set[str]) -> int:
+    blob = f"{alert.get('metric', '')} {alert.get('message', '')}"
+    return 1 if any(sym in blob for sym in held) else 0
+
+
+def _rank_alerts(alerts: list[dict[str, Any]], held: set[str]) -> list[dict[str, Any]]:
+    return sorted(
+        alerts,
+        key=lambda a: (SEV_RANK.get(a["severity"], 0), _actionability(a, held), abs(a.get("value") or 0)),
+        reverse=True,
+    )
 
 
 def _format_message(alerts: list[dict[str, Any]], compact: bool = False) -> str:
