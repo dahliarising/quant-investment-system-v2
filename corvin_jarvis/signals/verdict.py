@@ -125,3 +125,24 @@ def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
         "high_vol": sector is None,   # monitored_universe 미포함 = 무어샷(보수)
     }
     return decide(ctx)
+
+
+def verdicts_for_state(latest: dict[str, Any], alerts: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
+    """보유 종목 + 오늘 alert이 가리키는 개별 종목에 대해 verdict 일괄 산출."""
+    syms: set[str] = set()
+    for p in latest.get("portfolio", []):
+        if p.get("symbol"):
+            syms.add(str(p["symbol"]))
+    for a in alerts:
+        cat = a.get("category", "")
+        parts = a.get("metric", "").split("_")
+        if cat in ("universe", "leading_rs") and len(parts) >= 2:
+            syms.add(parts[1])
+        elif cat == "portfolio" and parts:
+            syms.add(parts[-1])
+
+    out: dict[str, dict[str, str]] = {}
+    for s in sorted(syms):
+        v = for_symbol(s, latest)
+        out[s] = {"action": v.action, "confidence": v.confidence, "rationale": v.rationale}
+    return out

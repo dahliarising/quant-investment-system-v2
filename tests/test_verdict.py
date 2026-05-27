@@ -96,3 +96,21 @@ def test_for_symbol_untracked_is_high_vol(monkeypatch):
 
     out = V.for_symbol("277810", latest)   # 미추적 미래기술
     assert out.action == "관망"            # 신호 약함
+
+
+def test_verdicts_for_state_covers_held_and_alerted(monkeypatch):
+    from corvin_jarvis.signals import verdict as V
+    latest = {"portfolio": [{"symbol": "NVDA"}], "indices": {}, "universe": []}
+    alerts = [
+        {"category": "universe", "metric": "universe_000660_confirmed", "value": 9.3, "severity": "high"},
+        {"category": "leading_rs", "metric": "rs_005930_confirmed", "value": 5.0, "severity": "medium"},
+        {"category": "narrative", "metric": "foreign_net_buy", "value": 2.4, "severity": "high"},
+    ]
+
+    def fake_for_symbol(sym, lt):
+        return V.Verdict(symbol=sym, action="관망", confidence="중", rationale="test")
+    monkeypatch.setattr(V, "for_symbol", fake_for_symbol)
+
+    out = V.verdicts_for_state(latest, alerts)
+    assert set(out.keys()) == {"NVDA", "000660", "005930"}   # held + universe + rs; narrative 제외
+    assert out["NVDA"]["action"] == "관망"
