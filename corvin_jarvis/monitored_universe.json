@@ -36,6 +36,17 @@
     {"symbol": "TSM", "market": "US", "sector": "semiconductor", "name": "TSMC"},
     {"symbol": "MU", "market": "US", "sector": "semiconductor", "name": "Micron"},
     {"symbol": "QCOM", "market": "US", "sector": "semiconductor", "name": "Qualcomm"},
-    {"symbol": "ORCL", "market": "US", "sector": "bigtech", "name": "Oracle"}
+    {"symbol": "ORCL", "market": "US", "sector": "bigtech", "name": "Oracle"},
+    {"symbol": "277810", "market": "KR", "sector": "humanoid", "name": "레인보우로보틱스"},
+    {"symbol": "454910", "market": "KR", "sector": "humanoid", "name": "두산로보틱스"},
+    {"symbol": "RKLB", "market": "US", "sector": "space", "name": "Rocket Lab"},
+    {"symbol": "ASTS", "market": "US", "sector": "space", "name": "AST SpaceMobile"},
+    {"symbol": "LUNR", "market": "US", "sector": "space", "name": "Intuitive Machines"},
+    {"symbol": "078160", "market": "KR", "sector": "stem_cell", "name": "메디포스트"},
+    {"symbol": "085660", "market": "KR", "sector": "stem_cell", "name": "차바이오텍"},
+    {"symbol": "065660", "market": "KR", "sector": "stem_cell", "name": "안트로젠"},
+    {"symbol": "IONQ", "market": "US", "sector": "quantum", "name": "IonQ"},
+    {"symbol": "RGTI", "market": "US", "sector": "quantum", "name": "Rigetti"},
+    {"symbol": "QBTS", "market": "US", "sector": "quantum", "name": "D-Wave Quantum"}
   ]
 }

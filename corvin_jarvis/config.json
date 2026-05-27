@@ -40,6 +40,10 @@
       "semiconductor": 3.0,
       "shipbuilding": 4.0,
       "defense": 4.0,
+      "humanoid": 8.0,
+      "space": 8.0,
+      "stem_cell": 8.0,
+      "quantum": 10.0,
       "_default": 4.0
     },
     "leading": {
