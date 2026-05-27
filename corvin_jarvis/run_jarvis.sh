@@ -32,7 +32,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Jarvis 시작" >> "$LOG"
 # Full pipeline: pulse → compare → geo_signal → narrate → briefing
 "$PY" "$SCRIPT_DIR/jarvis.py" >> "$LOG" 2>&1 || echo "[ERROR] jarvis.py 실패" >> "$LOG"
 
-# Multi-channel notify: Discord webhook + iMessage + file fallback
-"$PY" "$SCRIPT_DIR/notify.py" >> "$LOG" 2>&1 || echo "[ERROR] notify.py 실패" >> "$LOG"
+# Multi-channel notify (urgent 모드: HIGH/CRITICAL만 push). 전체 다이제스트는 run_digest.sh.
+"$PY" "$SCRIPT_DIR/notify.py" urgent >> "$LOG" 2>&1 || echo "[ERROR] notify.py 실패" >> "$LOG"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Jarvis 완료" >> "$LOG"
