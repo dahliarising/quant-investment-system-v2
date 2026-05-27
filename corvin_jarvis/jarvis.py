@@ -37,6 +37,7 @@ BRIEFING_FILE = STATE_DIR / "briefing.md"
 BRIEFING_HISTORY = STATE_DIR / "briefings"
 LATEST_FILE = STATE_DIR / "latest.json"
 ALERTS_FILE = STATE_DIR / "alerts.json"
+VERDICTS_FILE = STATE_DIR / "verdicts.json"
 WIKI_DIR = Path("/Users/thethethe/Claude/llm-wiki/wiki/corvin-sessions")
 
 log = logging.getLogger("corvin.jarvis")
@@ -404,6 +405,20 @@ def merge_signal_alerts() -> int:
     return len(s_alerts)
 
 
+def compute_and_write_verdicts() -> int:
+    """보유 + 알림 종목에 대한 행동 판정을 state/verdicts.json에 기록."""
+    from corvin_jarvis.signals import verdict
+
+    latest = _load(LATEST_FILE) or {}
+    if not latest:
+        return 0
+    alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+    verdicts = verdict.verdicts_for_state(latest, alerts)
+    VERDICTS_FILE.write_text(json.dumps(verdicts, indent=2, ensure_ascii=False))
+    log.info("Verdicts computed: %d symbols", len(verdicts))
+    return len(verdicts)
+
+
 def detect_and_merge_regime_alert() -> dict[str, Any]:
     """regime 라벨링 + 전환 시 alert merge. 반환: regime dict."""
     snapshot = _load(LATEST_FILE) or {}
@@ -442,6 +457,7 @@ def run_jarvis() -> Path:
     merge_predictive_alerts()
     merge_signal_alerts()
     detect_and_merge_regime_alert()
+    compute_and_write_verdicts()
     run_weekly_attribution()
     build_geo_signal()
     build_context()

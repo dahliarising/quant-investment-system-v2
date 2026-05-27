@@ -114,3 +114,28 @@ def test_verdicts_for_state_covers_held_and_alerted(monkeypatch):
     out = V.verdicts_for_state(latest, alerts)
     assert set(out.keys()) == {"NVDA", "000660", "005930"}   # held + universe + rs; narrative 제외
     assert out["NVDA"]["action"] == "관망"
+
+
+def test_jarvis_writes_verdicts_file(tmp_path, monkeypatch):
+    import json
+    from corvin_jarvis import jarvis
+    from corvin_jarvis.signals import verdict as V
+
+    latest = {"portfolio": [{"symbol": "NVDA"}], "indices": {}, "universe": []}
+    alerts = {"alerts": [{"category": "universe", "metric": "universe_000660_confirmed",
+                          "value": 9.0, "severity": "high"}]}
+    lf = tmp_path / "latest.json"
+    af = tmp_path / "alerts.json"
+    vf = tmp_path / "verdicts.json"
+    lf.write_text(json.dumps(latest))
+    af.write_text(json.dumps(alerts))
+    monkeypatch.setattr(jarvis, "LATEST_FILE", lf)
+    monkeypatch.setattr(jarvis, "ALERTS_FILE", af)
+    monkeypatch.setattr(jarvis, "VERDICTS_FILE", vf)
+    monkeypatch.setattr(V, "for_symbol", lambda s, lt: V.Verdict(s, "홀딩", "중", "t"))
+
+    n = jarvis.compute_and_write_verdicts()
+    assert n == 2   # NVDA(held) + 000660(alerted)
+    data = json.loads(vf.read_text())
+    assert "NVDA" in data and "000660" in data
+    assert data["NVDA"]["action"] == "홀딩"
