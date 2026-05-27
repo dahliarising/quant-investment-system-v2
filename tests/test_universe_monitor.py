@@ -58,3 +58,46 @@ def test_missing_pct_change_skipped():
     ])
     cfg = {"stock_pct_change": {"default": 5.0, "overrides": {}}}
     assert universe_monitor.check_tickers(snap, cfg, phase="confirmed") == []
+
+
+def test_sector_basket_average_triggers_alert():
+    snap = _snapshot([
+        {"symbol": "005930", "market": "KR", "sector": "semiconductor", "price": 320000, "pct_change": 7.02},
+        {"symbol": "000660", "market": "KR", "sector": "semiconductor", "price": 2262000, "pct_change": 10.23},
+    ])
+    cfg = {"sector_basket_pct": {"semiconductor": 3.0, "_default": 4.0}}
+    alerts = universe_monitor.check_sectors(snap, cfg, phase="provisional")
+    assert len(alerts) == 1
+    a = alerts[0]
+    assert a["category"] == "sector"
+    assert a["metric"] == "sector_semiconductor_provisional"
+    assert abs(a["value"] - 8.625) < 0.01   # (7.02+10.23)/2
+    assert "반도체" in a["message"] or "semiconductor" in a["message"]
+
+
+def test_sector_below_threshold_no_alert():
+    snap = _snapshot([
+        {"symbol": "005380", "market": "KR", "sector": "auto", "price": 1, "pct_change": 1.0},
+        {"symbol": "000270", "market": "KR", "sector": "auto", "price": 1, "pct_change": 2.0},
+    ])
+    cfg = {"sector_basket_pct": {"_default": 4.0}}
+    assert universe_monitor.check_sectors(snap, cfg, phase="confirmed") == []
+
+
+def test_sector_default_threshold_used_when_unlisted():
+    snap = _snapshot([
+        {"symbol": "207940", "market": "KR", "sector": "bio", "price": 1, "pct_change": 5.0},
+        {"symbol": "068270", "market": "KR", "sector": "bio", "price": 1, "pct_change": 5.0},
+    ])
+    cfg = {"sector_basket_pct": {"_default": 4.0}}  # bio 미지정 → default 4.0, 평균 5.0 ≥ 4.0
+    alerts = universe_monitor.check_sectors(snap, cfg, phase="confirmed")
+    assert len(alerts) == 1
+
+
+def test_single_constituent_sector_skipped():
+    # 바스켓은 2종목 이상일 때만 의미 (개별은 check_tickers가 잡음)
+    snap = _snapshot([
+        {"symbol": "JPM", "market": "US", "sector": "finance", "price": 1, "pct_change": 9.0},
+    ])
+    cfg = {"sector_basket_pct": {"_default": 4.0}}
+    assert universe_monitor.check_sectors(snap, cfg, phase="confirmed") == []
