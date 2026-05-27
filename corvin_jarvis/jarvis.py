@@ -358,6 +358,45 @@ def merge_predictive_alerts() -> int:
     return len(p_alerts)
 
 
+def merge_signal_alerts() -> int:
+    """monitored universe 종목별 + 섹터 바스켓 alert을 phase 라벨과 함께 merge."""
+    from corvin_jarvis.signals import market_phase, universe_monitor
+
+    latest = _load(LATEST_FILE) or {}
+    if not latest.get("universe"):
+        return 0
+    cfg = _load(BASE_DIR / "config.json") or {}
+    th = cfg.get("alert_thresholds", {})
+    now = datetime.now(KST)
+
+    # market별로 universe를 쪼개 각자의 phase로 검사
+    by_market: dict[str, list[dict[str, Any]]] = {}
+    for e in latest["universe"]:
+        by_market.setdefault(e.get("market", "US"), []).append(e)
+
+    s_alerts: list[dict[str, Any]] = []
+    for market, entries in by_market.items():
+        phase = market_phase.phase_for(market, now)
+        sub = {"universe": entries}
+        s_alerts.extend(universe_monitor.check_tickers(sub, th, phase))
+        s_alerts.extend(universe_monitor.check_sectors(sub, th, phase))
+
+    if not s_alerts:
+        log.info("No universe/sector signal alerts")
+        return 0
+
+    if ALERTS_FILE.exists():
+        data = _load(ALERTS_FILE) or {}
+        data.setdefault("alerts", []).extend(s_alerts)
+        data["count"] = len(data["alerts"])
+    else:
+        data = {"alerts": s_alerts, "count": len(s_alerts),
+                "generated_at": datetime.now().isoformat(timespec="seconds")}
+    ALERTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    log.info("Signal alerts merged: %d", len(s_alerts))
+    return len(s_alerts)
+
+
 def detect_and_merge_regime_alert() -> dict[str, Any]:
     """regime 라벨링 + 전환 시 alert merge. 반환: regime dict."""
     snapshot = _load(LATEST_FILE) or {}
@@ -394,6 +433,7 @@ def run_jarvis() -> Path:
     refresh_earnings_and_merge_alerts()
     merge_narrative_alerts()
     merge_predictive_alerts()
+    merge_signal_alerts()
     detect_and_merge_regime_alert()
     run_weekly_attribution()
     build_geo_signal()

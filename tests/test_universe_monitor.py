@@ -129,3 +129,27 @@ def test_pulse_snapshot_universe_feeds_detection(monkeypatch):
     assert len(ticker_alerts) == 2          # 삼성 +7, 하이닉스 +10
     assert len(sector_alerts) == 1          # 반도체 바스켓
     assert sector_alerts[0]["metric"] == "sector_semiconductor_provisional"
+
+
+def test_merge_signal_alerts_appends_to_alerts_file(tmp_path, monkeypatch):
+    import json
+    from corvin_jarvis import jarvis
+    from corvin_jarvis.signals import market_phase
+
+    latest = {"timestamp_kst": "2026-05-27T16:00:00+09:00", "universe": [
+        {"symbol": "005930", "market": "KR", "sector": "semiconductor", "name": "삼성전자", "price": 320000, "pct_change": 7.02},
+        {"symbol": "000660", "market": "KR", "sector": "semiconductor", "name": "SK하이닉스", "price": 2262000, "pct_change": 10.23},
+    ]}
+    latest_file = tmp_path / "latest.json"
+    alerts_file = tmp_path / "alerts.json"
+    latest_file.write_text(json.dumps(latest))
+    monkeypatch.setattr(jarvis, "LATEST_FILE", latest_file)
+    monkeypatch.setattr(jarvis, "ALERTS_FILE", alerts_file)
+    monkeypatch.setattr(market_phase, "phase_for", lambda m, now=None: "confirmed")
+
+    n = jarvis.merge_signal_alerts()
+    assert n == 3   # 삼성 + 하이닉스 + 반도체 바스켓
+    data = json.loads(alerts_file.read_text())
+    metrics = {a["metric"] for a in data["alerts"]}
+    assert "universe_005930_confirmed" in metrics
+    assert "sector_semiconductor_confirmed" in metrics
