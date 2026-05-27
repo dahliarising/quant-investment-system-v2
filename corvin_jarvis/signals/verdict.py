@@ -128,7 +128,10 @@ def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
 
 
 def verdicts_for_state(latest: dict[str, Any], alerts: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
-    """보유 종목 + 오늘 alert이 가리키는 개별 종목에 대해 verdict 일괄 산출."""
+    """보유 종목 + 오늘 alert이 가리키는 개별 종목에 대해 verdict 일괄 산출 (회사명 포함)."""
+    from corvin_jarvis.signals import universe_loader
+    name_map = {t.symbol: t.name for t in universe_loader.load()}
+
     syms: set[str] = set()
     for p in latest.get("portfolio", []):
         if p.get("symbol"):
@@ -144,5 +147,6 @@ def verdicts_for_state(latest: dict[str, Any], alerts: list[dict[str, Any]]) -> 
     out: dict[str, dict[str, str]] = {}
     for s in sorted(syms):
         v = for_symbol(s, latest)
-        out[s] = {"action": v.action, "confidence": v.confidence, "rationale": v.rationale}
+        out[s] = {"action": v.action, "confidence": v.confidence,
+                  "rationale": v.rationale, "name": name_map.get(s, "")}
     return out

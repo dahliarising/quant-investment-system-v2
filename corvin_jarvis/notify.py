@@ -205,6 +205,9 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
     header = title or f"🦅 Corvin Jarvis — {datetime.now().strftime('%H:%M KST')}"
     shown = alerts[:limit]
     extra = len(alerts) - len(shown)
+    # 의미있는 판정만 노출 — "관망+신뢰도 하"(신호 없음)는 노이즈라 숨김
+    vshow = {s: vd for s, vd in (verdicts or {}).items()
+             if vd.get("action") != "관망" or vd.get("confidence") != "하"}
     if compact:
         lines = [header, f"신규 alert {len(alerts)}건:"]
         for a in shown:
@@ -216,11 +219,12 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
         lines.append("📖 해석")
         for a in shown:
             lines.append(f"• {_interpret(a)}")
-        if verdicts:
+        if vshow:
             lines.append("")
             lines.append("🎯 판정")
-            for sym, vd in verdicts.items():
-                lines.append(f"{_ACTION_EMOJI.get(vd['action'], '')} {sym} {vd['action']}")
+            for sym, vd in vshow.items():
+                label = vd.get("name") or sym
+                lines.append(f"{_ACTION_EMOJI.get(vd['action'], '')} {label} {vd['action']}")
         return "\n".join(lines)
     lines = [f"## {header}", f"\n신규 alert **{len(alerts)}건**:\n"]
     for a in shown:
@@ -231,11 +235,12 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
     lines.append("\n**📖 해석**")
     for a in shown:
         lines.append(f"- {_interpret(a)}")
-    if verdicts:
+    if vshow:
         lines.append("\n**🎯 행동 판정**")
-        for sym, vd in verdicts.items():
+        for sym, vd in vshow.items():
             e = _ACTION_EMOJI.get(vd["action"], "")
-            lines.append(f"{e} **{sym} {vd['action']}** (신뢰도 {vd['confidence']}) — {vd['rationale']}")
+            label = f"{vd['name']}({sym})" if vd.get("name") else sym
+            lines.append(f"{e} **{label} {vd['action']}** (신뢰도 {vd['confidence']}) — {vd['rationale']}")
     return "\n".join(lines)
 
 

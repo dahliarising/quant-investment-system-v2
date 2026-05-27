@@ -127,3 +127,14 @@ def test_format_message_no_verdict_section_when_empty():
     alerts = [{"category": "universe", "metric": "u", "value": 9.0, "message": "x", "severity": "high"}]
     msg = notify._format_message(alerts, compact=False, title="t", limit=8, verdicts={})
     assert "🎯 행동 판정" not in msg
+
+
+def test_format_message_hides_low_conf_watch_verdicts():
+    alerts = [{"category": "universe", "metric": "u", "value": 9.0, "message": "x", "severity": "high"}]
+    verdicts = {
+        "NVDA": {"action": "홀딩", "confidence": "상", "rationale": "보유 논리 유효"},
+        "005490": {"action": "관망", "confidence": "하", "rationale": "뚜렷한 신호 없음"},
+    }
+    msg = notify._format_message(alerts, compact=False, title="t", limit=8, verdicts=verdicts)
+    assert "NVDA" in msg          # 홀딩은 표시
+    assert "005490" not in msg    # 관망+신뢰도 하 = 노이즈라 숨김
