@@ -358,9 +358,12 @@ def merge_predictive_alerts() -> int:
     return len(p_alerts)
 
 
+_INDEX_FOR_MARKET = {"KR": "kospi", "US": "sp500"}
+
+
 def merge_signal_alerts() -> int:
-    """monitored universe 종목별 + 섹터 바스켓 alert을 phase 라벨과 함께 merge."""
-    from corvin_jarvis.signals import market_phase, universe_monitor
+    """monitored universe 종목별 + 섹터 바스켓 + 상대강도(RS) alert을 phase 라벨과 함께 merge."""
+    from corvin_jarvis.signals import leading, market_phase, universe_monitor
 
     latest = _load(LATEST_FILE) or {}
     if not latest.get("universe"):
@@ -380,6 +383,10 @@ def merge_signal_alerts() -> int:
         sub = {"universe": entries}
         s_alerts.extend(universe_monitor.check_tickers(sub, th, phase))
         s_alerts.extend(universe_monitor.check_sectors(sub, th, phase))
+        idx_name = _INDEX_FOR_MARKET.get(market)
+        idx_q = latest.get("indices", {}).get(idx_name, {}) if idx_name else {}
+        idx_pct = idx_q.get("pct_change") if isinstance(idx_q, dict) else None
+        s_alerts.extend(leading.check_relative_strength(entries, idx_pct, th, phase, index_name=idx_name or ""))
 
     if not s_alerts:
         log.info("No universe/sector signal alerts")

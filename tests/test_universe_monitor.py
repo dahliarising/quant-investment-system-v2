@@ -153,3 +153,28 @@ def test_merge_signal_alerts_appends_to_alerts_file(tmp_path, monkeypatch):
     metrics = {a["metric"] for a in data["alerts"]}
     assert "universe_005930_confirmed" in metrics
     assert "sector_semiconductor_confirmed" in metrics
+
+
+def test_merge_signal_alerts_includes_relative_strength(tmp_path, monkeypatch):
+    import json
+    from corvin_jarvis import jarvis
+    from corvin_jarvis.signals import market_phase
+
+    latest = {
+        "timestamp_kst": "2026-05-27T16:00:00+09:00",
+        "indices": {"kospi": {"price": 8000, "pct_change": 2.5}},
+        "universe": [
+            {"symbol": "005930", "market": "KR", "sector": "semiconductor", "name": "삼성전자", "price": 320000, "pct_change": 7.02},
+        ],
+    }
+    latest_file = tmp_path / "latest.json"
+    alerts_file = tmp_path / "alerts.json"
+    latest_file.write_text(json.dumps(latest))
+    monkeypatch.setattr(jarvis, "LATEST_FILE", latest_file)
+    monkeypatch.setattr(jarvis, "ALERTS_FILE", alerts_file)
+    monkeypatch.setattr(market_phase, "phase_for", lambda m, now=None: "confirmed")
+
+    jarvis.merge_signal_alerts()
+    data = json.loads(alerts_file.read_text())
+    metrics = {a["metric"] for a in data["alerts"]}
+    assert "rs_005930_confirmed" in metrics      # 7.02 vs kospi 2.5 → RS +4.52%p
