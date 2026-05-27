@@ -31,6 +31,16 @@
       "pnl_alert_pct": 10.0,
       "stop_loss_pct": -8.0,
       "take_profit_pct": 25.0
+    },
+    "stock_pct_change": {
+      "default": 5.0,
+      "overrides": {"005930": 4.0, "000660": 4.0}
+    },
+    "sector_basket_pct": {
+      "semiconductor": 3.0,
+      "shipbuilding": 4.0,
+      "defense": 4.0,
+      "_default": 4.0
     }
   },
   "schedule": {
@@ -48,6 +58,16 @@
   "trade_execution": {
     "mode": "advisory_only",
     "_note": "CLAUDE.md: 실제 매매 주문 금지 (모의만)"
+  },
+  "dca": {
+    "_comment": "Daily DCA Timing (Tier 2.4) — Value-tilted, Tier-weighted, score≥50",
+    "daily_budget_krw": 50000,
+    "score_threshold": 50,
+    "schedule_kst": {
+      "_comment": "장마감 후 실행 = 완성봉(confirmed close) 기준. 장전/장중 미완성봉 착시 방지.",
+      "kr_window": "15:40",
+      "us_window": "06:30"
+    }
   },
   "narrative_continuity": {
     "wiki_dir": "/Users/thethethe/Claude/llm-wiki/wiki/corvin-sessions/",
