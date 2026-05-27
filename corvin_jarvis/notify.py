@@ -28,6 +28,7 @@ import requests
 BASE_DIR = Path(__file__).resolve().parent
 STATE_DIR = BASE_DIR / "state"
 ALERTS_FILE = STATE_DIR / "alerts.json"
+VERDICTS_FILE = STATE_DIR / "verdicts.json"
 BRIEFING_FILE = STATE_DIR / "briefing.md"
 CONFIG_FILE = BASE_DIR / "config.json"
 PORTFOLIO_FILE = BASE_DIR.parent / "portfolio.json"
@@ -193,8 +194,12 @@ def _interpret(alert: dict[str, Any]) -> str:
     return alert.get("message", "")
 
 
+_ACTION_EMOJI = {"매수": "🟢", "분할매수": "🔵", "홀딩": "⚪", "비중축소": "🟠", "매도": "🔴", "관망": "⏸"}
+
+
 def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
-                    title: str = "", limit: int = 5) -> str:
+                    title: str = "", limit: int = 5,
+                    verdicts: dict[str, Any] | None = None) -> str:
     if not alerts:
         return ""
     header = title or f"🦅 Corvin Jarvis — {datetime.now().strftime('%H:%M KST')}"
@@ -211,6 +216,11 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
         lines.append("📖 해석")
         for a in shown:
             lines.append(f"• {_interpret(a)}")
+        if verdicts:
+            lines.append("")
+            lines.append("🎯 판정")
+            for sym, vd in verdicts.items():
+                lines.append(f"{_ACTION_EMOJI.get(vd['action'], '')} {sym} {vd['action']}")
         return "\n".join(lines)
     lines = [f"## {header}", f"\n신규 alert **{len(alerts)}건**:\n"]
     for a in shown:
@@ -221,6 +231,11 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
     lines.append("\n**📖 해석**")
     for a in shown:
         lines.append(f"- {_interpret(a)}")
+    if verdicts:
+        lines.append("\n**🎯 행동 판정**")
+        for sym, vd in verdicts.items():
+            e = _ACTION_EMOJI.get(vd["action"], "")
+            lines.append(f"{e} **{sym} {vd['action']}** (신뢰도 {vd['confidence']}) — {vd['rationale']}")
     return "\n".join(lines)
 
 
@@ -298,8 +313,9 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     if not fresh:
         return NotifyResult(pushed=0, skipped_dedup=skipped_dedup, skipped_severity=skipped_sev, channels_delivered=[])
 
-    msg_long = _format_message(fresh, compact=False, title=title, limit=limit)
-    msg_short = _format_message(fresh, compact=True, title=title, limit=limit)
+    verdicts = _load_json(VERDICTS_FILE) or None
+    msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts)
+    msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts)
     delivered: list[str] = []
 
     webhook = _webhook_url()

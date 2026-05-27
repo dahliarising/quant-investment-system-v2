@@ -108,3 +108,22 @@ def test_format_message_appends_interpretation():
     msg = notify._format_message(alerts, compact=False, title="t", limit=8)
     assert "📖 해석" in msg
     assert "000660" in msg
+
+
+def test_format_message_appends_verdicts():
+    alerts = [{"category": "universe", "metric": "universe_000660_confirmed", "value": 9.0,
+               "message": "✅ SK하이닉스 급등", "severity": "high"}]
+    verdicts = {
+        "NVDA": {"action": "홀딩", "confidence": "상", "rationale": "보유 논리 유효"},
+        "000660": {"action": "관망", "confidence": "중", "rationale": "추격 위험"},
+    }
+    msg = notify._format_message(alerts, compact=False, title="t", limit=8, verdicts=verdicts)
+    assert "🎯 행동 판정" in msg
+    assert "NVDA" in msg and "홀딩" in msg
+    assert "관망" in msg
+
+
+def test_format_message_no_verdict_section_when_empty():
+    alerts = [{"category": "universe", "metric": "u", "value": 9.0, "message": "x", "severity": "high"}]
+    msg = notify._format_message(alerts, compact=False, title="t", limit=8, verdicts={})
+    assert "🎯 행동 판정" not in msg
