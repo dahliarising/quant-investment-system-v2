@@ -1,7 +1,7 @@
 """Corvin Jarvis — Pulse (Phase 1)
 
 매 시간 cron으로 호출되어 시장/원자재/FX/포트폴리오 snapshot을 state/에 저장.
-순수 Python only — MCP 의존 없음 (cron 환경에서 작동해야 함).
+시세는 quote_provider 어댑터를 통해 KIS 우선 + yfinance/pykrx 폴백.
 
 사용:
     python corvin_jarvis/pulse.py
@@ -12,20 +12,19 @@ import json
 import logging
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import yfinance as yf
-
-# scripts/kr_data.py 재사용
+# scripts/kr_data.py 재사용 (pulse → quote_provider → kr_data fallback)
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from kr_data import get_kr_index_data, get_kr_stock_data, is_korean_ticker  # noqa: E402
+from corvin_jarvis import quote_provider  # noqa: E402
+from kr_data import is_korean_ticker  # noqa: E402
 
 KST = ZoneInfo("Asia/Seoul")
 UTC = timezone.utc
@@ -50,14 +49,6 @@ log = logging.getLogger("corvin.pulse")
 
 
 @dataclass(frozen=True)
-class Quote:
-    price: float | None
-    pct_change: float | None
-    source: str
-    error: str | None = None
-
-
-@dataclass(frozen=True)
 class PositionQuote:
     symbol: str
     shares: float
@@ -66,6 +57,7 @@ class PositionQuote:
     current_price: float | None
     pnl_pct: float | None
     market_value: float | None
+    source: str = ""
     error: str | None = None
 
 
@@ -79,55 +71,17 @@ class Snapshot:
     portfolio: list[dict[str, Any]] = field(default_factory=list)
     portfolio_summary: dict[str, Any] = field(default_factory=dict)
     watchlist: list[dict[str, Any]] = field(default_factory=list)
-
-
-def _yf_quote(ticker: str) -> Quote:
-    """yfinance로 2일 history fetch해서 last + pct_change."""
-    try:
-        hist = yf.Ticker(ticker).history(period="5d")
-        if hist.empty:
-            return Quote(price=None, pct_change=None, source="yfinance", error="no data")
-        last = float(hist["Close"].iloc[-1])
-        prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else last
-        pct = (last / prev - 1) * 100 if prev else 0.0
-        return Quote(price=round(last, 4), pct_change=round(pct, 2), source="yfinance")
-    except Exception as e:  # noqa: BLE001
-        return Quote(price=None, pct_change=None, source="yfinance", error=str(e))
+    universe: list[dict[str, Any]] = field(default_factory=list)
 
 
 def fetch_indices() -> dict[str, dict[str, Any]]:
-    """미국 지수는 yfinance, 한국 지수는 FinanceDataReader (kr_data.py 활용)."""
+    """US 지수 + KR 지수 모두 quote_provider로 통일."""
     out: dict[str, dict[str, Any]] = {}
-
-    # 미국 지수
     us_indices = {"sp500": "^GSPC", "nasdaq": "^IXIC", "dow": "^DJI", "vix": "^VIX"}
-    for name, tkr in us_indices.items():
-        q = _yf_quote(tkr)
-        out[name] = asdict(q)
-
-    # 한국 지수 (pykrx/FDR로 강제)
-    try:
-        kospi = get_kr_index_data("KS11")
-        out["kospi"] = {
-            "price": kospi.get("현재가"),
-            "pct_change": kospi.get("전일대비(%)"),
-            "source": "FinanceDataReader",
-            "error": kospi.get("에러"),
-        }
-    except Exception as e:  # noqa: BLE001
-        out["kospi"] = {"price": None, "pct_change": None, "source": "FDR", "error": str(e)}
-
-    try:
-        kosdaq = get_kr_index_data("KQ11")
-        out["kosdaq"] = {
-            "price": kosdaq.get("현재가"),
-            "pct_change": kosdaq.get("전일대비(%)"),
-            "source": "FinanceDataReader",
-            "error": kosdaq.get("에러"),
-        }
-    except Exception as e:  # noqa: BLE001
-        out["kosdaq"] = {"price": None, "pct_change": None, "source": "FDR", "error": str(e)}
-
+    for name, sym in us_indices.items():
+        out[name] = quote_provider.get_us_index_quote(sym).to_dict()
+    out["kospi"] = quote_provider.get_kr_index_quote("KS11").to_dict()
+    out["kosdaq"] = quote_provider.get_kr_index_quote("KQ11").to_dict()
     return out
 
 
@@ -139,7 +93,7 @@ def fetch_commodities() -> dict[str, dict[str, Any]]:
         "silver": "SI=F",
         "copper": "HG=F",
     }
-    return {name: asdict(_yf_quote(tkr)) for name, tkr in tickers.items()}
+    return {name: quote_provider.get_commodity_quote(s).to_dict() for name, s in tickers.items()}
 
 
 def fetch_fx() -> dict[str, dict[str, Any]]:
@@ -149,11 +103,10 @@ def fetch_fx() -> dict[str, dict[str, Any]]:
         "jpy_krw": "JPYKRW=X",
         "dxy": "DX-Y.NYB",
     }
-    return {name: asdict(_yf_quote(tkr)) for name, tkr in pairs.items()}
+    return {name: quote_provider.get_fx_quote(s).to_dict() for name, s in pairs.items()}
 
 
 def load_watchlist(config_path: Path = CONFIG_FILE) -> list[str]:
-    """config.json의 watchlist 리스트 반환. 누락/없음 → 빈 리스트."""
     if not config_path.exists():
         return []
     try:
@@ -166,26 +119,35 @@ def load_watchlist(config_path: Path = CONFIG_FILE) -> list[str]:
 
 
 def fetch_watchlist(symbols: list[str]) -> list[dict[str, Any]]:
-    """holdings와 동일한 quote 인터페이스로 watchlist 가격 수집."""
     out: list[dict[str, Any]] = []
     for sym in symbols:
-        try:
-            if is_korean_ticker(sym):
-                data = get_kr_stock_data(sym)
-                if "에러" in data:
-                    out.append({"symbol": sym, "price": None, "pct_change": None,
-                                "source": "FinanceDataReader", "error": data["에러"]})
-                else:
-                    out.append({"symbol": sym, "price": float(data["현재가"]),
-                                "pct_change": float(data.get("전일대비(%)", 0.0)),
-                                "source": "FinanceDataReader", "error": None})
-            else:
-                q = _yf_quote(sym)
-                out.append({"symbol": sym, "price": q.price, "pct_change": q.pct_change,
-                            "source": q.source, "error": q.error})
-        except Exception as e:  # noqa: BLE001
-            out.append({"symbol": sym, "price": None, "pct_change": None,
-                        "source": "unknown", "error": str(e)})
+        q = quote_provider.get_stock_quote(sym)
+        out.append({
+            "symbol": sym,
+            "price": q.price,
+            "pct_change": q.pct_change,
+            "source": q.source,
+            "error": q.error,
+        })
+    return out
+
+
+def fetch_universe() -> list[dict[str, Any]]:
+    """monitored_universe.json 종목 시세 fetch (alert 감지용)."""
+    from corvin_jarvis.signals import universe_loader
+    out: list[dict[str, Any]] = []
+    for t in universe_loader.load():
+        q = quote_provider.get_stock_quote(t.symbol)
+        out.append({
+            "symbol": t.symbol,
+            "market": t.market,
+            "sector": t.sector,
+            "name": t.name,
+            "price": q.price,
+            "pct_change": q.pct_change,
+            "source": q.source,
+            "error": q.error,
+        })
     return out
 
 
@@ -196,35 +158,22 @@ def _fetch_position_quote(holding: dict[str, Any]) -> PositionQuote:
     avg_key = "avgPriceKRW" if cur == "KRW" else "avgPriceUSD"
     avg = float(holding.get("avgPrice") or holding[avg_key])
 
-    try:
-        if is_korean_ticker(sym):
-            data = get_kr_stock_data(sym)
-            if "에러" in data:
-                return PositionQuote(
-                    symbol=sym, shares=shares, avg_price=avg, currency=cur,
-                    current_price=None, pnl_pct=None, market_value=None, error=data["에러"],
-                )
-            price = float(data["현재가"])
-        else:
-            q = _yf_quote(sym)
-            if q.error or q.price is None:
-                return PositionQuote(
-                    symbol=sym, shares=shares, avg_price=avg, currency=cur,
-                    current_price=None, pnl_pct=None, market_value=None, error=q.error,
-                )
-            price = q.price
+    q = quote_provider.get_stock_quote(sym)
+    if q.error or q.price is None:
+        return PositionQuote(
+            symbol=sym, shares=shares, avg_price=avg, currency=cur,
+            current_price=None, pnl_pct=None, market_value=None,
+            source=q.source, error=q.error,
+        )
 
-        pnl = (price / avg - 1) * 100 if avg else 0.0
-        return PositionQuote(
-            symbol=sym, shares=shares, avg_price=avg, currency=cur,
-            current_price=round(price, 4), pnl_pct=round(pnl, 2),
-            market_value=round(price * shares, 2),
-        )
-    except Exception as e:  # noqa: BLE001
-        return PositionQuote(
-            symbol=sym, shares=shares, avg_price=avg, currency=cur,
-            current_price=None, pnl_pct=None, market_value=None, error=str(e),
-        )
+    price = q.price
+    pnl = (price / avg - 1) * 100 if avg else 0.0
+    return PositionQuote(
+        symbol=sym, shares=shares, avg_price=avg, currency=cur,
+        current_price=round(price, 4), pnl_pct=round(pnl, 2),
+        market_value=round(price * shares, 2),
+        source=q.source,
+    )
 
 
 def fetch_portfolio() -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -286,6 +235,8 @@ def run_pulse() -> Path:
     snapshot.portfolio, snapshot.portfolio_summary = fetch_portfolio()
     log.info("Fetching watchlist...")
     snapshot.watchlist = fetch_watchlist(load_watchlist())
+    log.info("Fetching monitored universe...")
+    snapshot.universe = fetch_universe()
 
     snapshot_path = SNAPSHOTS_DIR / f"{now_kst.strftime('%Y%m%d-%H%M')}.json"
     snapshot_dict = asdict(snapshot)
@@ -307,7 +258,8 @@ def _print_summary(snapshot_path: Path) -> None:
     data = json.loads(snapshot_path.read_text())
     log.info("=== Pulse Summary ===")
     for name, q in data["indices"].items():
-        log.info("  [IDX] %-8s %s  (%+.2f%%)", name, q.get("price"), q.get("pct_change") or 0)
+        log.info("  [IDX] %-8s %s  (%+.2f%%) %s",
+                 name, q.get("price"), q.get("pct_change") or 0, q.get("source", ""))
     for name, q in data["commodities"].items():
         log.info("  [CMD] %-8s %s  (%+.2f%%)", name, q.get("price"), q.get("pct_change") or 0)
     for name, q in data["fx"].items():
@@ -318,7 +270,8 @@ def _print_summary(snapshot_path: Path) -> None:
              data["portfolio_summary"].get("total_value_usd"))
     for w in data.get("watchlist", []):
         if w.get("price") is not None:
-            log.info("  [WL]  %-8s %s  (%+.2f%%)", w["symbol"], w["price"], w.get("pct_change") or 0)
+            log.info("  [WL]  %-8s %s  (%+.2f%%) %s",
+                     w["symbol"], w["price"], w.get("pct_change") or 0, w.get("source", ""))
 
 
 if __name__ == "__main__":

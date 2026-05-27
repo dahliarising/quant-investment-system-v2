@@ -101,3 +101,31 @@ def test_single_constituent_sector_skipped():
     ])
     cfg = {"sector_basket_pct": {"_default": 4.0}}
     assert universe_monitor.check_sectors(snap, cfg, phase="confirmed") == []
+
+
+def test_pulse_snapshot_universe_feeds_detection(monkeypatch):
+    """pulse가 채운 universe를 universe_monitor가 소비하는 end-to-end 검증."""
+    from corvin_jarvis import pulse
+    from corvin_jarvis.signals import universe_loader
+
+    class _Q:
+        def __init__(self, price, pct):
+            self.price, self.pct_change, self.source, self.error = price, pct, "stub", None
+
+    fake = {"005930": _Q(320000, 7.02), "000660": _Q(2262000, 10.23)}
+    monkeypatch.setattr(universe_loader, "load", lambda *a, **k: [
+        universe_loader.MonitoredTicker("005930", "KR", "semiconductor", "삼성전자"),
+        universe_loader.MonitoredTicker("000660", "KR", "semiconductor", "SK하이닉스"),
+    ])
+    monkeypatch.setattr(pulse.quote_provider, "get_stock_quote", lambda s: fake[s])
+
+    universe = pulse.fetch_universe()
+    snap = {"universe": universe}
+    cfg = {"stock_pct_change": {"default": 5.0, "overrides": {}},
+           "sector_basket_pct": {"semiconductor": 3.0, "_default": 4.0}}
+
+    ticker_alerts = universe_monitor.check_tickers(snap, cfg, phase="provisional")
+    sector_alerts = universe_monitor.check_sectors(snap, cfg, phase="provisional")
+    assert len(ticker_alerts) == 2          # 삼성 +7, 하이닉스 +10
+    assert len(sector_alerts) == 1          # 반도체 바스켓
+    assert sector_alerts[0]["metric"] == "sector_semiconductor_provisional"
