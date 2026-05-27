@@ -1,0 +1,28 @@
+{
+  "_comment": "지수 견인 대형주 감시 유니버스 — alert 전용. DCA universe.json과 별개.",
+  "_updated": "2026-05-27",
+  "tickers": [
+    {"symbol": "005930", "market": "KR", "sector": "semiconductor", "name": "삼성전자"},
+    {"symbol": "000660", "market": "KR", "sector": "semiconductor", "name": "SK하이닉스"},
+    {"symbol": "373220", "market": "KR", "sector": "battery", "name": "LG에너지솔루션"},
+    {"symbol": "207940", "market": "KR", "sector": "bio", "name": "삼성바이오로직스"},
+    {"symbol": "005380", "market": "KR", "sector": "auto", "name": "현대차"},
+    {"symbol": "000270", "market": "KR", "sector": "auto", "name": "기아"},
+    {"symbol": "035420", "market": "KR", "sector": "internet", "name": "NAVER"},
+    {"symbol": "035720", "market": "KR", "sector": "internet", "name": "카카오"},
+    {"symbol": "068270", "market": "KR", "sector": "bio", "name": "셀트리온"},
+    {"symbol": "005490", "market": "KR", "sector": "steel", "name": "POSCO홀딩스"},
+    {"symbol": "329180", "market": "KR", "sector": "shipbuilding", "name": "HD현대중공업"},
+    {"symbol": "012450", "market": "KR", "sector": "defense", "name": "한화에어로스페이스"},
+    {"symbol": "AAPL", "market": "US", "sector": "bigtech", "name": "Apple"},
+    {"symbol": "MSFT", "market": "US", "sector": "bigtech", "name": "Microsoft"},
+    {"symbol": "NVDA", "market": "US", "sector": "semiconductor", "name": "NVIDIA"},
+    {"symbol": "AMZN", "market": "US", "sector": "bigtech", "name": "Amazon"},
+    {"symbol": "GOOGL", "market": "US", "sector": "bigtech", "name": "Alphabet"},
+    {"symbol": "META", "market": "US", "sector": "bigtech", "name": "Meta"},
+    {"symbol": "AVGO", "market": "US", "sector": "semiconductor", "name": "Broadcom"},
+    {"symbol": "TSLA", "market": "US", "sector": "auto", "name": "Tesla"},
+    {"symbol": "LLY", "market": "US", "sector": "pharma", "name": "Eli Lilly"},
+    {"symbol": "JPM", "market": "US", "sector": "finance", "name": "JPMorgan"}
+  ]
+}
