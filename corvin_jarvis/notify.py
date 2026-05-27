@@ -68,10 +68,6 @@ def _config() -> dict[str, Any]:
     return _load_json(CONFIG_FILE)
 
 
-def _min_severity() -> str:
-    return _config().get("notification", {}).get("minimum_alert_severity", "high")
-
-
 def _imessage_recipient() -> str | None:
     rec = _config().get("notification", {}).get("imessage_recipient")
     return rec if rec else None
