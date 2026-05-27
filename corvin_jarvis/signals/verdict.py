@@ -62,8 +62,10 @@ def decide(ctx: dict[str, Any]) -> Verdict:
     return v("관망", "하", "뚜렷한 진입 신호 없음 — 관찰")
 
 
-_SECTOR_TH = {"semiconductor": 3.0, "shipbuilding": 4.0, "defense": 4.0}
+_SECTOR_TH = {"semiconductor": 3.0, "shipbuilding": 4.0, "defense": 4.0,
+              "humanoid": 8.0, "space": 8.0, "stem_cell": 8.0, "quantum": 10.0}
 _SECTOR_TH_DEFAULT = 4.0
+_MOONSHOT_SECTORS = {"humanoid", "space", "stem_cell", "quantum"}
 
 
 def _dca_value_score(prices: list[float]) -> int:
@@ -122,7 +124,7 @@ def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
     ctx = {
         "symbol": symbol, "held": held, "pnl_pct": pnl, "dca_score": dca_score,
         "rs": rs, "pct_today": pct_today, "theme_alive": _theme_alive(latest, sector),
-        "high_vol": sector is None,   # monitored_universe 미포함 = 무어샷(보수)
+        "high_vol": sector is None or sector in _MOONSHOT_SECTORS,  # 미추적 or 미래기술 무어샷 = 보수
     }
     return decide(ctx)
 

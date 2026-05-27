@@ -116,6 +116,30 @@ def test_verdicts_for_state_covers_held_and_alerted(monkeypatch):
     assert out["NVDA"]["action"] == "관망"
 
 
+def test_for_symbol_moonshot_sector_capped_confidence(monkeypatch):
+    from corvin_jarvis.signals import verdict as V
+    from corvin_jarvis import quote_provider, dca_timing
+
+    latest = {
+        "indices": {"kospi": {"pct_change": 1.0}},
+        "portfolio": [],
+        "universe": [
+            {"symbol": "277810", "market": "KR", "sector": "humanoid", "pct_change": 9.0},
+            {"symbol": "454910", "market": "KR", "sector": "humanoid", "pct_change": 9.0},
+        ],
+    }
+
+    class _Q:
+        price, pct_change, source, error = 100.0, 9.0, "stub", None
+    monkeypatch.setattr(quote_provider, "get_stock_quote", lambda s: _Q())
+    monkeypatch.setattr(dca_timing, "default_fetcher", lambda s, days=252: [100.0] * 60)
+    monkeypatch.setattr(V, "_dca_value_score", lambda prices: 80)   # 깊은 저평가
+
+    out = V.for_symbol("277810", latest)
+    # 휴머노이드=무어샷 → high_vol → 깊은저평가+테마+주도주여도 신뢰도 "상" 아닌 "중"
+    assert out.action == "매수" and out.confidence == "중"
+
+
 def test_jarvis_writes_verdicts_file(tmp_path, monkeypatch):
     import json
     from corvin_jarvis import jarvis
