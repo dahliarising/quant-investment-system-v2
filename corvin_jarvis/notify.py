@@ -175,7 +175,9 @@ def _interpret(alert: dict[str, Any]) -> str:
     if cat == "commodity":
         return f"{metric.upper()}(원자재) {abs(v):.1f}% {'상승' if up else '하락'}"
     if cat == "fx":
-        return "원/달러 환율 1500원 위 — 원화 약세(보유 미국주식엔 환차익 우호)"
+        if "daily" in metric:
+            return f"원/달러 환율이 하루새 {abs(v):.1f}% {'상승(원화 약세)' if up else '하락(원화 강세)'}"
+        return f"원/달러 {v:.0f}원 — 원화 약세 영역(보유 미국주식엔 환차익 우호)"
     if cat == "risk":
         return "공포지수(VIX) 상승 — 시장 불안 신호"
     if cat == "acceleration":
