@@ -41,6 +41,9 @@
       "shipbuilding": 4.0,
       "defense": 4.0,
       "_default": 4.0
+    },
+    "leading": {
+      "rs_min_pct": 2.0
     }
   },
   "schedule": {
