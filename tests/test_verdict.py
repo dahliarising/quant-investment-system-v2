@@ -57,3 +57,42 @@ def test_moonshot_spike_threshold_higher():
     # 무어샷은 +12%로는 관망 안 됨(±15% 기준), 정상 매수 로직 적용
     v = verdict.decide(_ctx(held=False, pct_today=12.0, dca_score=62, theme_alive=True, high_vol=True))
     assert v.action == "분할매수"
+
+
+def test_for_symbol_builds_context_and_decides(monkeypatch):
+    from corvin_jarvis.signals import verdict as V
+    from corvin_jarvis import quote_provider, dca_timing
+
+    latest = {
+        "indices": {"kospi": {"pct_change": 2.0}, "sp500": {"pct_change": 0.5}},
+        "portfolio": [],
+        "universe": [
+            {"symbol": "000660", "market": "KR", "sector": "semiconductor", "pct_change": 6.0},
+            {"symbol": "005930", "market": "KR", "sector": "semiconductor", "pct_change": 5.0},
+        ],
+    }
+
+    class _Q:
+        price, pct_change, source, error = 1000.0, 5.0, "stub", None
+    monkeypatch.setattr(quote_provider, "get_stock_quote", lambda s: _Q())
+    monkeypatch.setattr(dca_timing, "default_fetcher", lambda s, days=252: [100.0] * 60)
+    monkeypatch.setattr(V, "_dca_value_score", lambda prices: 80)
+
+    out = V.for_symbol("000660", latest)
+    assert out.symbol == "000660"
+    assert out.action in ("매수", "분할매수")   # 저평가+테마+주도주
+
+
+def test_for_symbol_untracked_is_high_vol(monkeypatch):
+    from corvin_jarvis.signals import verdict as V
+    from corvin_jarvis import quote_provider, dca_timing
+    latest = {"indices": {}, "portfolio": [], "universe": []}
+
+    class _Q:
+        price, pct_change, source, error = 50.0, 1.0, "stub", None
+    monkeypatch.setattr(quote_provider, "get_stock_quote", lambda s: _Q())
+    monkeypatch.setattr(dca_timing, "default_fetcher", lambda s, days=252: [10.0] * 60)
+    monkeypatch.setattr(V, "_dca_value_score", lambda prices: 20)
+
+    out = V.for_symbol("277810", latest)   # 미추적 미래기술
+    assert out.action == "관망"            # 신호 약함

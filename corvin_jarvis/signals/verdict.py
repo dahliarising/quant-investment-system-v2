@@ -60,3 +60,68 @@ def decide(ctx: dict[str, Any]) -> Verdict:
     if rs is not None and rs >= _RS_LEADER and alive:
         return v("분할매수", "중", "지수 대비 주도주+테마 살아있음(가치점수는 낮음)")
     return v("관망", "하", "뚜렷한 진입 신호 없음 — 관찰")
+
+
+_SECTOR_TH = {"semiconductor": 3.0, "shipbuilding": 4.0, "defense": 4.0}
+_SECTOR_TH_DEFAULT = 4.0
+
+
+def _dca_value_score(prices: list[float]) -> int:
+    """DCA 가치/과매도 점수 (0~100, 높을수록 저평가). 임계 게이트 없이 raw."""
+    from corvin_jarvis.dca_timing import (
+        MIN_HISTORY_DAYS, _composite_score, _drawdown_52w_pct,
+        _ma_distance_pct, _rsi, _zscore,
+    )
+    if len(prices) < MIN_HISTORY_DAYS:
+        return 0
+    score, _ = _composite_score(
+        _rsi(prices), _ma_distance_pct(prices, 50),
+        _zscore(prices, 20), _drawdown_52w_pct(prices),
+    )
+    return int(score)
+
+
+def _sector_of(latest: dict[str, Any], symbol: str) -> str | None:
+    for u in latest.get("universe", []):
+        if u.get("symbol") == symbol:
+            return u.get("sector")
+    return None
+
+
+def _theme_alive(latest: dict[str, Any], sector: str | None) -> bool:
+    if not sector:
+        return False
+    pcts = [u.get("pct_change") for u in latest.get("universe", [])
+            if u.get("sector") == sector and u.get("pct_change") is not None]
+    if len(pcts) < 2:
+        return False
+    avg = sum(pcts) / len(pcts)
+    return avg >= _SECTOR_TH.get(sector, _SECTOR_TH_DEFAULT)
+
+
+def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
+    """종목 + 최신 snapshot으로 컨텍스트 조립 후 판정."""
+    from corvin_jarvis import dca_timing, quote_provider
+
+    q = quote_provider.get_stock_quote(symbol)
+    pct_today = q.pct_change
+    dca_score = _dca_value_score(dca_timing.default_fetcher(symbol))
+
+    is_kr = dca_timing._is_kr_symbol(symbol)
+    idx_name = "kospi" if is_kr else "sp500"
+    idx_pct = (latest.get("indices", {}).get(idx_name, {}) or {}).get("pct_change")
+    rs = (pct_today - idx_pct) if (pct_today is not None and idx_pct is not None) else None
+
+    held, pnl = False, None
+    for p in latest.get("portfolio", []):
+        if p.get("symbol") == symbol:
+            held, pnl = True, p.get("pnl_pct")
+            break
+
+    sector = _sector_of(latest, symbol)
+    ctx = {
+        "symbol": symbol, "held": held, "pnl_pct": pnl, "dca_score": dca_score,
+        "rs": rs, "pct_today": pct_today, "theme_alive": _theme_alive(latest, sector),
+        "high_vol": sector is None,   # monitored_universe 미포함 = 무어샷(보수)
+    }
+    return decide(ctx)
