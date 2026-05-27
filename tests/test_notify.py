@@ -129,6 +129,21 @@ def test_format_message_no_verdict_section_when_empty():
     assert "🎯 행동 판정" not in msg
 
 
+def test_format_message_compact_verdicts_section():
+    alerts = [{"category": "universe", "metric": "u", "value": 9.0, "message": "x", "severity": "high"}]
+    verdicts = {"NVDA": {"action": "홀딩", "confidence": "상", "rationale": "r", "name": "NVIDIA"}}
+    msg = notify._format_message(alerts, compact=True, title="t", limit=8, verdicts=verdicts)
+    assert "🎯 판정" in msg
+    assert "NVIDIA 홀딩" in msg
+
+
+def test_format_message_verdict_missing_keys_no_crash():
+    alerts = [{"category": "universe", "metric": "u", "value": 9.0, "message": "x", "severity": "high"}]
+    verdicts = {"XYZ": {}}   # 손상된 항목 — 크래시 없이 처리돼야
+    msg = notify._format_message(alerts, compact=False, title="t", limit=8, verdicts=verdicts)
+    assert "XYZ" in msg   # 관망/하 아님(키 없음→필터 통과) → 표시되되 크래시 없음
+
+
 def test_format_message_hides_low_conf_watch_verdicts():
     alerts = [{"category": "universe", "metric": "u", "value": 9.0, "message": "x", "severity": "high"}]
     verdicts = {

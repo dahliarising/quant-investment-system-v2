@@ -221,10 +221,11 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
             lines.append(f"• {_interpret(a)}")
         if vshow:
             lines.append("")
-            lines.append("🎯 판정")
+            lines.append("🎯 판정")  # compact는 짧게 (non-compact는 "행동 판정")
             for sym, vd in vshow.items():
                 label = vd.get("name") or sym
-                lines.append(f"{_ACTION_EMOJI.get(vd['action'], '')} {label} {vd['action']}")
+                act = vd.get("action", "?")
+                lines.append(f"{_ACTION_EMOJI.get(act, '')} {label} {act}")
         return "\n".join(lines)
     lines = [f"## {header}", f"\n신규 alert **{len(alerts)}건**:\n"]
     for a in shown:
@@ -238,9 +239,10 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
     if vshow:
         lines.append("\n**🎯 행동 판정**")
         for sym, vd in vshow.items():
-            e = _ACTION_EMOJI.get(vd["action"], "")
+            act = vd.get("action", "?")
+            e = _ACTION_EMOJI.get(act, "")
             label = f"{vd['name']}({sym})" if vd.get("name") else sym
-            lines.append(f"{e} **{label} {vd['action']}** (신뢰도 {vd['confidence']}) — {vd['rationale']}")
+            lines.append(f"{e} **{label} {act}** (신뢰도 {vd.get('confidence', '?')}) — {vd.get('rationale', '')}")
     return "\n".join(lines)
 
 
