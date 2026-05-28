@@ -16,6 +16,11 @@ sys.path.insert(0, str(PROJECT_ROOT / "corvin_jarvis"))
 
 from staleness import Severity, check  # noqa: E402
 
+try:
+    from . import channels
+except ImportError:  # launchd/script 실행
+    import channels  # type: ignore[no-redef]
+
 LOG_DIR: Final = PROJECT_ROOT / "corvin_jarvis" / "state"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 WATCHDOG_LOG: Final = LOG_DIR / "watchdog.log"
@@ -62,7 +67,10 @@ def main() -> int:
         f"_갱신 방법: 증권사 잔고 스크린샷 첨부 → Corvin이 자동 파싱_"
     )
 
-    enqueue_discord(message, report.severity.value)
+    if channels.is_enabled("imessage") and channels.send_imessage(message):
+        log.info("watchdog iMessage 전송 성공 → %s", channels.imessage_recipient())
+    else:
+        enqueue_discord(message, report.severity.value)  # iMessage 비활성/실패 시 Discord 큐 fallback
     print(message)
     return 0 if report.severity == Severity.WARN else 1
 

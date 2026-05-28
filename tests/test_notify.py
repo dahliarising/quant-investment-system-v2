@@ -67,6 +67,21 @@ def test_digest_mode_includes_medium_no_dedup(tmp_path, monkeypatch):
     assert res.skipped_dedup == 0        # digest는 dedup 안 함
 
 
+def test_notify_never_sends_real_imessage_during_tests(tmp_path, monkeypatch):
+    # 회귀 방지(2026-05-28 사고): notify()가 테스트 중 실제 osascript를 호출하면 안 됨.
+    import subprocess
+
+    def _boom(*_a, **_k):
+        raise AssertionError("테스트가 실제 iMessage(osascript)를 전송함 — 격리 깨짐")
+
+    monkeypatch.setattr(subprocess, "run", _boom)
+    _write_state(tmp_path, monkeypatch, [
+        {"category": "x", "metric": "m2", "severity": "high", "message": "hi", "value": 9.0},
+    ])
+    res = notify.notify(mode="digest")
+    assert "imessage" not in res.channels_delivered
+
+
 def test_format_message_respects_title_and_limit():
     alerts = [{"severity": "high", "message": f"alert {i}", "value": float(i)} for i in range(10)]
     msg = notify._format_message(alerts, compact=True, title="📋 다이제스트", limit=3)

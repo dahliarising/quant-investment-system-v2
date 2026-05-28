@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -24,6 +23,11 @@ from pathlib import Path
 from typing import Any
 
 import requests
+
+try:
+    from . import channels
+except ImportError:  # script/launchd 실행 (python notify.py)
+    import channels  # type: ignore[no-redef]
 
 BASE_DIR = Path(__file__).resolve().parent
 STATE_DIR = BASE_DIR / "state"
@@ -67,11 +71,6 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _config() -> dict[str, Any]:
     return _load_json(CONFIG_FILE)
-
-
-def _imessage_recipient() -> str | None:
-    rec = _config().get("notification", {}).get("imessage_recipient")
-    return rec if rec else None
 
 
 def _webhook_url() -> str | None:
@@ -256,30 +255,6 @@ def _send_discord(webhook: str, content: str) -> bool:
         return False
 
 
-def _send_imessage(recipient: str, body: str) -> bool:
-    """macOS Messages.app via osascript. Escape special chars."""
-    safe = body.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
-    script = f'''
-tell application "Messages"
-    set targetService to 1st service whose service type = iMessage
-    set targetBuddy to participant "{recipient}" of targetService
-    send "{safe}" to targetBuddy
-end tell
-'''
-    try:
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode == 0:
-            return True
-        log.warning("iMessage stderr: %s", result.stderr.strip()[:200])
-        return False
-    except (subprocess.SubprocessError, FileNotFoundError) as e:
-        log.warning("iMessage send failed: %s", e)
-        return False
-
-
 def _queue_file(content: str, alert_count: int) -> None:
     pending = _load_json(PENDING_FILE) or {"messages": []}
     pending.setdefault("messages", []).append({
@@ -327,18 +302,17 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     delivered: list[str] = []
 
     webhook = _webhook_url()
-    if webhook:
+    if channels.is_enabled("discord") and webhook:
         if _send_discord(webhook, msg_long):
             delivered.append("discord")
             log.info("Discord 전송 성공")
         else:
             log.warning("Discord 전송 실패")
 
-    imsg = _imessage_recipient()
-    if imsg:
-        if _send_imessage(imsg, msg_short):
+    if channels.is_enabled("imessage"):
+        if channels.send_imessage(msg_short):
             delivered.append("imessage")
-            log.info("iMessage 전송 성공 → %s", imsg)
+            log.info("iMessage 전송 성공 → %s", channels.imessage_recipient())
         else:
             log.warning("iMessage 전송 실패 — file queue fallback")
 

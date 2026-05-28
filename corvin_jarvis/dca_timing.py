@@ -30,6 +30,11 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+try:
+    from . import channels
+except ImportError:  # script 실행 fallback
+    import channels  # type: ignore[no-redef]
+
 BASE_DIR = Path(__file__).resolve().parent
 STATE_DIR = BASE_DIR / "state"
 UNIVERSE_FILE = BASE_DIR / "universe.json"
@@ -464,21 +469,29 @@ def push_dca_report(report: DCAReport) -> bool:
         return False
 
     content = format_discord_message(report)
-    webhook = _get_webhook_url()
     delivered = False
 
-    if webhook:
+    webhook = _get_webhook_url()
+    if channels.is_enabled("discord") and webhook:
         parsed = urlparse(webhook)
         if parsed.scheme == "https" and "discord" in parsed.netloc:
             try:
                 r = requests.post(webhook, json={"content": content[:1900]}, timeout=15)
-                delivered = r.status_code in (200, 204)
-                if not delivered:
+                ok = r.status_code in (200, 204)
+                delivered = delivered or ok
+                if not ok:
                     log.error("DCA push failed: %s %s", r.status_code, r.text[:200])
             except requests.RequestException as e:
                 log.error("DCA push exception: %s", e)
         else:
             log.error("invalid Discord webhook URL")
+
+    if channels.is_enabled("imessage"):
+        if channels.send_imessage(content):
+            delivered = True
+            log.info("DCA iMessage 전송 성공 → %s", channels.imessage_recipient())
+        else:
+            log.warning("DCA iMessage 전송 실패")
 
     if delivered:
         dedup[key] = datetime.now(timezone.utc).isoformat(timespec="seconds")
