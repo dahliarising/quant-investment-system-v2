@@ -176,7 +176,24 @@ def _fetch_position_quote(holding: dict[str, Any]) -> PositionQuote:
     )
 
 
-def fetch_portfolio() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _krw_equivalent(total_krw: float, total_usd: float,
+                    live_rate: float | None, assumed_rate: float | None
+                    ) -> tuple[float | None, float | None, str]:
+    """USD 평가액을 환율로 KRW 환산 후 합산. 실시간(live) 우선, 없으면 스냅샷 가정환율.
+
+    반환: (krw_equiv, rate_used, source). source ∈ {"live", "assumed", "none"}.
+    실시간 값이 0/음수면 신뢰 불가로 보고 가정환율로 폴백.
+    """
+    if live_rate and live_rate > 0:
+        rate, source = live_rate, "live"
+    elif assumed_rate:
+        rate, source = assumed_rate, "assumed"
+    else:
+        return None, None, "none"
+    return round(total_krw + total_usd * rate, 2), round(rate, 2), source
+
+
+def fetch_portfolio(usd_krw_rate: float | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not PORTFOLIO_FILE.exists():
         log.warning("portfolio.json 없음 — skip")
         return [], {}
@@ -199,9 +216,17 @@ def fetch_portfolio() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     winners = [q for q in quotes if q.pnl_pct is not None and q.pnl_pct > 0]
     losers = [q for q in quotes if q.pnl_pct is not None and q.pnl_pct < 0]
 
+    # 고정 가정환율(스냅샷) 대신 실시간 FX로 USD→KRW 환산해 합산 총액 제공
+    assumed_rate = portfolio_data.get("totals", {}).get("fxAssumedUSDKRW")
+    krw_equiv, rate_used, rate_source = _krw_equivalent(
+        total_krw, total_usd, usd_krw_rate, assumed_rate)
+
     summary = {
         "total_value_krw": round(total_krw, 2),
         "total_value_usd": round(total_usd, 2),
+        "total_value_krw_equiv": krw_equiv,
+        "fx_rate_used": rate_used,
+        "fx_rate_source": rate_source,
         "position_count": len(quotes),
         "winners_count": len(winners),
         "losers_count": len(losers),
@@ -232,7 +257,8 @@ def run_pulse() -> Path:
     log.info("Fetching FX...")
     snapshot.fx = fetch_fx()
     log.info("Fetching portfolio quotes...")
-    snapshot.portfolio, snapshot.portfolio_summary = fetch_portfolio()
+    live_usd_krw = snapshot.fx.get("usd_krw", {}).get("price")
+    snapshot.portfolio, snapshot.portfolio_summary = fetch_portfolio(usd_krw_rate=live_usd_krw)
     log.info("Fetching watchlist...")
     snapshot.watchlist = fetch_watchlist(load_watchlist())
     log.info("Fetching monitored universe...")

@@ -106,6 +106,11 @@ def _format_portfolio_section(latest: dict[str, Any]) -> str:
 
     out = ["## 💼 포트폴리오 상태\n"]
     out.append(f"- 총 가치: **KRW ₩{summary.get('total_value_krw'):,}** + **USD ${summary.get('total_value_usd'):,}**")
+    equiv = summary.get("total_value_krw_equiv")
+    if equiv is not None:
+        rate = summary.get("fx_rate_used")
+        src = {"live": "실시간", "assumed": "가정"}.get(summary.get("fx_rate_source"), "")
+        out.append(f"- 합산(원화환산): **₩{equiv:,.0f}** (USD→KRW {src} 환율 {rate:,.2f})")
     out.append(f"- 포지션: {summary.get('position_count')}개 (수익 {summary.get('winners_count')}, 손실 {summary.get('losers_count')})")
     out.append(f"- 최고/최저 PnL: {_format_pct(summary.get('best_pnl_pct'))} / {_format_pct(summary.get('worst_pnl_pct'))}")
     out.append(f"- portfolio.json 마지막 업데이트: {summary.get('stale_as_of')}\n")
