@@ -58,22 +58,27 @@ _SECTOR_KR_NAME = {
 }
 
 
+_MARKET_KR_LABEL = {"KR": "한국", "US": "미국"}
+
+
 def check_sectors(snapshot: dict[str, Any], config: dict[str, Any], phase: str) -> list[dict[str, Any]]:
     cfg = config.get("sector_basket_pct", {})
     default_th = float(cfg.get("_default", 4.0))
     emoji, label = _PHASE_EMOJI.get(phase, ""), _PHASE_LABEL.get(phase, phase)
 
-    buckets: dict[str, list[float]] = {}
+    # 시장별 분리: KR(실시간)+US(전일종가)를 한 평균에 섞지 않음 (사과+오렌지 방지)
+    buckets: dict[tuple[str, str], list[float]] = {}
     for entry in snapshot.get("universe", []):
         pct = entry.get("pct_change")
         sector = entry.get("sector")
-        if pct is None or not sector:
+        market = entry.get("market")
+        if pct is None or not sector or not market:
             continue
-        buckets.setdefault(sector, []).append(float(pct))
+        buckets.setdefault((sector, market), []).append(float(pct))
 
     alerts: list[dict[str, Any]] = []
-    for sector, pcts in buckets.items():
-        if len(pcts) < 2:  # 바스켓은 2종목 이상
+    for (sector, market), pcts in buckets.items():
+        if len(pcts) < 2:  # 바스켓은 시장별 2종목 이상
             continue
         avg = sum(pcts) / len(pcts)
         th = float(cfg.get(sector, default_th))
@@ -82,11 +87,13 @@ def check_sectors(snapshot: dict[str, Any], config: dict[str, Any], phase: str) 
         sev = _classify_severity(avg, th)
         direction = "급등" if avg > 0 else "급락"
         kr_name = _SECTOR_KR_NAME.get(sector, sector)
+        mkt_label = _MARKET_KR_LABEL.get(market, market)
         alerts.append({
             "category": "sector",
-            "metric": f"sector_{sector}_{phase}",
+            "metric": f"sector_{sector}_{market}_{phase}",
+            "market": market,
             "severity": sev.value if isinstance(sev, Severity) else str(sev),
-            "message": (f"{emoji} {kr_name} 섹터 {direction} 평균 {avg:+.2f}% "
+            "message": (f"{emoji} {kr_name}({mkt_label}) 섹터 {direction} 평균 {avg:+.2f}% "
                         f"({len(pcts)}종, 임계 ±{th}%, {label})"),
             "value": round(avg, 4),
             "threshold": th,

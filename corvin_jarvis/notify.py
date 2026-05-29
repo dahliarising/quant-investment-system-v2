@@ -162,14 +162,22 @@ def _interpret(alert: dict[str, Any]) -> str:
     if cat == "sector":
         # 멀티워드 섹터명(stem_cell 등)이 split로 잘리지 않게 prefix/suffix만 제거
         sec = re.sub(r"^sector_|_(?:provisional|confirmed)$", "", metric)
+        # 시장별 분리 alert: 끝의 _KR/_US 토큰 분리 (혼합 평균 방지로 시장 명시)
+        mkt = alert.get("market", "")
+        for tok in ("KR", "US"):
+            if sec.endswith(f"_{tok}"):
+                sec, mkt = sec[: -len(tok) - 1], mkt or tok
+                break
         ko = _SECTOR_KO.get(sec, sec)
+        mkt_label = {"KR": "한국", "US": "미국"}.get(mkt, "")
+        tag = f"({mkt_label})" if mkt_label else ""
         move = "동반 상승" if up else "동반 하락"
         m = re.search(r"\((\d+)종", alert.get("message", ""))
         n = int(m.group(1)) if m else 0
         if 0 < n <= 2:
             # 2종 평균은 사실상 개별 종목 — "섹터 전체" 라 부르면 오해
-            return f"{ko} {n}종 평균 {abs(v):.1f}% {move} — 표본 작아 섹터 대표성 낮음(개별 종목 영향 큼)"
-        return f"{ko} 업종이 평균 {abs(v):.1f}% {move} — 섹터 전체 움직임"
+            return f"{ko}{tag} {n}종 평균 {abs(v):.1f}% {move} — 표본 작아 섹터 대표성 낮음(개별 종목 영향 큼)"
+        return f"{ko}{tag} 업종이 평균 {abs(v):.1f}% {move} — 섹터 전체 움직임"
     if cat == "leading_rs":
         sym = parts[1] if len(parts) > 1 else metric
         name = _friendly_name(alert, sym)

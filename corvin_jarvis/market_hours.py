@@ -88,6 +88,10 @@ def alert_markets(alert: dict[str, Any], sector_markets: dict[str, set[str]]) ->
     if cat == "index":
         return {"KR"} if metric in ("kospi", "kosdaq") else {"US"}
     if cat == "sector":
+        # 시장별 분리 alert은 explicit market 필드로 정밀 판정 (구버전은 멤버 기반 폴백)
+        mkt = alert.get("market")
+        if mkt:
+            return {mkt}
         return set(sector_markets.get(_sector_name(metric), set()))
     if cat in _MACRO_CATEGORIES:
         return set()

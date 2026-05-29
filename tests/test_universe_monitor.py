@@ -70,9 +70,38 @@ def test_sector_basket_average_triggers_alert():
     assert len(alerts) == 1
     a = alerts[0]
     assert a["category"] == "sector"
-    assert a["metric"] == "sector_semiconductor_provisional"
+    assert a["metric"] == "sector_semiconductor_KR_provisional"
     assert abs(a["value"] - 8.625) < 0.01   # (7.02+10.23)/2
     assert "반도체" in a["message"] or "semiconductor" in a["message"]
+
+
+def test_sector_basket_splits_by_market():
+    # ⑤ 같은 섹터라도 KR(실시간)+US(전일종가) 평균 혼합 금지 → 시장별 분리
+    snap = _snapshot([
+        {"symbol": "005930", "market": "KR", "sector": "semiconductor", "price": 1, "pct_change": 8.0},
+        {"symbol": "000660", "market": "KR", "sector": "semiconductor", "price": 1, "pct_change": 8.0},
+        {"symbol": "NVDA", "market": "US", "sector": "semiconductor", "price": 1, "pct_change": 6.0},
+        {"symbol": "AMD", "market": "US", "sector": "semiconductor", "price": 1, "pct_change": 6.0},
+    ])
+    cfg = {"sector_basket_pct": {"semiconductor": 3.0, "_default": 4.0}}
+    alerts = universe_monitor.check_sectors(snap, cfg, phase="confirmed")
+    assert len(alerts) == 2                       # KR 바스켓 + US 바스켓 (혼합 아님)
+    by_metric = {a["metric"]: a for a in alerts}
+    kr = by_metric["sector_semiconductor_KR_confirmed"]
+    us = by_metric["sector_semiconductor_US_confirmed"]
+    assert kr["value"] == 8.0 and kr["market"] == "KR"   # 사과+오렌지 평균 아님
+    assert us["value"] == 6.0 and us["market"] == "US"
+    assert "한국" in kr["message"] and "미국" in us["message"]
+
+
+def test_sector_basket_single_per_market_skipped():
+    # 섹터 전체 2종이지만 시장별로는 각 1종 → 바스켓 의미 없음, 스킵
+    snap = _snapshot([
+        {"symbol": "005930", "market": "KR", "sector": "semiconductor", "price": 1, "pct_change": 9.0},
+        {"symbol": "NVDA", "market": "US", "sector": "semiconductor", "price": 1, "pct_change": 9.0},
+    ])
+    cfg = {"sector_basket_pct": {"semiconductor": 3.0, "_default": 4.0}}
+    assert universe_monitor.check_sectors(snap, cfg, phase="confirmed") == []
 
 
 def test_sector_below_threshold_no_alert():
@@ -128,7 +157,7 @@ def test_pulse_snapshot_universe_feeds_detection(monkeypatch):
     sector_alerts = universe_monitor.check_sectors(snap, cfg, phase="provisional")
     assert len(ticker_alerts) == 2          # 삼성 +7, 하이닉스 +10
     assert len(sector_alerts) == 1          # 반도체 바스켓
-    assert sector_alerts[0]["metric"] == "sector_semiconductor_provisional"
+    assert sector_alerts[0]["metric"] == "sector_semiconductor_KR_provisional"
 
 
 def test_merge_signal_alerts_appends_to_alerts_file(tmp_path, monkeypatch):
@@ -152,7 +181,7 @@ def test_merge_signal_alerts_appends_to_alerts_file(tmp_path, monkeypatch):
     data = json.loads(alerts_file.read_text())
     metrics = {a["metric"] for a in data["alerts"]}
     assert "universe_005930_confirmed" in metrics
-    assert "sector_semiconductor_confirmed" in metrics
+    assert "sector_semiconductor_KR_confirmed" in metrics
 
 
 def test_merge_signal_alerts_includes_relative_strength(tmp_path, monkeypatch):

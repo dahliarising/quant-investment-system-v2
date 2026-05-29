@@ -67,6 +67,17 @@ def test_mixed_sector_suppressed_only_when_all_closed():
     assert mh.should_suppress(a, SAT, SECTOR_MKT) is True           # 양 시장 휴장 → 억제
 
 
+def test_sector_alert_with_explicit_market_field_is_market_precise():
+    # ⑤ 시장별 분리 후: market 필드가 있으면 그 시장만 보고 억제 판정
+    kr = {"category": "sector", "metric": "sector_semiconductor_KR_confirmed", "market": "KR"}
+    us = {"category": "sector", "metric": "sector_semiconductor_US_confirmed", "market": "US"}
+    assert mh.alert_markets(kr, SECTOR_MKT) == {"KR"}
+    assert mh.alert_markets(us, SECTOR_MKT) == {"US"}
+    # KR 장중·US 휴장: KR 섹터는 유지, US 섹터는 억제 (혼합이었으면 둘 다 유지됐음)
+    assert mh.should_suppress(kr, FRI_KR_OPEN, SECTOR_MKT) is False
+    assert mh.should_suppress(us, FRI_KR_OPEN, SECTOR_MKT) is True
+
+
 def test_us_stock_kept_when_us_open():
     a = {"category": "universe", "metric": "universe_LUNR_confirmed"}
     assert mh.should_suppress(a, FRI_US_OPEN, SECTOR_MKT) is False

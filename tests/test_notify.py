@@ -110,6 +110,23 @@ def test_interpret_sector_large_basket_keeps_sector_framing():
     assert "섹터 전체 움직임" in out
 
 
+def test_interpret_sector_shows_market_label():
+    # ⑤ 시장별 분리 섹터 alert → 한국/미국 라벨 노출, 섹터명 정상 복원
+    a = {"category": "sector", "metric": "sector_semiconductor_KR_confirmed", "value": 8.0,
+         "message": "반도체(한국) 섹터 급등 평균 +8.00% (2종)", "market": "KR", "severity": "high"}
+    txt = notify._interpret(a)
+    assert "반도체" in txt
+    assert "한국" in txt
+
+
+def test_interpret_sector_multiword_name_with_market_label():
+    a = {"category": "sector", "metric": "sector_stem_cell_US_confirmed", "value": 9.0,
+         "message": "줄기세포(미국) 섹터 급등 평균 +9.00% (2종)", "market": "US", "severity": "high"}
+    txt = notify._interpret(a)
+    assert "줄기세포" in txt          # stem_cell 멀티워드 + market 토큰 둘 다 처리
+    assert "미국" in txt
+
+
 def test_interpret_sector_multiword_name_not_truncated():
     a = {"category": "sector", "metric": "sector_stem_cell_confirmed", "value": 9.0,
          "message": "✅ 줄기세포 섹터 급등 평균 +9.00% (3종, 확정)"}
