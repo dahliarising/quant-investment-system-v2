@@ -9,7 +9,7 @@
     US 지수 (^GSPC):   yfinance only (KIS overseas-index 미사용)
     원자재 (=F):       yfinance only
     FX (=X):           yfinance only
-    Fundamentals KR:   pykrx
+    Fundamentals KR:   KIS primary → pykrx fallback
     Fundamentals US:   yfinance
 
 설계 원칙:
@@ -357,8 +357,17 @@ def get_quote(symbol: str) -> Quote:
 
 
 def get_stock_fundamentals(symbol: str) -> dict[str, Any]:
-    """PER/PBR/시총 등. KR=pykrx, US=yfinance."""
+    """PER/PBR/시총 등. KR=KIS primary→pykrx fallback, US=yfinance."""
     if is_kr_stock(symbol):
+        env = _get_kis_env()
+        if env is not None:
+            try:
+                from corvin_jarvis import kis_quote
+                kis_fund = kis_quote.get_kr_fundamentals(symbol, env=env)
+                if kis_fund.get("PER") is not None or kis_fund.get("PBR") is not None:
+                    return kis_fund
+            except Exception as e:  # noqa: BLE001
+                log.warning("KIS KR fundamentals failed for %s: %s — pykrx fallback", symbol, e)
         try:
             from kr_data import get_kr_stock_data  # noqa: PLC0415
             return get_kr_stock_data(symbol)

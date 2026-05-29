@@ -111,6 +111,43 @@ def test_get_kr_daily_closes_dedupes_overlapping_pages(
     assert closes == [99.0, 100.0, 101.0]
 
 
+@pytest.mark.unit
+def test_get_kr_fundamentals_parses_per_pbr(kis_env: kis_auth.KISEnv) -> None:
+    """FHKST01010100 output에 담긴 per/pbr/eps/bps/52주고저 파싱."""
+    payload = {"rt_cd": "0", "output": {
+        "stck_prpr": "307000", "per": "15.20", "pbr": "1.85",
+        "eps": "20197", "bps": "165900",
+        "w52_hgpr": "307000", "w52_lwpr": "53900",
+    }}
+    with patch("corvin_jarvis.kis_quote.requests.get", return_value=_make_response(payload)):
+        f = kis_quote.get_kr_fundamentals("005930", env=kis_env)
+    assert f["PER"] == 15.20
+    assert f["PBR"] == 1.85
+    assert f["EPS"] == 20197.0
+    assert f["BPS"] == 165900.0
+    assert f["52주최고"] == 307000.0
+    assert f["52주최저"] == 53900.0
+    assert f["_source"] == "kis"
+
+
+@pytest.mark.unit
+def test_get_kr_fundamentals_empty_output_returns_empty(kis_env: kis_auth.KISEnv) -> None:
+    """output 비면 빈 dict → quote_provider가 pykrx로 fallback 가능."""
+    payload = {"rt_cd": "0", "output": {}}
+    with patch("corvin_jarvis.kis_quote.requests.get", return_value=_make_response(payload)):
+        assert kis_quote.get_kr_fundamentals("000000", env=kis_env) == {}
+
+
+@pytest.mark.unit
+def test_get_kr_fundamentals_handles_missing_fields(kis_env: kis_auth.KISEnv) -> None:
+    """일부 필드 누락/빈문자열은 None으로 안전 파싱."""
+    payload = {"rt_cd": "0", "output": {"stck_prpr": "100", "per": "", "pbr": "1.2"}}
+    with patch("corvin_jarvis.kis_quote.requests.get", return_value=_make_response(payload)):
+        f = kis_quote.get_kr_fundamentals("005930", env=kis_env)
+    assert f["PER"] is None
+    assert f["PBR"] == 1.2
+
+
 # ============================================================
 # 해외주식
 # ============================================================

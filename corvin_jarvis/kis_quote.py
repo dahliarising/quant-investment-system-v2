@@ -151,6 +151,47 @@ def get_kr_current_price(symbol: str, env: kis_auth.KISEnv | None = None) -> flo
     return price
 
 
+def get_kr_fundamentals(
+    symbol: str,
+    env: kis_auth.KISEnv | None = None,
+) -> dict[str, Any]:
+    """국내주식 PER/PBR/EPS/BPS/52주고저.
+
+    FHKST01010100(현재가) 응답 output에 이미 포함된 밸류 지표를 파싱.
+    pykrx가 누락하는 데이터를 KIS로 보완. output 비면 빈 dict 반환 → 호출자 fallback.
+    """
+    env = env or kis_auth.load_env()
+    data = _http_get(
+        env,
+        "/uapi/domestic-stock/v1/quotations/inquire-price",
+        TR_DOMESTIC_PRICE,
+        {"fid_cond_mrkt_div_code": "J", "fid_input_iscd": symbol},
+    )
+    output = data.get("output") or {}
+    if not output:
+        return {}
+
+    def _f(key: str) -> float | None:
+        raw = output.get(key)
+        try:
+            if raw not in (None, ""):
+                return float(raw)
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    return {
+        "symbol": symbol,
+        "PER": _f("per"),
+        "PBR": _f("pbr"),
+        "EPS": _f("eps"),
+        "BPS": _f("bps"),
+        "52주최고": _f("w52_hgpr"),
+        "52주최저": _f("w52_lwpr"),
+        "_source": "kis",
+    }
+
+
 def get_kr_daily_closes(
     symbol: str,
     days: int = 252,

@@ -257,7 +257,28 @@ def test_quote_to_dict_has_pulse_shape() -> None:
 
 
 @pytest.mark.unit
-def test_fundamentals_kr_uses_pykrx() -> None:
+def test_fundamentals_kr_uses_kis_when_env_present() -> None:
+    """KIS env 있으면 PER/PBR을 KIS에서 직접 (pykrx 누락분 보완)."""
+    fake_env = MagicMock(env="mock")
+    with patch.object(kis_auth, "load_env", return_value=fake_env), \
+         patch.object(
+             kis_quote, "get_kr_fundamentals",
+             return_value={"symbol": "005930", "PER": 15.2, "PBR": 1.85, "_source": "kis"},
+         ):
+        out = quote_provider.get_stock_fundamentals("005930")
+    assert out["PER"] == 15.2
+    assert out["PBR"] == 1.85
+    assert out["_source"] == "kis"
+
+
+@pytest.mark.unit
+def test_fundamentals_kr_falls_back_to_pykrx_when_no_kis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        kis_auth, "load_env",
+        MagicMock(side_effect=kis_auth.KISConfigError("no key")),
+    )
     fake_kr_data = MagicMock()
     fake_kr_data.get_kr_stock_data.return_value = {
         "PER": 12.3, "PBR": 1.4, "시가총액": 1234567890,
@@ -266,6 +287,19 @@ def test_fundamentals_kr_uses_pykrx() -> None:
         out = quote_provider.get_stock_fundamentals("005930")
     assert out["PER"] == 12.3
     fake_kr_data.get_kr_stock_data.assert_called_once_with("005930")
+
+
+@pytest.mark.unit
+def test_fundamentals_kr_falls_back_when_kis_returns_empty() -> None:
+    """KIS 호출했으나 PER/PBR 비면 pykrx로 폴백."""
+    fake_env = MagicMock(env="mock")
+    fake_kr_data = MagicMock()
+    fake_kr_data.get_kr_stock_data.return_value = {"PER": 9.9, "PBR": 1.1}
+    with patch.object(kis_auth, "load_env", return_value=fake_env), \
+         patch.object(kis_quote, "get_kr_fundamentals", return_value={}), \
+         patch.dict("sys.modules", {"kr_data": fake_kr_data}):
+        out = quote_provider.get_stock_fundamentals("005930")
+    assert out["PER"] == 9.9
 
 
 @pytest.mark.unit
