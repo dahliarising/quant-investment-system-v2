@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -160,7 +161,14 @@ def _interpret(alert: dict[str, Any]) -> str:
         return f"{name} 주가가 {abs(v):.1f}% {'급등' if up else '급락'} — 큰 변동이라 주목"
     if cat == "sector":
         sec = parts[1] if len(parts) > 1 else ""
-        return f"{_SECTOR_KO.get(sec, sec)} 업종이 평균 {abs(v):.1f}% {'동반 상승' if up else '동반 하락'} — 섹터 전체 움직임"
+        ko = _SECTOR_KO.get(sec, sec)
+        move = "동반 상승" if up else "동반 하락"
+        m = re.search(r"\((\d+)종", alert.get("message", ""))
+        n = int(m.group(1)) if m else 0
+        if 0 < n <= 2:
+            # 2종 평균은 사실상 개별 종목 — "섹터 전체" 라 부르면 오해
+            return f"{ko} {n}종 평균 {abs(v):.1f}% {move} — 표본 작아 섹터 대표성 낮음(개별 종목 영향 큼)"
+        return f"{ko} 업종이 평균 {abs(v):.1f}% {move} — 섹터 전체 움직임"
     if cat == "leading_rs":
         sym = parts[1] if len(parts) > 1 else metric
         name = _friendly_name(alert, sym)
@@ -200,7 +208,8 @@ _ACTION_EMOJI = {"매수": "🟢", "분할매수": "🔵", "홀딩": "⚪", "비
 
 def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
                     title: str = "", limit: int = 5,
-                    verdicts: dict[str, Any] | None = None) -> str:
+                    verdicts: dict[str, Any] | None = None,
+                    count_label: str = "신규") -> str:
     if not alerts:
         return ""
     header = title or f"🦅 Corvin Jarvis — {datetime.now().strftime('%H:%M KST')}"
@@ -210,7 +219,7 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
     vshow = {s: vd for s, vd in (verdicts or {}).items()
              if vd.get("action") != "관망" or vd.get("confidence") != "하"}
     if compact:
-        lines = [header, f"신규 alert {len(alerts)}건:"]
+        lines = [header, f"{count_label} alert {len(alerts)}건:"]
         for a in shown:
             emoji = SEV_EMOJI[a["severity"]]
             lines.append(f"{emoji} {a['message'][:120]}")
@@ -228,7 +237,7 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
                 act = vd.get("action", "?")
                 lines.append(f"{_ACTION_EMOJI.get(act, '')} {label} {act}")
         return "\n".join(lines)
-    lines = [f"## {header}", f"\n신규 alert **{len(alerts)}건**:\n"]
+    lines = [f"## {header}", f"\n{count_label} alert **{len(alerts)}건**:\n"]
     for a in shown:
         lines.append(f"{SEV_EMOJI[a['severity']]} **[{a['severity'].upper()}]** {a['message']}")
     if extra > 0:
@@ -308,8 +317,10 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
         return NotifyResult(pushed=0, skipped_dedup=skipped_dedup, skipped_severity=skipped_sev, channels_delivered=[])
 
     verdicts = _load_json(VERDICTS_FILE) or None
-    msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts)
-    msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts)
+    # digest는 dedup 안 함 → 매일 같은 alert 재노출되므로 "신규"라 부르면 오해. "감지"로 표기.
+    count_label = "감지" if mode == "digest" else "신규"
+    msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
+    msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     delivered: list[str] = []
 
     webhook = _webhook_url()

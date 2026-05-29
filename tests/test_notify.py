@@ -95,6 +95,27 @@ def test_urgent_suppresses_closed_market_but_digest_keeps(tmp_path, monkeypatch)
     assert notify.notify(mode="digest").pushed == 2    # digest는 억제 안 함
 
 
+def test_interpret_sector_small_basket_flags_low_representation():
+    a = {"category": "sector", "metric": "sector_internet_provisional", "value": 10.7,
+         "message": "🟡 인터넷 섹터 급등 평균 +10.73% (2종, 임계 ±4.0%, 잠정)"}
+    out = notify._interpret(a)
+    assert "대표성 낮음" in out
+    assert "섹터 전체 움직임" not in out
+
+
+def test_interpret_sector_large_basket_keeps_sector_framing():
+    a = {"category": "sector", "metric": "sector_semiconductor_confirmed", "value": 5.0,
+         "message": "✅ 반도체 섹터 급등 평균 +5.00% (5종, 임계 ±3.0%, 확정)"}
+    out = notify._interpret(a)
+    assert "섹터 전체 움직임" in out
+
+
+def test_format_message_count_label_digest_vs_urgent():
+    alerts = [{"severity": "high", "message": "x", "value": 1.0}]
+    assert "감지 alert" in notify._format_message(alerts, compact=True, count_label="감지")
+    assert "신규 alert" in notify._format_message(alerts, compact=True, count_label="신규")
+
+
 def test_format_message_respects_title_and_limit():
     alerts = [{"severity": "high", "message": f"alert {i}", "value": float(i)} for i in range(10)]
     msg = notify._format_message(alerts, compact=True, title="📋 다이제스트", limit=3)
