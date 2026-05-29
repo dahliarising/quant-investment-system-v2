@@ -81,6 +81,7 @@ def _read_cache() -> dict[str, str]:
 def _write_cache(data: dict[str, str]) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     TOKEN_CACHE.write_text(json.dumps(data, indent=2))
+    TOKEN_CACHE.chmod(0o600)  # access token = 시크릿, owner-only
 
 
 def _is_token_fresh(cache: dict[str, str], env_id: str) -> bool:

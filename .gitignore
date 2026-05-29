@@ -13,6 +13,5 @@ logs/
 *.pkl
 *.h5
 
-# Corvin runtime state
-corvin_jarvis/state/timeseries.db
-corvin_jarvis/state/timeseries.db-journal
+# Corvin runtime state (시세 캐시·alert·KIS 토큰 등 — 시크릿 포함 가능, 전체 무시)
+corvin_jarvis/state/
