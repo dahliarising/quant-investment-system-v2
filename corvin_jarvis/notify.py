@@ -25,9 +25,10 @@ from typing import Any
 import requests
 
 try:
-    from . import channels
+    from . import channels, market_hours
 except ImportError:  # script/launchd 실행 (python notify.py)
     import channels  # type: ignore[no-redef]
+    import market_hours  # type: ignore[no-redef]
 
 BASE_DIR = Path(__file__).resolve().parent
 STATE_DIR = BASE_DIR / "state"
@@ -288,9 +289,19 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
         fresh, skipped_dedup = _filter_dedup(sev_filtered, cooldown_s)
 
     fresh = _rank_alerts(fresh, held)
+
+    # 장마감 시장 억제 — urgent만 (다이제스트는 전체 요약이라 미적용). 거시는 항상 통과.
+    skipped_closed = 0
+    if mode != "digest":
+        now = datetime.now(timezone.utc)
+        sector_markets = market_hours.load_sector_markets()
+        kept = [a for a in fresh if not market_hours.should_suppress(a, now, sector_markets)]
+        skipped_closed = len(fresh) - len(kept)
+        fresh = kept
+
     log.info(
-        "mode=%s alerts=%d sev_pass=%d fresh=%d (skip_sev=%d, skip_dedup=%d)",
-        mode, len(alerts), len(sev_filtered), len(fresh), skipped_sev, skipped_dedup,
+        "mode=%s alerts=%d sev_pass=%d fresh=%d (skip_sev=%d, skip_dedup=%d, skip_closed=%d)",
+        mode, len(alerts), len(sev_filtered), len(fresh), skipped_sev, skipped_dedup, skipped_closed,
     )
 
     if not fresh:

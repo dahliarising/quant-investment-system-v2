@@ -82,6 +82,19 @@ def test_notify_never_sends_real_imessage_during_tests(tmp_path, monkeypatch):
     assert "imessage" not in res.channels_delivered
 
 
+def test_urgent_suppresses_closed_market_but_digest_keeps(tmp_path, monkeypatch):
+    # 장마감 시장 alert(m_us)은 urgent에서 억제, digest에서는 유지 (2026-05-29 기능)
+    monkeypatch.setattr(notify.market_hours, "should_suppress",
+                        lambda a, now, sm: a["metric"] == "m_us")
+    alerts = [
+        {"category": "universe", "metric": "m_us", "severity": "high", "message": "US closed", "value": 9.0},
+        {"category": "universe", "metric": "m_kr", "severity": "high", "message": "KR open", "value": 9.0},
+    ]
+    _write_state(tmp_path, monkeypatch, alerts)
+    assert notify.notify(mode="urgent").pushed == 1    # m_us 억제 → m_kr만
+    assert notify.notify(mode="digest").pushed == 2    # digest는 억제 안 함
+
+
 def test_format_message_respects_title_and_limit():
     alerts = [{"severity": "high", "message": f"alert {i}", "value": float(i)} for i in range(10)]
     msg = notify._format_message(alerts, compact=True, title="📋 다이제스트", limit=3)
