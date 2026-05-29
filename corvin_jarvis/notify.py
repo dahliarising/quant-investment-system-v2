@@ -204,6 +204,68 @@ def _interpret(alert: dict[str, Any]) -> str:
     return alert.get("message", "")
 
 
+# ── ④ 종목 중복 통합: 같은 종목의 복수 alert을 해석 한 줄로 합침 ──
+
+# 같은 종목에서 주된 해석으로 쓸 카테고리 우선순위 (보유 > 가격급등 > 상대강도)
+_SYMBOL_CATS = {"universe", "leading_rs", "portfolio"}
+_CAT_PRIORITY = {"portfolio": 3, "universe": 2, "leading_rs": 1}
+
+
+def _symbol_of(alert: dict[str, Any]) -> str | None:
+    """종목 단위 alert에서 코드/티커 추출. 종목 단위가 아니면 None."""
+    cat = alert.get("category", "")
+    if cat not in _SYMBOL_CATS:
+        return None
+    parts = alert.get("metric", "").split("_")
+    if cat == "portfolio":
+        return parts[-1] if parts else None
+    # universe_035420_provisional / rs_035420_provisional → 가운데 토큰
+    return parts[1] if len(parts) > 1 else None
+
+
+def _aux_clause(alert: dict[str, Any]) -> str:
+    """통합 라인에 덧붙일 보조 사실(짧은 절). 주 해석 뒤 (+ …)로 붙음."""
+    cat = alert.get("category", "")
+    v = alert.get("value")
+    v = v if isinstance(v, (int, float)) else 0.0
+    up = v > 0
+    if cat == "universe":
+        return f"주가 {abs(v):.1f}% {'급등' if up else '급락'}"
+    if cat == "leading_rs":
+        return f"지수보다 {abs(v):.1f}%p {'강세→주도주' if up else '약세→소외주'}"
+    if cat == "portfolio":
+        return f"보유 평가손익 {v:+.1f}%"
+    return ""
+
+
+def _interpret_group(group: list[dict[str, Any]]) -> str:
+    """같은 종목 alert 묶음을 한 줄 해석으로. 단일이면 기존 _interpret 그대로."""
+    if len(group) == 1:
+        return _interpret(group[0])
+    primary = max(group, key=lambda a: (SEV_RANK.get(a["severity"], 0),
+                                         _CAT_PRIORITY.get(a.get("category", ""), 0)))
+    main = _interpret(primary)
+    aux = [c for a in group if a is not primary for c in (_aux_clause(a),) if c]
+    return f"{main} (+ {'; '.join(aux)})" if aux else main
+
+
+def _interpret_lines(alerts: list[dict[str, Any]]) -> list[str]:
+    """해석 라인 목록. 같은 종목의 복수 alert은 1줄로 통합(랭킹 순서 보존)."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    plan: list[tuple[str, Any]] = []   # ("group", sym) | ("single", alert)
+    for a in alerts:
+        sym = _symbol_of(a)
+        if sym is None:
+            plan.append(("single", a))
+        elif sym in groups:
+            groups[sym].append(a)
+        else:
+            groups[sym] = [a]
+            plan.append(("group", sym))
+    return [_interpret_group(groups[ref]) if kind == "group" else _interpret(ref)
+            for kind, ref in plan]
+
+
 _ACTION_EMOJI = {"매수": "🟢", "분할매수": "🔵", "홀딩": "⚪", "비중축소": "🟠", "매도": "🔴", "관망": "⏸"}
 
 
@@ -228,8 +290,8 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
             lines.append(f"…외 {extra}건")
         lines.append("")
         lines.append("📖 해석")
-        for a in shown:
-            lines.append(f"• {_interpret(a)}")
+        for txt in _interpret_lines(shown):
+            lines.append(f"• {txt}")
         if vshow:
             lines.append("")
             lines.append("🎯 판정")  # compact는 짧게 (non-compact는 "행동 판정")
@@ -245,8 +307,8 @@ def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
         lines.append(f"\n…외 {extra}건")
     lines.append("\n_상세: briefing.md_")
     lines.append("\n**📖 해석**")
-    for a in shown:
-        lines.append(f"- {_interpret(a)}")
+    for txt in _interpret_lines(shown):
+        lines.append(f"- {txt}")
     if vshow:
         lines.append("\n**🎯 행동 판정**")
         for sym, vd in vshow.items():

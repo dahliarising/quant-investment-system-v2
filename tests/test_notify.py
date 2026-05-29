@@ -159,6 +159,60 @@ def test_interpret_portfolio_mentions_symbol():
     assert "NVDA" in txt
 
 
+# ── ④ 종목 중복 통합 (consolidate per-symbol alert lines) ──
+
+def test_symbol_of_extracts_symbol_for_symbol_categories():
+    assert notify._symbol_of({"category": "universe", "metric": "universe_035420_provisional"}) == "035420"
+    assert notify._symbol_of({"category": "leading_rs", "metric": "rs_035420_provisional"}) == "035420"
+    assert notify._symbol_of({"category": "portfolio", "metric": "pnl_MSFT"}) == "MSFT"
+
+
+def test_symbol_of_none_for_non_symbol_categories():
+    assert notify._symbol_of({"category": "index", "metric": "kospi"}) is None
+    assert notify._symbol_of({"category": "sector", "metric": "sector_internet_provisional"}) is None
+    assert notify._symbol_of({"category": "fx", "metric": "usd_krw_level"}) is None
+
+
+def test_interpret_lines_consolidates_same_symbol_into_one_line():
+    # NAVER가 급등(universe) + 상대강도(leading_rs) 두 alert → 한 줄로 통합돼야
+    alerts = [
+        {"category": "universe", "metric": "universe_035420_provisional", "value": 16.1,
+         "message": "🟡 NAVER(035420) 급등 +16.10%", "severity": "critical"},
+        {"category": "leading_rs", "metric": "rs_035420_provisional", "value": 12.0,
+         "message": "🟡 NAVER(035420) 상대강도 강세 +12.0%p", "severity": "high"},
+    ]
+    lines = notify._interpret_lines(alerts)
+    assert len(lines) == 1                       # 종목당 1줄
+    assert "NAVER" in lines[0]
+    assert "급등" in lines[0]                      # 주된 해석(가격 급등) 유지
+    assert "주도주" in lines[0] or "강세" in lines[0]  # 상대강도 정보도 합쳐짐
+
+
+def test_interpret_lines_keeps_non_symbol_alerts_separate():
+    alerts = [
+        {"category": "index", "metric": "kospi", "value": 1.85, "message": "KOSPI", "severity": "medium"},
+        {"category": "universe", "metric": "universe_035420_provisional", "value": 16.1,
+         "message": "🟡 NAVER(035420) 급등", "severity": "critical"},
+        {"category": "leading_rs", "metric": "rs_035420_provisional", "value": 12.0,
+         "message": "🟡 NAVER(035420) 상대강도", "severity": "high"},
+    ]
+    lines = notify._interpret_lines(alerts)
+    assert len(lines) == 2                        # KOSPI 1줄 + NAVER(통합) 1줄
+    assert any("KOSPI" in ln or "지수" in ln for ln in lines)
+
+
+def test_format_message_shows_symbol_once_when_duplicated():
+    alerts = [
+        {"category": "universe", "metric": "universe_035420_provisional", "value": 16.1,
+         "message": "🟡 NAVER(035420) 급등 +16.10%", "severity": "critical"},
+        {"category": "leading_rs", "metric": "rs_035420_provisional", "value": 12.0,
+         "message": "🟡 NAVER(035420) 상대강도 강세 +12.0%p", "severity": "high"},
+    ]
+    msg = notify._format_message(alerts, compact=False, title="t", limit=8)
+    interp = msg.split("📖 해석", 1)[1]            # 해석 섹션만 검사
+    assert interp.count("NAVER") == 1             # 해석 섹션에서 NAVER 1회만
+
+
 def test_format_message_appends_interpretation():
     alerts = [{"category": "universe", "metric": "universe_000660_confirmed", "value": 9.31,
                "message": "✅ SK하이닉스(000660) 급등 +9.31%", "severity": "high"}]
