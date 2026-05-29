@@ -110,6 +110,14 @@ def test_interpret_sector_large_basket_keeps_sector_framing():
     assert "섹터 전체 움직임" in out
 
 
+def test_interpret_sector_multiword_name_not_truncated():
+    a = {"category": "sector", "metric": "sector_stem_cell_confirmed", "value": 9.0,
+         "message": "✅ 줄기세포 섹터 급등 평균 +9.00% (3종, 확정)"}
+    out = notify._interpret(a)
+    assert "줄기세포" in out
+    assert "stem" not in out
+
+
 def test_format_message_count_label_digest_vs_urgent():
     alerts = [{"severity": "high", "message": "x", "value": 1.0}]
     assert "감지 alert" in notify._format_message(alerts, compact=True, count_label="감지")

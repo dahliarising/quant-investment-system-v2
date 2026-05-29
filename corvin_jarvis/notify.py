@@ -160,7 +160,8 @@ def _interpret(alert: dict[str, Any]) -> str:
         name = _friendly_name(alert, sym)
         return f"{name} 주가가 {abs(v):.1f}% {'급등' if up else '급락'} — 큰 변동이라 주목"
     if cat == "sector":
-        sec = parts[1] if len(parts) > 1 else ""
+        # 멀티워드 섹터명(stem_cell 등)이 split로 잘리지 않게 prefix/suffix만 제거
+        sec = re.sub(r"^sector_|_(?:provisional|confirmed)$", "", metric)
         ko = _SECTOR_KO.get(sec, sec)
         move = "동반 상승" if up else "동반 하락"
         m = re.search(r"\((\d+)종", alert.get("message", ""))
