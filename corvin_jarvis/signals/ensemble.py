@@ -111,6 +111,16 @@ def rs_windows_from_closes(
     return out
 
 
+def volume_stats(volumes: list[float]) -> tuple[float | None, float | None]:
+    """거래량 시계열 → (최근, 20일평균). 비면 (None, None)."""
+    if not volumes:
+        return None, None
+    latest = volumes[-1]
+    window = volumes[-20:]
+    avg20 = sum(window) / len(window)
+    return latest, avg20
+
+
 def ensemble_score(minervini: float, rs: float, volume: float) -> float:
     """3방법론 가중 합산 → 0-100."""
     return round(

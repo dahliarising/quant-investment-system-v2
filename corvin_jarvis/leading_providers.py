@@ -18,8 +18,12 @@ def ensemble_provider(
     symbols: list[str],
     price_fetcher: Callable[..., list[float]],
     bench_fetcher: Callable[[], list[float]],
+    volume_fetcher: Callable[[str], tuple[float | None, float | None]] | None = None,
 ) -> list[LeadingSignal]:
-    """종목별 종가→지표→앙상블 신호. 이력 부족 종목은 스킵."""
+    """종목별 종가→지표→앙상블 신호. 이력 부족 종목은 스킵.
+
+    volume_fetcher 주입 시 거래량 점수 반영, 없으면 NEUTRAL.
+    """
     bench_closes = bench_fetcher()
     out: list[LeadingSignal] = []
     for sym in symbols:
@@ -33,8 +37,11 @@ def ensemble_provider(
         )
         rs_windows = ensemble.rs_windows_from_closes(closes, bench_closes)
         rs = ensemble.multi_timeframe_rs_score(rs_windows)
-        # 거래량은 종가 fetcher에 없음 → NEUTRAL(50) 주입(graceful)
-        volume = ensemble.volume_breakthrough_score(None, None)
+        if volume_fetcher is not None:
+            vol, vol_avg = volume_fetcher(sym)
+        else:
+            vol, vol_avg = None, None
+        volume = ensemble.volume_breakthrough_score(vol, vol_avg)
         out.append(ensemble.build_ensemble_signal(sym, minervini, rs, volume))
     return out
 

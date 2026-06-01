@@ -124,3 +124,17 @@ def test_rs_windows_from_closes():
 @pytest.mark.unit
 def test_rs_windows_insufficient():
     assert ensemble.rs_windows_from_closes([100.0], [100.0]) == {}
+
+
+@pytest.mark.unit
+def test_volume_stats_basic():
+    vols = [100.0] * 19 + [200.0]   # avg20=105, latest=200
+    latest, avg20 = ensemble.volume_stats(vols)
+    assert latest == 200.0
+    assert abs(avg20 - 105.0) < 1e-9
+
+
+@pytest.mark.unit
+def test_volume_stats_short():
+    latest, avg20 = ensemble.volume_stats([])
+    assert latest is None and avg20 is None
