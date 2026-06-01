@@ -12,6 +12,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
+# cron PATH는 최소 → claude CLI(~/.local/bin) 및 homebrew 경로 추가 (정성 분석용)
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 LOG="$SCRIPT_DIR/state/leading.log"
 mkdir -p "$SCRIPT_DIR/state"
 

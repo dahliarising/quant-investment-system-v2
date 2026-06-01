@@ -47,16 +47,14 @@ _SUMMARIES = {
     "NVDA": "NVIDIA — AI GPU 절대강자",
     "TSLA": "Tesla — Optimus 휴머노이드",
 }
-_QUAL_CLIENT = qualitative.default_client()   # 키 없으면 None → degrade
-
-
 def _today() -> date:
     return date.today()
 
 
 def _qualitative_fetcher(sym: str) -> float | None:
+    # Claude CLI(구독 인증) 사용 — ANTHROPIC_API_KEY 불필요. CLI 미설치면 None degrade.
     summary = _SUMMARIES.get(sym, sym)
-    return qualitative.qualitative_score(sym, summary, client=_QUAL_CLIENT)
+    return qualitative.qualitative_score_via_cli(sym, summary)
 
 
 def _kr_bench_fetcher() -> list[float]:
