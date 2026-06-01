@@ -76,3 +76,36 @@ def build_event_signals(
         ))
 
     return signals
+
+
+# DART 공시 촉매 키워드 (수주/계약/증자/실적 등 주가 영향 큰 항목)
+DART_CATALYST_KEYWORDS = ("공급계약", "수주", "계약체결", "증자", "실적", "영업정지",
+                          "합병", "분할", "자기주식")
+
+
+def filter_dart_disclosures(disclosures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """DART 공시 리스트에서 촉매 키워드 포함 항목만 필터."""
+    out: list[dict[str, Any]] = []
+    for d in disclosures:
+        name = str(d.get("report_nm", ""))
+        if any(kw in name for kw in DART_CATALYST_KEYWORDS):
+            out.append(d)
+    return out
+
+
+def build_dart_signals(
+    symbol: str, disclosures: list[dict[str, Any]]
+) -> list[LeadingSignal]:
+    """필터된 DART 공시 → event 신호. 촉매 공시 = 확정 신뢰도."""
+    signals: list[LeadingSignal] = []
+    for d in filter_dart_disclosures(disclosures):
+        name = str(d.get("report_nm", ""))
+        signals.append(LeadingSignal(
+            pillar="event", symbol=symbol, direction="neutral",
+            confidence=70.0, score=None, horizon="days",
+            advisory=False,
+            message=f"📰 {symbol} DART 공시: {name}",
+            evidence={"kind": "dart", "report_nm": name,
+                      "rcept_dt": d.get("rcept_dt")},
+        ))
+    return signals
