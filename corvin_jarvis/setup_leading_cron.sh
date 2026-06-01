@@ -3,13 +3,13 @@
 # ⚠️ Claude auto-mode는 crontab 자동 등록 금지 → 폐하가 직접 실행.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PY="$(command -v python3)"
-LOG="$REPO_DIR/corvin_jarvis/state/leading.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WRAPPER="$SCRIPT_DIR/run_leading.sh"
 
+# run_leading.sh 래퍼가 .env(토큰/KIS/ANTHROPIC)를 source하므로 cron에서도 발송 가능.
 # KR 프리오픈 08:30, US 프리오픈(09:00 ET≈22:30 KST) 평일
-CRON_KR="30 8 * * 1-5 cd $REPO_DIR && $PY -m corvin_jarvis.run_leading >> $LOG 2>&1"
-CRON_US="30 22 * * 1-5 cd $REPO_DIR && $PY -m corvin_jarvis.run_leading >> $LOG 2>&1"
+CRON_KR="30 8 * * 1-5 $WRAPPER"
+CRON_US="30 22 * * 1-5 $WRAPPER"
 
 echo "다음 두 줄을 crontab에 추가하세요 (crontab -e):"
 echo ""
