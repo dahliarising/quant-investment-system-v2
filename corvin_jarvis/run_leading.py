@@ -17,6 +17,7 @@ from corvin_jarvis import (
     financial_metrics,
     leading_orchestrator as orch,
     leading_providers as lp,
+    market_data,
     narrative,
     quote_provider,
 )
@@ -84,6 +85,7 @@ def main() -> int:
             KR_SYMBOLS + US_SYMBOLS,
             price_fetcher=dca_timing.default_fetcher,
             bench_fetcher=_kr_bench_fetcher,
+            volume_fetcher=market_data.fetch_volume,
         ),
         lambda: lp.cross_market_provider(CROSS_TARGETS, pct_fetcher=_proxy_pct_fetcher),
         lambda: lp.fundamental_provider(
