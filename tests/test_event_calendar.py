@@ -6,6 +6,7 @@ from datetime import date
 import pytest
 
 from corvin_jarvis.signals import event_calendar
+from corvin_jarvis.signals.leading_signal import LeadingSignal
 
 
 @pytest.mark.unit
@@ -29,3 +30,43 @@ def test_macro_events_excludes_past():
     )
     for e in events:
         assert e["event_date"] >= date(2026, 6, 1)
+
+
+@pytest.mark.unit
+def test_build_event_signals_earnings_dn():
+    # 실적이 D-3이면 event 신호 생성
+    earnings = [{"symbol": "012450", "earnings_date": date(2026, 6, 4)}]
+    sigs = event_calendar.build_event_signals(
+        as_of=date(2026, 6, 1),
+        earnings_rows=earnings,
+        macro_horizon_days=30,
+    )
+    earn_sigs = [s for s in sigs if s.symbol == "012450"]
+    assert len(earn_sigs) == 1
+    s = earn_sigs[0]
+    assert isinstance(s, LeadingSignal)
+    assert s.pillar == "event"
+    assert s.direction == "neutral"      # 이벤트는 방향성 없음
+    assert s.evidence["days_to"] == 3
+    assert "D-3" in s.message
+
+
+@pytest.mark.unit
+def test_build_event_signals_skips_far_earnings():
+    # D-10은 ALERT_OFFSETS(7,3,1) 밖 → 신호 없음
+    earnings = [{"symbol": "012450", "earnings_date": date(2026, 6, 11)}]
+    sigs = event_calendar.build_event_signals(
+        as_of=date(2026, 6, 1), earnings_rows=earnings, macro_horizon_days=0
+    )
+    assert [s for s in sigs if s.symbol == "012450"] == []
+
+
+@pytest.mark.unit
+def test_build_event_signals_macro_advisory():
+    # 거시 이벤트는 symbol="_MACRO"로 시장 전체 대상, 확정 신뢰도
+    sigs = event_calendar.build_event_signals(
+        as_of=date(2026, 6, 1), earnings_rows=[], macro_horizon_days=30
+    )
+    macro = [s for s in sigs if s.pillar == "event" and s.symbol == "_MACRO"]
+    assert len(macro) >= 1
+    assert all(s.confidence >= 60.0 for s in macro)
