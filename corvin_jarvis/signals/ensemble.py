@@ -64,6 +64,53 @@ def multi_timeframe_rs_score(rs_by_window: dict[str, float]) -> float:
     return _clamp(50.0 + avg_rs * 4.0)
 
 
+_RS_WINDOWS = {"1w": 5, "1m": 21, "3m": 63, "6m": 126}
+
+
+def _ma(closes: list[float], window: int) -> float | None:
+    if len(closes) < window:
+        return None
+    return sum(closes[-window:]) / window
+
+
+def indicators_from_closes(closes: list[float]) -> dict[str, float | None]:
+    """종가 시계열 → Minervini 입력 지표. 부족하면 해당 항목 None."""
+    if not closes:
+        return {"price": None, "ma50": None, "ma150": None,
+                "ma200": None, "low_52w": None, "high_52w": None}
+    window_52w = closes[-252:] if len(closes) >= 252 else closes
+    return {
+        "price": closes[-1],
+        "ma50": _ma(closes, 50),
+        "ma150": _ma(closes, 150),
+        "ma200": _ma(closes, 200),
+        "low_52w": min(window_52w),
+        "high_52w": max(window_52w),
+    }
+
+
+def _pct_return(closes: list[float], window: int) -> float | None:
+    if len(closes) <= window:
+        return None
+    past = closes[-window - 1]
+    if past == 0:
+        return None
+    return (closes[-1] - past) / past * 100.0
+
+
+def rs_windows_from_closes(
+    closes: list[float], bench_closes: list[float]
+) -> dict[str, float]:
+    """타임프레임별 (종목수익률 - 벤치수익률) %p. 데이터 부족 윈도우는 제외."""
+    out: dict[str, float] = {}
+    for name, w in _RS_WINDOWS.items():
+        sym_r = _pct_return(closes, w)
+        bench_r = _pct_return(bench_closes, w)
+        if sym_r is not None and bench_r is not None:
+            out[name] = round(sym_r - bench_r, 4)
+    return out
+
+
 def ensemble_score(minervini: float, rs: float, volume: float) -> float:
     """3방법론 가중 합산 → 0-100."""
     return round(
