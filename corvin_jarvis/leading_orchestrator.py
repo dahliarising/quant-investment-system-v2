@@ -8,10 +8,15 @@ Plan 1은 Pillar 2(event_calendar)만 연결. 후속 plan에서 Pillar 1/3/4 추
 """
 from __future__ import annotations
 
+import logging
+from typing import Callable
+
 from corvin_jarvis.signals.leading_signal import (
     LeadingSignal,
     apply_confidence_gate,
 )
+
+log = logging.getLogger("corvin.leading")
 
 
 def format_brief(signals: list[LeadingSignal], threshold: float = 60.0) -> str:
@@ -38,3 +43,23 @@ def format_brief(signals: list[LeadingSignal], threshold: float = 60.0) -> str:
             lines.append(f"- {s.message}")
 
     return "\n".join(lines)
+
+
+def collect(
+    providers: list[Callable[[], list[LeadingSignal]]]
+) -> list[LeadingSignal]:
+    """provider 콜백들을 실행해 신호를 평탄화. 실패 provider는 스킵(추측 금지)."""
+    out: list[LeadingSignal] = []
+    for p in providers:
+        try:
+            out.extend(p())
+        except Exception as e:  # noqa: BLE001 - graceful degrade
+            log.warning("leading provider 실패, 스킵: %s", e)
+    return out
+
+
+def dispatch_brief(brief: str, sender: Callable[[str], bool]) -> bool:
+    """브리프 발송. 빈 문자열이면 미발송(False). 노이즈 게이트 결과 존중."""
+    if not brief:
+        return False
+    return sender(brief)
