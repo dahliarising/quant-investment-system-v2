@@ -14,6 +14,7 @@ from datetime import date
 from corvin_jarvis import (
     channels,
     dca_timing,
+    financial_metrics,
     leading_orchestrator as orch,
     leading_providers as lp,
     narrative,
@@ -68,9 +69,9 @@ def _tone_fetcher(_sym: str) -> float | None:
         return None
 
 
-def _metrics_fetcher(_sym: str) -> dict | None:
-    # 재무 metrics 소스 배선은 후속(yfinance US financials / pykrx KR). 현재 미연결 → 스킵.
-    return None
+def _metrics_fetcher(sym: str) -> dict | None:
+    # US=yfinance financials, KR=pykrx 2시점 EPS. 데이터 없으면 None → 펀더멘털 스킵.
+    return financial_metrics.fetch_metrics(sym)
 
 
 def main() -> int:
