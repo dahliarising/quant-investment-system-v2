@@ -17,7 +17,9 @@ from corvin_jarvis import (
     financial_metrics,
     leading_orchestrator as orch,
     leading_providers as lp,
+    market_data,
     narrative,
+    qualitative,
     quote_provider,
 )
 from corvin_jarvis.signals import event_calendar
@@ -37,9 +39,24 @@ CROSS_TARGETS = [
 # KODEX200은 KR 종목이라 default_fetcher(KIS)로 정상 fetch + KOSPI200 추종.
 KOSPI_BENCH_SYMBOL = "069500"
 
+# 종목 사업 요약 (정성 분석 입력). universe.json theme 기반.
+_SUMMARIES = {
+    "012450": "한화에어로스페이스 — K-방산 글로벌 확산",
+    "META": "Meta — AI 광고 + Reality Labs",
+    "MSFT": "Microsoft — Azure + Copilot",
+    "NVDA": "NVIDIA — AI GPU 절대강자",
+    "TSLA": "Tesla — Optimus 휴머노이드",
+}
+_QUAL_CLIENT = qualitative.default_client()   # 키 없으면 None → degrade
+
 
 def _today() -> date:
     return date.today()
+
+
+def _qualitative_fetcher(sym: str) -> float | None:
+    summary = _SUMMARIES.get(sym, sym)
+    return qualitative.qualitative_score(sym, summary, client=_QUAL_CLIENT)
 
 
 def _kr_bench_fetcher() -> list[float]:
@@ -84,12 +101,14 @@ def main() -> int:
             KR_SYMBOLS + US_SYMBOLS,
             price_fetcher=dca_timing.default_fetcher,
             bench_fetcher=_kr_bench_fetcher,
+            volume_fetcher=market_data.fetch_volume,
         ),
         lambda: lp.cross_market_provider(CROSS_TARGETS, pct_fetcher=_proxy_pct_fetcher),
         lambda: lp.fundamental_provider(
             KR_SYMBOLS + US_SYMBOLS,
             metrics_fetcher=_metrics_fetcher,
             tone_fetcher=_tone_fetcher,
+            qualitative_fetcher=_qualitative_fetcher,
         ),
     ]
     signals = orch.collect(providers)

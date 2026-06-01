@@ -27,6 +27,27 @@ def test_ensemble_provider_builds_signals():
 
 
 @pytest.mark.unit
+def test_ensemble_provider_uses_volume_fetcher():
+    closes = {"012450": [float(i) for i in range(1, 261)]}
+
+    def price_fetcher(sym, days=252):
+        return closes.get(sym, [])
+
+    def bench_fetcher():
+        return [100.0] * 261
+
+    def volume_fetcher(sym):
+        return (300.0, 100.0)   # 3배 돌파
+
+    sigs = lp.ensemble_provider(
+        ["012450"], price_fetcher=price_fetcher,
+        bench_fetcher=bench_fetcher, volume_fetcher=volume_fetcher,
+    )
+    assert len(sigs) == 1
+    assert sigs[0].evidence["volume"] >= 80
+
+
+@pytest.mark.unit
 def test_ensemble_provider_skips_insufficient_history():
     def price_fetcher(sym, days=252):
         return [100.0, 101.0]
