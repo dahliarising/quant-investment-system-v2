@@ -92,3 +92,35 @@ def test_build_ensemble_signal_bear():
         symbol="META", minervini=20.0, rs=25.0, volume=40.0,
     )
     assert sig.direction == "bear"
+
+
+@pytest.mark.unit
+def test_indicators_from_closes():
+    closes = [float(i) for i in range(1, 261)]  # 1..260 상승추세
+    ind = ensemble.indicators_from_closes(closes)
+    assert ind["price"] == 260.0
+    assert ind["ma50"] is not None and ind["ma50"] < 260.0
+    assert ind["high_52w"] == 260.0
+    assert ind["low_52w"] == closes[-252]
+
+
+@pytest.mark.unit
+def test_indicators_from_closes_short_series():
+    ind = ensemble.indicators_from_closes([100.0, 101.0])
+    assert ind["price"] == 101.0
+    assert ind["ma50"] is None
+    assert ind["ma200"] is None
+
+
+@pytest.mark.unit
+def test_rs_windows_from_closes():
+    sym = [100.0] * 200 + [110.0]
+    bench = [100.0] * 201
+    rs = ensemble.rs_windows_from_closes(sym, bench)
+    assert rs["1w"] > 0
+    assert all(k in rs for k in ("1w", "1m", "3m", "6m"))
+
+
+@pytest.mark.unit
+def test_rs_windows_insufficient():
+    assert ensemble.rs_windows_from_closes([100.0], [100.0]) == {}
