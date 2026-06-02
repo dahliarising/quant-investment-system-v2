@@ -1,6 +1,6 @@
 {
   "_comment": "지수 견인 대형주 감시 유니버스 — alert 전용. DCA universe.json과 별개.",
-  "_updated": "2026-05-27",
+  "_updated": "2026-06-02",
   "tickers": [
     {"symbol": "005930", "market": "KR", "sector": "semiconductor", "name": "삼성전자"},
     {"symbol": "000660", "market": "KR", "sector": "semiconductor", "name": "SK하이닉스"},
@@ -47,6 +47,10 @@
     {"symbol": "065660", "market": "KR", "sector": "stem_cell", "name": "안트로젠"},
     {"symbol": "IONQ", "market": "US", "sector": "quantum", "name": "IonQ"},
     {"symbol": "RGTI", "market": "US", "sector": "quantum", "name": "Rigetti"},
-    {"symbol": "QBTS", "market": "US", "sector": "quantum", "name": "D-Wave Quantum"}
+    {"symbol": "QBTS", "market": "US", "sector": "quantum", "name": "D-Wave Quantum"},
+    {"symbol": "BWXT", "market": "US", "sector": "nuclear", "name": "BWX Technologies"},
+    {"symbol": "CEG", "market": "US", "sector": "nuclear", "name": "Constellation Energy"},
+    {"symbol": "CCJ", "market": "US", "sector": "nuclear", "name": "Cameco"},
+    {"symbol": "VST", "market": "US", "sector": "nuclear", "name": "Vistra"}
   ]
 }
