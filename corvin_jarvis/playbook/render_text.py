@@ -10,18 +10,23 @@ def _ccy(market: str) -> str:
     return "₩" if market == "KR" else "$"
 
 
+def fmt_price(market: str, price: float) -> str:
+    """KR=콤마 정수(지수표기 방지), US=소수 2자리."""
+    if market == "KR":
+        return f"₩{price:,.0f}"
+    return f"${price:,.2f}"
+
+
 def _action_line(pb: Playbook) -> str:
     z = pb.active_zone
     ratio = f"{z.ratio}%" if z else ""
     zlabel = z.label if z else ""
-    c = _ccy(pb.tech.market)
-    return f"{pb.badge} {pb.name} ({pb.symbol}) {zlabel} {c}{pb.tech.price:g} → {ratio}"
+    return f"{pb.badge} {pb.name} ({pb.symbol}) {zlabel} {fmt_price(pb.tech.market, pb.tech.price)} → {ratio}"
 
 
 def _held_line(pb: Playbook) -> str:
-    c = _ccy(pb.tech.market)
     pnl = f" {pb.pnl_pct:+.1f}%" if pb.pnl_pct is not None else ""
-    return f"{pb.badge} {pb.symbol} {c}{pb.tech.price:g}{pnl}"
+    return f"{pb.badge} {pb.symbol} {fmt_price(pb.tech.market, pb.tech.price)}{pnl}"
 
 
 def render_push(playbooks: list[Playbook], date_label: str) -> str:

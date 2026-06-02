@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 
 from corvin_jarvis.playbook.models import Playbook
+from corvin_jarvis.playbook.render_text import fmt_price
 
 _ORDER = {"BUY_NOW": 0, "TRIM_NOW": 1, "INVALID": 2, "WAIT": 3}
 
@@ -33,7 +34,7 @@ def _card(pb: Playbook) -> str:
     return (
         f'<div class="card"><div class="sym">{html.escape(pb.name)} '
         f'{pb.badge}</div>'
-        f'<div class="muted">{t.symbol} · {t.price:g} · RSI {t.rsi:.0f}{pnl}</div>'
+        f'<div class="muted">{t.symbol} · {fmt_price(t.market, t.price)} · RSI {t.rsi:.0f}{pnl}</div>'
         f'<div class="bar"><div class="mark" style="left:{_pct_pos(pb):.0f}%">'
         f'</div></div>'
         f'<div class="muted">{pb.stance} → {html.escape(nxt)}</div></div>'

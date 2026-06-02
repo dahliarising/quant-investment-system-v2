@@ -55,6 +55,13 @@ def test_push_holdings_include_price_and_pnl() -> None:
 
 
 @pytest.mark.unit
+def test_kr_price_no_scientific_notation() -> None:
+    # KR 고가 종목은 콤마 정수, 지수표기(1.07e+06) 금지
+    assert render_text.fmt_price("KR", 1070000.0) == "₩1,070,000"
+    assert render_text.fmt_price("US", 441.31) == "$441.31"
+
+
+@pytest.mark.unit
 def test_push_watch_triggers_show_price() -> None:
     watch = [_pb(f"W{i}", "WAIT", "⏳", "ENTER") for i in range(3)]
     watch.append(_pb("BWXT", "BUY_NOW", "🟢", "ENTER"))
