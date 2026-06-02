@@ -15,7 +15,7 @@ def _action_line(pb: Playbook) -> str:
     ratio = f"{z.ratio}%" if z else ""
     zlabel = z.label if z else ""
     c = _ccy(pb.tech.market)
-    return f"{pb.badge} {pb.name} {zlabel} {c}{pb.tech.price:g} → {ratio}"
+    return f"{pb.badge} {pb.name} ({pb.symbol}) {zlabel} {c}{pb.tech.price:g} → {ratio}"
 
 
 def render_push(playbooks: list[Playbook], date_label: str) -> str:
