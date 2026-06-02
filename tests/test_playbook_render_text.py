@@ -43,3 +43,21 @@ def test_push_shows_holdings_line() -> None:
     out = render_text.render_push(pbs, date_label="6/2")
     assert "보유" in out
     assert "MSFT" in out
+
+
+@pytest.mark.unit
+def test_push_holdings_include_price_and_pnl() -> None:
+    pbs = [_pb("MSFT", "WAIT", "✅", "ACCUMULATE", pnl=20.2)]
+    out = render_text.render_push(pbs, date_label="6/2")
+    # 보유 종목은 현재가 + 손익률을 노출해야 한다 (단순 칩 X)
+    assert "$100" in out
+    assert "+20.2%" in out
+
+
+@pytest.mark.unit
+def test_push_watch_triggers_show_price() -> None:
+    watch = [_pb(f"W{i}", "WAIT", "⏳", "ENTER") for i in range(3)]
+    watch.append(_pb("BWXT", "BUY_NOW", "🟢", "ENTER"))
+    out = render_text.render_push(watch, date_label="6/2")
+    # 관찰 트리거는 액션 섹션에서 현재가가 보여야 한다
+    assert "$100" in out

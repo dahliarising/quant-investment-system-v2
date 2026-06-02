@@ -18,6 +18,12 @@ def _action_line(pb: Playbook) -> str:
     return f"{pb.badge} {pb.name} ({pb.symbol}) {zlabel} {c}{pb.tech.price:g} → {ratio}"
 
 
+def _held_line(pb: Playbook) -> str:
+    c = _ccy(pb.tech.market)
+    pnl = f" {pb.pnl_pct:+.1f}%" if pb.pnl_pct is not None else ""
+    return f"{pb.badge} {pb.symbol} {c}{pb.tech.price:g}{pnl}"
+
+
 def render_push(playbooks: list[Playbook], date_label: str) -> str:
     triggers = [p for p in playbooks if p.status in _TRIGGER]
     held = [p for p in playbooks if p.stance in ("ACCUMULATE", "HARVEST")]
@@ -31,8 +37,8 @@ def render_push(playbooks: list[Playbook], date_label: str) -> str:
         lines.append("— 없음 (전 종목 존 대기)")
 
     if held:
-        chips = " ".join(f"{p.symbol}{p.badge}" for p in held)
-        lines.append(f"💼 보유{len(held)}: {chips}")
+        lines.append(f"💼 보유 ({len(held)})")
+        lines += [_held_line(p) for p in held]
 
     watch_trig = sum(1 for p in watch if p.status in _TRIGGER)
     lines.append(
