@@ -44,10 +44,10 @@
   td .sym{color:var(--amber-hi)}
   /* right col */
   .idx{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1d160b;font-size:13px}
-  .sig div{font-size:12px;padding:2px 0;display:flex;justify-content:space-between}
+  .sig #p-signals > div{font-size:12px;padding:2px 0;display:flex;justify-content:space-between}
   .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
   .g{background:var(--green)}.r{background:var(--red)}.a{background:var(--amber)}
-  .poly div{font-size:12px;margin:5px 0}
+  .poly #p-poly > div{font-size:12px;margin:5px 0}
   .poly .q{color:var(--amber-dim)}
   .poly .track{height:6px;background:#241a0c;border-radius:2px;margin-top:2px;position:relative}
   .poly .fill{height:100%;background:var(--amber);border-radius:2px}
