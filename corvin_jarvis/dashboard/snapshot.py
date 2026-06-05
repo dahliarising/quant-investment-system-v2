@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from corvin_jarvis import quote_provider as qp
 from corvin_jarvis import market_hours
 from corvin_jarvis.dashboard import equity_curve
+from corvin_jarvis.dashboard import polymarket as _pm
 from corvin_jarvis.playbook import builder
 
 KST = ZoneInfo("Asia/Seoul")
@@ -27,6 +28,10 @@ _INDICES = [("KS11", "KOSPI", "kr"), ("KQ11", "KOSDAQ", "kr"),
 _COMMODITIES = [("BZ=F", "BRENT"), ("GC=F", "GOLD")]
 
 _CACHE: dict[str, Any] = {"data": None, "at": 0.0}
+
+
+def _polymarket_fetch() -> list:
+    return _pm.fetch_trending()
 
 
 def _safe(fn, default):
@@ -158,6 +163,7 @@ def build_snapshot() -> dict[str, Any]:
         "signals": _safe(lambda: _build_signals(holdings), []),
         "log": _safe(lambda: _action_log(pf), []),
         "equity_curve": _safe(equity_curve.build_series, []),
+        "polymarket": _safe(_polymarket_fetch, []),
     }
 
 

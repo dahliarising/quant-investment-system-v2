@@ -63,6 +63,15 @@ function renderLog(rows) {
   $("p-log").innerHTML = rows.map(r => `<div><b>${esc(r.ts)}</b> ${esc(r.text)}</div>`).join("");
 }
 
+function renderPoly(rows) {
+  if (!rows || !rows.length) { $("p-poly").innerHTML = '<div class="dim">— 데이터 없음</div>'; return; }
+  const vol = (v) => v >= 1e6 ? (v/1e6).toFixed(1)+"M" : Math.round(v/1e3)+"k";
+  $("p-poly").innerHTML = rows.map(r => `
+    <div><span class="q">${esc(r.question)}</span> ${Math.round(r.prob*100)}%
+      <div class="track"><div class="fill" style="width:${r.prob*100}%"></div></div>
+      <span class="dim" style="font-size:10px">관심도 $${vol(r.volume_usd)}</span></div>`).join("");
+}
+
 function renderTicker(rows) {
   $("p-ticker").innerHTML = rows.map(r =>
     `<span><b>${esc(r.label)}</b> ${r.price} <span class="${cls(r.pct)}">${pct(r.pct)}</span></span>`).join("");
@@ -95,6 +104,7 @@ async function tick() {
     renderSignals(snap.signals || []);
     renderLog(snap.log || []);
     renderTicker(snap.macro_ticker || []);
+    renderPoly(snap.polymarket || []);
     $("topmeta").textContent = `${snap.ts} · ${state.toUpperCase()} · FX ${snap.fx_usdkrw?.toFixed?.(2) ?? "—"}`;
   } catch (e) {
     $("topmeta").textContent = "연결 오류 — 재시도 중";

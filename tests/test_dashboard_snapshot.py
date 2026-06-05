@@ -13,9 +13,11 @@ def test_build_snapshot_has_all_sections(monkeypatch):
     monkeypatch.setattr(snapshot.qp, "get_fx_quote", lambda s: _Q(1530.0, 1.0))
     monkeypatch.setattr(snapshot.qp, "get_commodity_quote", lambda s: _Q(95.0, -2.0))
     monkeypatch.setattr(snapshot, "_build_signals", lambda holdings: [])
+    monkeypatch.setattr(snapshot, "_polymarket_fetch", lambda: [])
     snap = snapshot.build_snapshot()
     for key in ("ts", "market_state", "fx_usdkrw", "totals", "positions",
-                "indices", "macro_ticker", "allocation", "signals", "log", "equity_curve"):
+                "indices", "macro_ticker", "allocation", "signals", "log", "equity_curve",
+                "polymarket"):
         assert key in snap
     assert isinstance(snap["positions"], list)
 
