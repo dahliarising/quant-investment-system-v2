@@ -82,23 +82,45 @@ function renderLog(rows) {
   $("p-log").innerHTML = rows.map(r => `<div><b>${esc(r.ts)}</b> ${esc(r.text)}</div>`).join("");
 }
 
+const POLY_HIST = {};  // question -> [prob,...] (확률 변화 스파크라인용 누적)
 let POLY_ACTIVE = null;
+function polySpark(hist) {
+  if (!hist || hist.length < 2) return "";
+  const w = 50, h = 12, mn = Math.min(...hist), mx = Math.max(...hist), sp = (mx - mn) || 1;
+  const pts = hist.map((v, i) => `${(i / (hist.length - 1) * w).toFixed(0)},${(h - ((v - mn) / sp) * (h - 2) - 1).toFixed(1)}`).join(" ");
+  return `<svg class="poly-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline fill="none" stroke="#ffae42" stroke-width="1" points="${pts}"/></svg>`;
+}
 function renderPoly(rows) {
   const tabsEl = $("p-poly-tabs");
   if (!rows || !rows.length) { tabsEl.innerHTML = ""; $("p-poly").innerHTML = '<div class="dim">— no data</div>'; return; }
+  // 확률 누적 + 급변 감지
+  rows.forEach(r => {
+    const h = POLY_HIST[r.question] || (POLY_HIST[r.question] = []);
+    const prev = h.length ? h[h.length - 1] : null;
+    r._moved = prev != null && Math.abs(r.prob - prev) >= 0.01;
+    h.push(r.prob); if (h.length > 30) h.shift();
+  });
   const cats = {};
   rows.forEach(r => { const c = r.category || "Other"; (cats[c] = cats[c] || []).push(r); });
   const names = Object.keys(cats);
   if (POLY_ACTIVE === null || !cats[POLY_ACTIVE]) POLY_ACTIVE = names[0];
-  const vol = (v) => v >= 1e6 ? (v/1e6).toFixed(1)+"M" : Math.round(v/1e3)+"k";
+  const vol = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.round(v / 1e3) + "k";
   const body = () => {
-    $("p-poly").innerHTML = (cats[POLY_ACTIVE] || []).map(r => `
-      <div><span class="q">${esc(r.question)}</span> ${Math.round(r.prob*100)}%
-        <div class="track"><div class="fill" style="width:${r.prob*100}%"></div></div>
-        <span class="dim" style="font-size:10px">interest $${vol(r.volume_usd)}</span></div>`).join("");
+    $("p-poly").innerHTML = (cats[POLY_ACTIVE] || []).map(r => {
+      const yes = r.prob >= 0.5, lead = Math.round((yes ? r.prob : 1 - r.prob) * 100);
+      const hot = r.volume_usd >= 1e6 ? "⚡" : "";
+      return `<div class="poly-row${r._moved ? ' poly-pulse' : ''}">
+        <div class="q">${esc(r.question)}</div>
+        <div class="poly-bot">
+          <span class="${yes ? 'up' : 'down'}">${yes ? 'YES ▲' : 'NO ▼'}${lead}%</span>
+          ${polySpark(POLY_HIST[r.question])}
+          <span class="dim" style="font-size:10px">${hot}$${vol(r.volume_usd)}</span>
+        </div>
+        <div class="track"><div class="fill" style="width:${r.prob * 100}%"></div></div></div>`;
+    }).join("");
   };
   tabsEl.innerHTML = names.map((n, i) =>
-    `<span class="poly-tab ${n===POLY_ACTIVE?'active':''}" data-idx="${i}">${esc(n)}</span>`).join("");
+    `<span class="poly-tab ${n === POLY_ACTIVE ? 'active' : ''}" data-idx="${i}">${esc(n)}</span>`).join("");
   tabsEl.querySelectorAll(".poly-tab").forEach((t, i) => {
     t.onclick = () => { POLY_ACTIVE = names[i]; body();
       tabsEl.querySelectorAll(".poly-tab").forEach((x, j) => x.classList.toggle("active", j === i)); };
@@ -119,15 +141,15 @@ function startProcessing() {
   const el = $("p-matrix");
   const W = 200, H = 80;
   const strands = [
-    { y: 14, dur: 3.4 }, { y: 30, dur: 4.5 }, { y: 46, dur: 2.9 },
-    { y: 62, dur: 5.1 }, { y: 22, dur: 3.9 },
+    { y: 10, dur: 3.4 }, { y: 22, dur: 4.5 }, { y: 34, dur: 2.9 }, { y: 46, dur: 3.9 },
+    { y: 58, dur: 5.1 }, { y: 70, dur: 3.2 }, { y: 16, dur: 4.1 },
   ];
-  const d = (s) => `M0,${s.y} Q${W * 0.25},${s.y - 9} ${W * 0.5},${s.y} T${W},${s.y}`;
-  const paths = strands.map(s => `<path d="${d(s)}" fill="none" stroke="#3a2c12" stroke-width="1"/>`).join("");
+  const d = (s) => `M0,${s.y} Q${W * 0.25},${s.y - 14} ${W * 0.5},${s.y} T${W},${s.y}`;
+  const paths = strands.map(s => `<path d="${d(s)}" fill="none" stroke="#4a3818" stroke-width="1.4"/>`).join("");
   const dots = strands.map((s, i) => {
     const dot = (r, fill, op, mul, begin) =>
       `<circle r="${r}" fill="${fill}" opacity="${op}"><animateMotion dur="${(s.dur * mul).toFixed(1)}s" repeatCount="indefinite" begin="${begin}s" path="${d(s)}"/></circle>`;
-    return dot(2, "#ffd27f", 0.95, 1, (i * 0.5).toFixed(1)) + dot(1.5, "#ffae42", 0.5, 1.5, (i * 0.7 + 1).toFixed(1));
+    return dot(3.2, "#ffd27f", 0.95, 1, (i * 0.4).toFixed(1)) + dot(2.2, "#ffae42", 0.55, 1.5, (i * 0.6 + 1).toFixed(1));
   }).join("");
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:100%">${paths}${dots}</svg>
     <div class="proc-label">processing…</div>`;

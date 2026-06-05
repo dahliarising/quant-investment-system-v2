@@ -69,3 +69,9 @@
   .proc-label{position:absolute;bottom:3px;right:7px;font-size:10px;color:var(--amber-dim);opacity:.7;letter-spacing:1px}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   .curve-tip{animation:pulse 1.5s infinite}
+  .poly-row{padding:3px 4px;border-bottom:1px solid #1d160b;border-radius:2px}
+  .poly-row .q{font-size:12px;color:var(--amber-dim);display:block}
+  .poly-bot{display:flex;align-items:center;gap:8px;font-size:12px;margin-top:1px}
+  .poly-spark{width:50px;height:12px;flex:0 0 auto}
+  @keyframes polypulse{0%{background:rgba(255,174,66,.35)}100%{background:transparent}}
+  .poly-pulse{animation:polypulse 2s ease}
