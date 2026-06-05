@@ -15,28 +15,35 @@ function renderHero(t) {
       <div class="dim">CASH ${fmtKRW(t.deployable_krw)}</div></div>`;
 }
 
-const kM = (v) => v == null ? "—" : "₩" + (v / 1e6).toFixed(2) + "M";
-function renderCurve(series) {
-  if (!series || series.length < 2) { $("p-curve").innerHTML = '<div class="dim">— no curve data</div>'; return; }
-  const vals = series.map(p => p.value), min = Math.min(...vals), max = Math.max(...vals);
-  const first = series[0], last = series[series.length - 1];
-  const W = 600, H = 110, span = (max - min) || 1;
-  const xy = (p, i) => [(i / (series.length - 1)) * W, H - ((p.value - min) / span) * (H - 12) - 6];
-  const pts = series.map((p, i) => xy(p, i).map(n => n.toFixed(0)).join(",")).join(" ");
-  const [ex, ey] = xy(last, series.length - 1);
-  $("p-curve").innerHTML = `
-    <div class="curve-meta">
-      <span class="dim">${esc(first.date)} → ${esc(last.date)} · ${series.length}pt</span>
-      <span class="now">${kM(last.value)} <span class="dim" style="font-size:10px">total assets</span></span>
-    </div>
+// 실시간 수익률(%) 추이 — 매 폴링마다 equity_pnl_pct를 누적해 0% 기준선 위로 라이브 드로잉.
+let RETURN_SERIES = [];
+function renderReturnCurve(series, nowPct) {
+  const el = $("p-curve");
+  const pts = series.filter(v => v != null);
+  const nowLbl = nowPct == null ? "—" : (nowPct >= 0 ? "+" : "") + nowPct.toFixed(2) + "%";
+  const nowCls = nowPct == null ? "dim" : nowPct >= 0 ? "up" : "down";
+  if (pts.length < 1) {
+    el.innerHTML = `<div class="curve-meta"><span class="dim">LIVE · intraday return</span>
+      <span class="now ${nowCls}">${nowLbl}</span></div>
+      <div class="dim" style="flex:1;display:flex;align-items:center">accumulating live…</div>`;
+    return;
+  }
+  const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = (hi - lo) || 1;
+  const W = 600, H = 110;
+  const y = (v) => H - ((v - lo) / span) * (H - 12) - 6;
+  const x = (i) => pts.length < 2 ? W : (i / (pts.length - 1)) * W;
+  const line = pts.map((v, i) => `${x(i).toFixed(0)},${y(v).toFixed(1)}`).join(" ");
+  const y0 = y(0).toFixed(1);
+  const ex = x(pts.length - 1).toFixed(0), ey = y(pts[pts.length - 1]).toFixed(1);
+  el.innerHTML = `
+    <div class="curve-meta"><span class="dim">LIVE · intraday return · ${pts.length}pt</span>
+      <span class="now ${nowCls}">${nowLbl}</span></div>
     <svg class="curve-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <line x1="0" y1="6" x2="${W}" y2="6" stroke="#3a2c12" stroke-width="1"/>
-      <line x1="0" y1="${H - 6}" x2="${W}" y2="${H - 6}" stroke="#3a2c12" stroke-width="1"/>
-      <polygon fill="rgba(255,174,66,.10)" points="${pts} ${W},${H} 0,${H}"/>
-      <polyline fill="none" stroke="#ffae42" stroke-width="2" points="${pts}"/>
-      <circle cx="${ex.toFixed(0)}" cy="${ey.toFixed(0)}" r="3.5" fill="#ffd27f"/>
+      <line x1="0" y1="${y0}" x2="${W}" y2="${y0}" stroke="#5a4520" stroke-width="1" stroke-dasharray="4 4"/>
+      <polyline fill="none" stroke="#ffae42" stroke-width="2" points="${line}"/>
+      <circle class="curve-tip" cx="${ex}" cy="${ey}" r="3.5" fill="#ffd27f"/>
     </svg>
-    <div class="curve-axis"><span>low ${kM(min)}</span><span>high ${kM(max)}</span></div>`;
+    <div class="curve-axis"><span>basis 0%</span><span>${hi >= 0 ? '+' : ''}${hi.toFixed(2)}% peak</span></div>`;
 }
 
 function renderPositions(rows) {
@@ -101,27 +108,46 @@ function renderTicker(rows) {
     `<span><b>${esc(r.label)}</b> ${r.price} <span class="${cls(r.pct)}">${pct(r.pct)}</span></span>`).join("");
 }
 
-let MATRIX_TIMER = null;
-function startMatrix() {
-  if (MATRIX_TIMER) return;
+// 실시간 틱 테이프 — 보유·지수의 최신 시세를 회전시켜 시퀀스 애니메이션으로 흘림.
+let TAPE_DATA = [];
+let TAPE_TIMER = null;
+function renderTape(snap) {
+  const items = [];
+  (snap.positions || []).forEach(p => items.push({ s: p.sym, v: p.price, c: p.day_pct, ccy: p.ccy }));
+  (snap.indices || []).forEach(i => items.push({ s: i.label, v: i.price, c: i.pct }));
+  TAPE_DATA = items;
+}
+function startTape() {
+  if (TAPE_TIMER) return;
   const el = $("p-matrix");
-  MATRIX_TIMER = setInterval(() => {
-    let s = "";
-    for (let r = 0; r < 6; r++) {
-      for (let c = 0; c < 8; c++) s += Math.random() > 0.5 ? "1 " : "0 ";
-      s += "\n";
+  let off = 0;
+  const VIS = 5;
+  const fmt = (d) => d.v == null ? "—" : d.ccy === "USD" ? "$" + d.v.toFixed(2)
+    : d.v >= 1000 ? Math.round(d.v).toLocaleString() : String(d.v);
+  TAPE_TIMER = setInterval(() => {
+    if (!TAPE_DATA.length) return;
+    off = (off + 1) % TAPE_DATA.length;
+    const rows = [];
+    for (let i = 0; i < Math.min(VIS, TAPE_DATA.length); i++) {
+      const d = TAPE_DATA[(off + i) % TAPE_DATA.length];
+      const cls = d.c == null ? "dim" : d.c >= 0 ? "up" : "down";
+      const arr = d.c == null ? "·" : d.c >= 0 ? "▲" : "▼";
+      const chg = d.c == null ? "" : Math.abs(d.c).toFixed(1);
+      rows.push(`<div class="tape-row"><span class="sym">${esc(d.s)}</span><span>${fmt(d)}</span><span class="${cls}">${arr}${chg}</span></div>`);
     }
-    el.textContent = s;
-  }, 400);
+    el.innerHTML = rows.join("");
+  }, 900);
 }
 
-async function tick() {
-  let state = "open";
+async function refresh() {
   try {
     const snap = await (await fetch("/api/snapshot")).json();
-    state = snap.market_state || "open";
+    const state = snap.market_state || "open";
     renderHero(snap.totals || {});
-    renderCurve(snap.equity_curve);
+    const rp = snap.totals ? snap.totals.equity_pnl_pct : null;
+    if (rp != null) { RETURN_SERIES.push(rp); if (RETURN_SERIES.length > 120) RETURN_SERIES.shift(); }
+    renderReturnCurve(RETURN_SERIES, rp);
+    renderTape(snap);
     renderPositions(snap.positions || []);
     renderIndices(snap.indices || []);
     renderAlloc(snap.allocation || []);
@@ -130,12 +156,26 @@ async function tick() {
     renderTicker(snap.macro_ticker || []);
     renderPoly(snap.polymarket || []);
     $("topmeta").textContent = `${snap.ts} · ${state.toUpperCase()} · FX ${snap.fx_usdkrw?.toFixed?.(2) ?? "—"}`;
+    return state;
   } catch (e) {
     $("topmeta").textContent = "connection error — retrying";
+    return "open";
   }
-  const delay = state === "open" ? 30000 : 300000;
-  setTimeout(tick, delay);
 }
 
-startMatrix();
-tick();
+async function loop() {
+  const state = await refresh();
+  setTimeout(loop, state === "open" ? 30000 : 300000);
+}
+
+// 시작 버스트: 캐시된 스냅샷을 빠르게 몇 번 샘플해 수익률 곡선을 즉시 띄운 뒤 정상 주기로.
+async function bootstrap() {
+  for (let i = 0; i < 6; i++) {
+    await refresh();
+    await new Promise(r => setTimeout(r, 1200));
+  }
+  loop();
+}
+
+startTape();
+bootstrap();

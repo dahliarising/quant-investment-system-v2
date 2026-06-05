@@ -64,3 +64,11 @@
   .poly-tabs{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px}
   .poly-tab{font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:3px 3px 0 0;cursor:pointer;color:var(--amber-dim);background:#1a1206}
   .poly-tab.active{color:var(--bg);background:var(--amber);border-color:var(--amber)}
+  .tape{overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+  .tape .tape-row{display:flex;justify-content:space-between;gap:6px;white-space:nowrap;
+    font-family:'Share Tech Mono';font-size:11px;letter-spacing:0;padding:1px 2px;color:var(--amber);
+    animation:tapein .5s ease}
+  .tape .tape-row .sym{color:var(--amber-hi)}
+  @keyframes tapein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .curve-tip{animation:pulse 1.5s infinite}
