@@ -35,8 +35,11 @@
   .hero .big{font-family:'VT323';font-size:62px;color:var(--amber-hi);line-height:.9;text-shadow:0 0 16px rgba(255,174,66,.35)}
   .hero .sub{font-size:14px}
   .hero .tot{font-family:'VT323';font-size:26px;color:var(--amber)}
-  .curve{flex:1;min-height:0;margin-top:6px}
-  .curve svg{width:100%;height:100%}
+  .curve{flex:1;min-height:0;margin-top:6px;display:flex;flex-direction:column}
+  .curve .curve-svg{width:100%;flex:1;min-height:0}
+  .curve-meta{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;margin-bottom:2px}
+  .curve-meta .now{font-family:'VT323';font-size:20px;color:var(--amber-hi)}
+  .curve-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--amber-dim);margin-top:1px}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th{text-align:right;color:var(--amber-dim);font-weight:normal;border-bottom:1px solid var(--line);padding:2px 6px;font-size:11px}
   th:first-child,td:first-child{text-align:left}

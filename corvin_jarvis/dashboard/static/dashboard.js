@@ -15,19 +15,28 @@ function renderHero(t) {
       <div class="dim">CASH ${fmtKRW(t.deployable_krw)}</div></div>`;
 }
 
+const kM = (v) => v == null ? "—" : "₩" + (v / 1e6).toFixed(2) + "M";
 function renderCurve(series) {
   if (!series || series.length < 2) { $("p-curve").innerHTML = '<div class="dim">— no curve data</div>'; return; }
   const vals = series.map(p => p.value), min = Math.min(...vals), max = Math.max(...vals);
-  const W = 600, H = 150, span = (max - min) || 1;
-  const pts = series.map((p, i) => {
-    const x = (i / (series.length - 1)) * W;
-    const y = H - ((p.value - min) / span) * (H - 10) - 5;
-    return `${x.toFixed(0)},${y.toFixed(0)}`;
-  }).join(" ");
-  $("p-curve").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-       <polygon fill="rgba(255,174,66,.10)" points="${pts} ${W},${H} 0,${H}"/>
-       <polyline fill="none" stroke="#ffae42" stroke-width="2" points="${pts}"/></svg>`;
+  const first = series[0], last = series[series.length - 1];
+  const W = 600, H = 110, span = (max - min) || 1;
+  const xy = (p, i) => [(i / (series.length - 1)) * W, H - ((p.value - min) / span) * (H - 12) - 6];
+  const pts = series.map((p, i) => xy(p, i).map(n => n.toFixed(0)).join(",")).join(" ");
+  const [ex, ey] = xy(last, series.length - 1);
+  $("p-curve").innerHTML = `
+    <div class="curve-meta">
+      <span class="dim">${esc(first.date)} → ${esc(last.date)} · ${series.length}pt</span>
+      <span class="now">${kM(last.value)} <span class="dim" style="font-size:10px">total assets</span></span>
+    </div>
+    <svg class="curve-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <line x1="0" y1="6" x2="${W}" y2="6" stroke="#3a2c12" stroke-width="1"/>
+      <line x1="0" y1="${H - 6}" x2="${W}" y2="${H - 6}" stroke="#3a2c12" stroke-width="1"/>
+      <polygon fill="rgba(255,174,66,.10)" points="${pts} ${W},${H} 0,${H}"/>
+      <polyline fill="none" stroke="#ffae42" stroke-width="2" points="${pts}"/>
+      <circle cx="${ex.toFixed(0)}" cy="${ey.toFixed(0)}" r="3.5" fill="#ffd27f"/>
+    </svg>
+    <div class="curve-axis"><span>low ${kM(min)}</span><span>high ${kM(max)}</span></div>`;
 }
 
 function renderPositions(rows) {
