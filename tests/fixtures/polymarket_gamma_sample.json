@@ -1,6 +1,8 @@
 [
   {"question": "Fed cuts rates in June?", "outcomePrices": "[\"0.72\", \"0.28\"]",
-   "volume": "1200000", "slug": "fed-june", "closed": false},
+   "volume": "1200000", "slug": "fed-june", "closed": false,
+   "events": [{"slug": "fed-decision-in-june", "series": [{"ticker": "fomc", "id": "1"}]}]},
   {"question": "US recession in 2026?", "outcomePrices": "[\"0.28\", \"0.72\"]",
-   "volume": "800000", "slug": "recession-2026", "closed": false}
+   "volume": "800000", "slug": "recession-2026", "closed": false,
+   "events": [{"slug": "us-recession-2026", "series": [{"ticker": "economy", "id": "2"}]}]}
 ]

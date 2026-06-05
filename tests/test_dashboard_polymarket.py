@@ -12,6 +12,8 @@ def test_parse_markets():
     assert abs(rows[0]["prob"] - 0.72) < 1e-6
     assert rows[0]["volume_usd"] == 1200000.0
     assert rows[0]["url"].endswith("fed-june")
+    assert rows[0]["category"] == "Macro"
+    assert rows[1]["category"] == "Macro"
 
 
 def test_parse_skips_malformed():

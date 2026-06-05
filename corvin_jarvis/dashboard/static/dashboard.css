@@ -56,3 +56,8 @@
   .matrix{font-family:'VT323';font-size:14px;color:#2f6b3a;overflow:hidden;line-height:1;letter-spacing:3px;white-space:pre;opacity:.7}
   .ticker{display:flex;align-items:center;gap:26px;font-size:15px;font-family:'VT323';overflow:hidden;white-space:nowrap}
   .ticker b{color:var(--amber-hi)}
+  .midrow{display:flex;gap:8px;flex:1;min-height:0}
+  .midrow .curve{flex:1}
+  .poly-tabs{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px}
+  .poly-tab{font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:3px 3px 0 0;cursor:pointer;color:var(--amber-dim);background:#1a1206}
+  .poly-tab.active{color:var(--bg);background:var(--amber);border-color:var(--amber)}

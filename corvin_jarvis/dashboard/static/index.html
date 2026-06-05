@@ -6,23 +6,29 @@
 </head><body>
 <div class="scan"></div>
 <div class="top"><div class="l">🐦‍⬛ CORVIN COMMAND // PORTFOLIO OPS</div>
-  <div class="r" id="topmeta">연결 중…</div></div>
+  <div class="r" id="topmeta">connecting…</div></div>
 <div class="wrap">
   <div class="col">
-    <div class="panel log" style="flex:1"><h3>⑦ 액션 로그</h3><div id="p-log"></div></div>
-    <div class="panel bars" style="flex:1"><h3>⑤ 비중 / 섹터</h3><div id="p-alloc"></div></div>
+    <div class="panel log" style="flex:1"><h3>ACTION LOG</h3><div id="p-log"></div></div>
+    <div class="panel bars" style="flex:1"><h3>ALLOCATION</h3><div id="p-alloc"></div></div>
   </div>
   <div class="col">
-    <div class="panel" style="flex:1.4;display:flex;flex-direction:column">
-      <div class="hero" id="p-hero"></div>
-      <div class="dim" style="font-size:11px;margin-top:6px">② 자산곡선</div>
-      <div class="curve" id="p-curve"></div></div>
-    <div class="panel" style="flex:1"><h3>③ 보유 포지션 — LIVE</h3><div id="p-positions"></div></div>
+    <div class="midrow">
+      <div class="panel" style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div class="hero" id="p-hero"></div>
+        <div class="dim" style="font-size:11px;margin-top:6px">EQUITY CURVE</div>
+        <div class="curve" id="p-curve"></div>
+      </div>
+      <div class="panel" style="flex:1;min-width:0"><h3>POSITIONS — LIVE</h3><div id="p-positions"></div></div>
+    </div>
+    <div class="panel poly" style="flex:1"><h3>PREDICTION MARKETS</h3>
+      <div id="p-poly-tabs" class="poly-tabs"></div>
+      <div id="p-poly"></div>
+    </div>
   </div>
   <div class="col">
-    <div class="panel" style="flex:.9"><h3>④ 시장 / 매크로</h3><div id="p-indices"></div></div>
-    <div class="panel sig" style="flex:1"><h3>⑥ 플레이북 신호</h3><div id="p-signals"></div></div>
-    <div class="panel poly" style="flex:.9"><h3>⑧ 예측시장</h3><div id="p-poly">— Phase 2</div></div>
+    <div class="panel" style="flex:1"><h3>MARKETS / MACRO</h3><div id="p-indices"></div></div>
+    <div class="panel sig" style="flex:1.2"><h3>PLAYBOOK SIGNALS</h3><div id="p-signals"></div></div>
   </div>
   <div class="btm">
     <div class="panel matrix" id="p-matrix" style="padding:6px"></div>
