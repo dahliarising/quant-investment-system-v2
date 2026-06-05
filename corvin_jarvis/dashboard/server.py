@@ -52,5 +52,5 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, fp.read_bytes(), ctype)
 
 
-def make_server(port: int = 8765) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+def make_server(port: int = 8765, host: str = "127.0.0.1") -> ThreadingHTTPServer:
+    return ThreadingHTTPServer((host, port), Handler)
