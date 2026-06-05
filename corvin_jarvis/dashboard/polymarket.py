@@ -1,6 +1,7 @@
 """Polymarket Gamma API — 거래량 상위 트렌딩 마켓 (읽기전용)."""
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import urllib.request
@@ -37,7 +38,7 @@ def parse_markets(raw: list[dict]) -> list[dict]:
 def fetch_trending(top: int = 8) -> list[dict]:
     try:
         raw = _http_get(_BASE + _PARAMS)
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, http.client.HTTPException) as e:
         log.warning("polymarket fetch failed: %s", e)
         return []
     rows = parse_markets(raw if isinstance(raw, list) else raw.get("data", []))

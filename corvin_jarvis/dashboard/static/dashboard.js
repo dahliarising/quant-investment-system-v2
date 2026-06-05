@@ -7,7 +7,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&
 function renderHero(t) {
   const pnl = t.equity_pnl_krw, p = t.equity_pnl_pct;
   $("p-hero").innerHTML = `
-    <div><div class="big ${cls(pnl)}">${pnl>=0?'+':''}${fmtKRW(pnl)}</div>
+    <div><div class="big ${cls(pnl)}">${pnl != null && pnl >= 0 ? '+' : ''}${fmtKRW(pnl)}</div>
       <div class="sub ${cls(p)}">평가손익 ${pct(p)}</div></div>
     <div style="margin-left:auto;text-align:right">
       <div class="dim" style="font-size:11px">① 총자산</div>
