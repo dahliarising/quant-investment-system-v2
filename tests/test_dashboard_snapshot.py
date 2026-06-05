@@ -37,6 +37,20 @@ def test_build_snapshot_never_raises(monkeypatch):
     assert snap["indices"] == []  # every index quote raised -> all skipped
 
 
+def test_positions_handles_nan_price(monkeypatch):
+    class _Qnan:
+        price = float("nan"); pct_change = float("nan"); source = "t"; error = None
+    monkeypatch.setattr(snapshot.qp, "get_stock_quote", lambda s: _Qnan())
+    monkeypatch.setattr(snapshot.qp, "get_fx_quote", lambda s: _Qnan())
+    pf = {"holdings": [{"symbol": "BWXT", "shares": 8, "currency": "USD",
+                        "avgPriceUSD": 191.38, "valueKRW": 2345461}]}
+    rows = snapshot._positions(pf)
+    assert len(rows) == 1
+    assert rows[0]["price"] is None
+    assert rows[0]["pnl_pct"] is None
+    assert rows[0]["value_krw"] == 2345461  # graceful fallback to stale value, no crash
+
+
 def test_get_snapshot_caches(monkeypatch):
     calls = {"n": 0}
     def fake_build():

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,17 @@ def _safe(fn, default):
         return default
 
 
+def _num(x: float | None) -> float | None:
+    """Coerce to a finite float, else None (guards NaN/inf from quote sources)."""
+    if x is None:
+        return None
+    try:
+        f = float(x)
+    except (TypeError, ValueError):
+        return None
+    return None if (math.isnan(f) or math.isinf(f)) else f
+
+
 def _load_portfolio() -> dict[str, Any]:
     try:
         return json.loads(PORTFOLIO.read_text(encoding="utf-8"))
@@ -45,11 +57,12 @@ def _load_portfolio() -> dict[str, Any]:
 
 def _positions(pf: dict) -> list[dict]:
     rows = []
-    fx = _safe(lambda: qp.get_fx_quote("USDKRW=X").price, 1500.0) or 1500.0
+    fx = _num(_safe(lambda: qp.get_fx_quote("USDKRW=X").price, None)) or 1500.0
     for h in pf.get("holdings", []):
         sym = h["symbol"]
         q = _safe(lambda s=sym: qp.get_stock_quote(s), None)
-        price = q.price if q else None
+        price = _num(q.price) if q else None
+        day_pct = _num(q.pct_change) if q else None
         if h["currency"] == "USD":
             avg = h.get("avgPriceUSD") or 0
             pnl_pct = (price / avg - 1) * 100 if price and avg else None
@@ -58,10 +71,12 @@ def _positions(pf: dict) -> list[dict]:
             avg = h.get("avgPriceKRW") or 0
             pnl_pct = (price / avg - 1) * 100 if price and avg else None
             value_krw = price * h["shares"] if price else h.get("valueKRW")
+        value_krw = _num(value_krw)
+        pnl_pct = _num(pnl_pct)
         rows.append({"sym": sym, "name": _NAMES.get(sym, sym), "ccy": h["currency"],
-                     "price": price, "day_pct": q.pct_change if q else None,
+                     "price": price, "day_pct": day_pct,
                      "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
-                     "value_krw": round(value_krw) if value_krw else None})
+                     "value_krw": round(value_krw) if value_krw is not None else None})
     return rows
 
 
