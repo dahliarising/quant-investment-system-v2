@@ -1,0 +1,6 @@
+[
+  {"question": "Fed cuts rates in June?", "outcomePrices": "[\"0.72\", \"0.28\"]",
+   "volume": "1200000", "slug": "fed-june", "closed": false},
+  {"question": "US recession in 2026?", "outcomePrices": "[\"0.28\", \"0.72\"]",
+   "volume": "800000", "slug": "recession-2026", "closed": false}
+]
