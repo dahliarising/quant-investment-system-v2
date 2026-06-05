@@ -33,7 +33,7 @@ function renderCurve(series) {
 function renderPositions(rows) {
   const price = (r) => r.price == null ? "—" : (r.ccy === "USD" ? "$" + r.price.toFixed(2) : "₩" + Math.round(r.price).toLocaleString());
   $("p-positions").innerHTML = `<table>
-    <tr><th>종목</th><th>현재가</th><th>일간</th><th>손익%</th><th>평가(₩)</th></tr>
+    <tr><th>TICKER</th><th>PRICE</th><th>DAY</th><th>PNL%</th><th>VALUE(₩)</th></tr>
     ${rows.map(r => `<tr><td><span class="sym">${esc(r.sym)}</span></td>
       <td>${price(r)}</td><td class="${cls(r.day_pct)}">${pct(r.day_pct)}</td>
       <td class="${cls(r.pnl_pct)}">${pct(r.pnl_pct)}</td>
