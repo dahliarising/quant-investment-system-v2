@@ -31,17 +31,20 @@ function renderReturnCurve(series, nowPct) {
   const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = (hi - lo) || 1;
   const W = 600, H = 110;
   const y = (v) => H - ((v - lo) / span) * (H - 12) - 6;
-  const x = (i) => pts.length < 2 ? W : (i / (pts.length - 1)) * W;
-  const line = pts.map((v, i) => `${x(i).toFixed(0)},${y(v).toFixed(1)}`).join(" ");
+  // 최신점을 가로 중앙에 고정, 과거는 왼쪽으로 흐름(라이브 모니터식).
+  const cx = W / 2, step = 18;
+  const coords = pts.map((v, i) => [cx - (pts.length - 1 - i) * step, y(v)]).filter(c => c[0] >= -2);
+  const line = coords.map(c => `${c[0].toFixed(0)},${c[1].toFixed(1)}`).join(" ");
   const y0 = y(0).toFixed(1);
-  const ex = x(pts.length - 1).toFixed(0), ey = y(pts[pts.length - 1]).toFixed(1);
+  const ey = y(pts[pts.length - 1]).toFixed(1);
   el.innerHTML = `
     <div class="curve-meta"><span class="dim">LIVE · intraday return · ${pts.length}pt</span>
       <span class="now ${nowCls}">${nowLbl}</span></div>
     <svg class="curve-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
       <line x1="0" y1="${y0}" x2="${W}" y2="${y0}" stroke="#5a4520" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#2a2010" stroke-width="1"/>
       <polyline fill="none" stroke="#ffae42" stroke-width="2" points="${line}"/>
-      <circle class="curve-tip" cx="${ex}" cy="${ey}" r="3.5" fill="#ffd27f"/>
+      <circle class="curve-tip" cx="${cx}" cy="${ey}" r="3.5" fill="#ffd27f"/>
     </svg>
     <div class="curve-axis"><span>basis 0%</span><span>${hi >= 0 ? '+' : ''}${hi.toFixed(2)}% peak</span></div>`;
 }
@@ -108,35 +111,26 @@ function renderTicker(rows) {
     `<span><b>${esc(r.label)}</b> ${r.price} <span class="${cls(r.pct)}">${pct(r.pct)}</span></span>`).join("");
 }
 
-// 실시간 틱 테이프 — 보유·지수의 최신 시세를 회전시켜 시퀀스 애니메이션으로 흘림.
-let TAPE_DATA = [];
-let TAPE_TIMER = null;
-function renderTape(snap) {
-  const items = [];
-  (snap.positions || []).forEach(p => items.push({ s: p.sym, v: p.price, c: p.day_pct, ccy: p.ccy }));
-  (snap.indices || []).forEach(i => items.push({ s: i.label, v: i.price, c: i.pct }));
-  TAPE_DATA = items;
-}
-function startTape() {
-  if (TAPE_TIMER) return;
+// 프로세싱 표현 — 여러 가닥 곡선 위를 점들이 흐르는 ambient 애니메이션 (SVG animateMotion).
+let PROC_DONE = false;
+function startProcessing() {
+  if (PROC_DONE) return;
+  PROC_DONE = true;
   const el = $("p-matrix");
-  let off = 0;
-  const VIS = 5;
-  const fmt = (d) => d.v == null ? "—" : d.ccy === "USD" ? "$" + d.v.toFixed(2)
-    : d.v >= 1000 ? Math.round(d.v).toLocaleString() : String(d.v);
-  TAPE_TIMER = setInterval(() => {
-    if (!TAPE_DATA.length) return;
-    off = (off + 1) % TAPE_DATA.length;
-    const rows = [];
-    for (let i = 0; i < Math.min(VIS, TAPE_DATA.length); i++) {
-      const d = TAPE_DATA[(off + i) % TAPE_DATA.length];
-      const cls = d.c == null ? "dim" : d.c >= 0 ? "up" : "down";
-      const arr = d.c == null ? "·" : d.c >= 0 ? "▲" : "▼";
-      const chg = d.c == null ? "" : Math.abs(d.c).toFixed(1);
-      rows.push(`<div class="tape-row"><span class="sym">${esc(d.s)}</span><span>${fmt(d)}</span><span class="${cls}">${arr}${chg}</span></div>`);
-    }
-    el.innerHTML = rows.join("");
-  }, 900);
+  const W = 200, H = 80;
+  const strands = [
+    { y: 14, dur: 3.4 }, { y: 30, dur: 4.5 }, { y: 46, dur: 2.9 },
+    { y: 62, dur: 5.1 }, { y: 22, dur: 3.9 },
+  ];
+  const d = (s) => `M0,${s.y} Q${W * 0.25},${s.y - 9} ${W * 0.5},${s.y} T${W},${s.y}`;
+  const paths = strands.map(s => `<path d="${d(s)}" fill="none" stroke="#3a2c12" stroke-width="1"/>`).join("");
+  const dots = strands.map((s, i) => {
+    const dot = (r, fill, op, mul, begin) =>
+      `<circle r="${r}" fill="${fill}" opacity="${op}"><animateMotion dur="${(s.dur * mul).toFixed(1)}s" repeatCount="indefinite" begin="${begin}s" path="${d(s)}"/></circle>`;
+    return dot(2, "#ffd27f", 0.95, 1, (i * 0.5).toFixed(1)) + dot(1.5, "#ffae42", 0.5, 1.5, (i * 0.7 + 1).toFixed(1));
+  }).join("");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:100%">${paths}${dots}</svg>
+    <div class="proc-label">processing…</div>`;
 }
 
 async function refresh() {
@@ -147,7 +141,6 @@ async function refresh() {
     const rp = snap.totals ? snap.totals.equity_pnl_pct : null;
     if (rp != null) { RETURN_SERIES.push(rp); if (RETURN_SERIES.length > 120) RETURN_SERIES.shift(); }
     renderReturnCurve(RETURN_SERIES, rp);
-    renderTape(snap);
     renderPositions(snap.positions || []);
     renderIndices(snap.indices || []);
     renderAlloc(snap.allocation || []);
@@ -177,5 +170,5 @@ async function bootstrap() {
   loop();
 }
 
-startTape();
+startProcessing();
 bootstrap();
