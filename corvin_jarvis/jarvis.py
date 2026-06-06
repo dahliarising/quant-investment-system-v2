@@ -463,6 +463,20 @@ def merge_early_warning_alerts() -> int:
     return len(ew_alerts)
 
 
+def merge_cause_attribution() -> None:
+    """급락 촉발원인 규명 → state/cause.json (브리핑/대시보드 참조용, 알림 X).
+
+    이미 수집한 latest 스냅샷의 섹터별 등락·VIX로 "왜 빠졌나"를 추정. 새 네트워크 0.
+    """
+    from corvin_jarvis import cause_runner
+
+    latest = _load(LATEST_FILE) or {}
+    if not latest:
+        return
+    out = cause_runner.run(latest, STATE_DIR / "cause.json")
+    log.info("Cause attribution: %s", out["message"])
+
+
 def compute_and_write_verdicts() -> int:
     """보유 + 알림 종목에 대한 행동 판정을 state/verdicts.json에 기록."""
     from corvin_jarvis.signals import verdict
@@ -515,6 +529,7 @@ def run_jarvis() -> Path:
     merge_predictive_alerts()
     merge_signal_alerts()
     merge_early_warning_alerts()
+    merge_cause_attribution()
     detect_and_merge_regime_alert()
     compute_and_write_verdicts()
     run_weekly_attribution()
