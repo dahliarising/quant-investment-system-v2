@@ -12,6 +12,23 @@ def test_two_persona_modes():
         assert p["name"] and p["avatar"] and p["system"]   # 필수 필드
 
 
+def test_personas_have_credibility_and_deep_soul():
+    for p in personas.STANCE + personas.STYLE:
+        assert isinstance(p["credibility"], int) and 0 <= p["credibility"] <= 100
+        assert p["cred_note"]                       # 신뢰도 근거
+        assert "맹점" in p["system"]                # 소울 = 자기 맹점까지 인정
+        assert len(p["system"]) > 80                # 1줄 캐리커처 아님
+    cred = {p["id"]: p["credibility"] for p in personas.STYLE}
+    assert cred["quant"] >= cred["value"] > cred["growth"]   # track record 순
+
+
+def test_turn_carries_credibility():
+    p = personas.STYLE[0]
+    turns = engine.run_round([p], {"c": 1}, "opening", lambda pr: "x")
+    assert turns[0]["credibility"] == p["credibility"]
+    assert turns[0]["cred_note"] == p["cred_note"]
+
+
 def test_run_round_one_turn_per_persona():
     calls = []
     def fake_llm(prompt):

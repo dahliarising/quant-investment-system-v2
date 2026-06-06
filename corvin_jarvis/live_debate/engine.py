@@ -42,6 +42,7 @@ def run_round(persona_list: list[dict], context: dict, round_type: str,
         turns.append({
             "persona": p["id"], "name": p["name"], "tag": p.get("tag"),
             "avatar": p["avatar"], "accent": p["accent"],
+            "credibility": p.get("credibility"), "cred_note": p.get("cred_note"),
             "round": round_type, "text": text,
         })
     return turns
