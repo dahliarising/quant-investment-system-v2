@@ -133,6 +133,31 @@ def serve_stream(handler, query: dict) -> None:
         pass
 
 
+def serve_ask(handler, query: dict) -> None:
+    """GET /debate/ask — 폐하 질문에 각 페르소나가 답하는 1라운드 SSE (참여형)."""
+    mode = query.get("mode", ["style"])[0]
+    fake = query.get("fake", ["0"])[0] == "1"
+    question = query.get("q", [""])[0].strip()
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.end_headers()
+
+    def emit(s: str):
+        handler.wfile.write(s.encode("utf-8"))
+        handler.wfile.flush()
+
+    if not question:
+        emit(_stream.sse_event({"kind": "done"}))
+        return
+    llm = _fake_llm_factory() if fake else _live_llm
+    ctx = _fake_context() if fake else _live_context()
+    try:
+        _stream.run_reply_stream(mode, ctx, question, llm, emit)
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # 조용히
         pass
@@ -143,6 +168,8 @@ class Handler(BaseHTTPRequestHandler):
             serve_view(self)
         elif u.path == "/debate/stream":
             serve_stream(self, parse_qs(u.query))
+        elif u.path == "/debate/ask":
+            serve_ask(self, parse_qs(u.query))
         else:
             self.send_error(404)
 

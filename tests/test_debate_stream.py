@@ -33,3 +33,14 @@ def test_run_stream_factchecks_each_turn():
     assert len(turns) == 5                       # 5 style 페르소나, opening
     assert "mismatch" in [t["badge"] for t in turns]   # 틀린 TSLA 인용 잡힘
     assert payloads[-1]["kind"] == "done"        # 마지막 done 이벤트
+
+
+def test_run_reply_stream_emits_user_replies():
+    ctx = {"holdings": [{"symbol": "TSLA", "live_pnl_pct": -10.5, "price": {"value": 391.0}}]}
+    emitted = []
+    stream.run_reply_stream("style", ctx, "TSLA 더 살까?", lambda p: "답변", emitted.append)
+    payloads = [json.loads(e[6:].strip()) for e in emitted if e.startswith("data: ")]
+    turns = [p for p in payloads if p.get("kind") == "turn"]
+    assert len(turns) == 5                        # 5 페르소나가 폐하께 응답
+    assert all(t["round"] == "reply" for t in turns)
+    assert payloads[-1]["kind"] == "done"

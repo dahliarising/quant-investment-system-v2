@@ -14,6 +14,7 @@ _ROUND_INSTRUCTION = {
     "opening": "공유 데이터를 근거로 너의 방법론에 따른 입장을 카톡처럼 짧게 3~4 말풍선. 전문용어는 괄호 풀이.",
     "rebuttal": "다른 참가자들의 직전 주장에 반박하는 카톡 말풍선 2~3개.",
     "synthesis": "지금까지 토론을 너의 관점에서 한 줄로 정리.",
+    "reply": "폐하의 질문/의견에 너의 방법론 관점으로 짧게(1~2 말풍선) 직접 답하라.",
 }
 
 
@@ -57,3 +58,12 @@ def debate(mode: str, context: dict, llm: Callable[[str], str],
         for turn in run_round(persona_list, context, rt, llm, prior):
             history.append(turn)
             yield turn
+
+
+def respond_to_user(mode: str, context: dict, question: str,
+                    llm: Callable[[str], str]) -> Iterator[dict]:
+    """폐하의 질문/의견에 각 페르소나가 답하는 1라운드 (참여형 토론)."""
+    persona_list = _p.for_mode(mode)
+    user_turn = {"name": "폐하", "text": question}
+    for turn in run_round(persona_list, context, "reply", llm, prior_turns=[user_turn]):
+        yield turn

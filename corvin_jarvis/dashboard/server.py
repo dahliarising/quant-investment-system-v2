@@ -34,6 +34,11 @@ class Handler(BaseHTTPRequestHandler):
             from corvin_jarvis.live_debate import server as debate
             debate.serve_stream(self, parse_qs(urlparse(self.path).query))
             return
+        if path == "/debate/ask":
+            from urllib.parse import parse_qs, urlparse
+            from corvin_jarvis.live_debate import server as debate
+            debate.serve_ask(self, parse_qs(urlparse(self.path).query))
+            return
         if path == "/api/snapshot":
             first = snapshot.get_snapshot(ttl=30.0)
             ttl = 30.0 if first.get("market_state") == "open" else 300.0

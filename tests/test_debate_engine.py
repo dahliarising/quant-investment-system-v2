@@ -33,6 +33,18 @@ def test_debate_yields_rounds_in_order():
     assert rounds.index("rebuttal") > last_opening      # 모든 opening 후 rebuttal
 
 
+def test_respond_to_user_replies_per_persona_with_question():
+    captured = []
+    def fake_llm(prompt):
+        captured.append(prompt)
+        return "폐하께 답변"
+    turns = list(engine.respond_to_user("style", {"c": 1}, "TSLA 더 사도 돼?", fake_llm))
+    assert len(turns) == 5                                 # 페르소나마다 1 응답
+    assert all(t["round"] == "reply" for t in turns)
+    assert all("TSLA 더 사도 돼?" in p for p in captured)   # 질문이 프롬프트에 주입됨
+    assert all("폐하" in p for p in captured)              # 폐하 발언으로 제시
+
+
 def test_prompt_includes_context_and_persona():
     captured = {}
     def fake_llm(prompt):

@@ -27,3 +27,14 @@ def run_stream(mode: str, context: dict, llm: Callable[[str], str],
         annotated["kind"] = "turn"
         emit(sse_event(annotated))
     emit(sse_event({"kind": "done"}))
+
+
+def run_reply_stream(mode: str, context: dict, question: str,
+                     llm: Callable[[str], str], emit: Callable[[str], None]) -> None:
+    """폐하 질문 → 각 페르소나 응답 1라운드 → fact-check → SSE emit (참여형)."""
+    facts = _ctx.context_facts(context)
+    for turn in _engine.respond_to_user(mode, context, question, llm):
+        annotated = _fc.annotate(turn, _fc.verify_turn(turn["text"], facts))
+        annotated["kind"] = "turn"
+        emit(sse_event(annotated))
+    emit(sse_event({"kind": "done"}))
