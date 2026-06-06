@@ -35,6 +35,25 @@ def tally(verdicts: list[dict]) -> dict:
             "total": total, "weakest": weakest}
 
 
+def live_lens_runner(lens: dict, conclusion: str,
+                     cli: Callable[..., str] | None = None) -> dict:
+    """claude CLI(구독, $0)로 한 렌즈 반증 판정. cli=DI(테스트용).
+
+    응답 첫 줄 '반증:예/아니오' + 이유 파싱. CLI 실패 시 보수적(반증 안 함).
+    """
+    if cli is None:
+        from corvin_jarvis import qualitative
+        cli = qualitative.run_claude_cli
+    prompt = (f"투자 결론을 '{lens['name']}' 관점에서 검증하라.\n결론: {conclusion}\n"
+              f"{lens['prompt']}\n"
+              "첫 줄에 정확히 '반증:예' 또는 '반증:아니오', 둘째 줄에 한 줄 이유.")
+    out = (cli(prompt, timeout=60) or "").strip()
+    refuted = "반증:예" in out.replace(" ", "")
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    reason = lines[-1][:200] if len(lines) > 1 else (lines[0][:200] if lines else "")
+    return {"refuted": refuted, "confidence": 0.7 if refuted else 0.3, "reason": reason}
+
+
 def verify_conclusion(conclusion: str,
                       lens_runner: Callable[[dict, str], dict]) -> dict:
     """4렌즈로 결론 반증 시도 → 집계. lens_runner(lens, conclusion)=DI."""

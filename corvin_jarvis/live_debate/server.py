@@ -19,7 +19,6 @@ from corvin_jarvis.live_debate import stream as _stream
 
 BASE = Path(__file__).resolve().parent
 VIEW = BASE / "debate_view.html"
-PORTFOLIO = BASE.parent.parent / "portfolio.json"
 
 
 # ── LLM 백엔드 ────────────────────────────────────────────────
@@ -30,19 +29,23 @@ def _live_llm(prompt: str) -> str:
 
 
 def _fake_llm_factory():
-    """오프라인 스모크용 — 페르소나별 캔드 응답(검증 배지 시연 포함)."""
-    lines = iter([
-        "MSFT +8.7% 우량주는 들고 간다, 사업이 안 망가졌어 💰",   # verified
-        "급락은 줍줍 기회! NVDA 분할매수 간다 🚀",
-        "TSLA −5.0% 손절선 깨졌으니 던져라 📉",                  # mismatch(실제 −10.5%)
-        "포트 베타 줄이고 금·현금 헤지부터 🌍",
-        "백테스트상 반도체 신호는 엣지 0, 숫자만 믿어라 🤖",
-    ])
+    """오프라인 스모크용 — 페르소나 인식 캔드 응답(검증 배지 시연: TSLA 오인용 1건)."""
+    # 페르소나 system 키워드 → 응답. mismatch 시연 위해 trend는 TSLA −5.0%(실제 −10.5%).
+    by_keyword = {
+        "위험관리": "MSFT +8.7% 수익권은 두고, TSLA −5.0%는 손절선 깨져 정리 🛑",  # mismatch
+        "급락은 기회": "급락은 줍줍 기회! NVDA +4.0% 핵심은 분할매수 간다 🚀",
+        "흔들리지 말고": "안전선 안 깨졌으면 보유. MSFT +8.7% 굳이 안 던져 🧘",
+        "가치투자": "MSFT +8.7% 우량주는 들고 간다, 사업이 안 망가졌어 💰",
+        "성장투자": "급락은 줍줍 기회! NVDA +4.0% 분할매수 간다 🚀",
+        "추세추종": "TSLA −5.0% 손절선 깨졌으니 던져라 📉",  # mismatch(실제 −10.5%)
+        "글로벌 매크로": "포트 베타 줄이고 금·현금 헤지부터 🌍",
+        "퀀트": "백테스트상 반도체 신호는 엣지 0, vix_term만 믿어라 🤖",
+    }
     def fake(prompt: str) -> str:
-        try:
-            return next(lines)
-        except StopIteration:
-            return "데이터 보고 판단하자"
+        for kw, resp in by_keyword.items():
+            if kw in prompt:
+                return resp
+        return "데이터 보고 판단하자"
     return fake
 
 
@@ -56,23 +59,43 @@ def _fake_context() -> dict:
             "low_confidence": []}
 
 
+LATEST = BASE.parent / "state" / "latest.json"
+
+
 def _live_context() -> dict:
-    from corvin_jarvis import data_verify  # noqa: F401 (의존 확인)
+    """jarvis 스냅샷(latest.json) 재활용 — KIS 라이브 가격(KR 포함), 빠름, 정확.
+
+    + 원인규명(섹터 분해)을 note에 엮어 토론을 더 똑똑하게.
+    """
     try:
-        pf = json.loads(PORTFOLIO.read_text(encoding="utf-8"))
-        holdings = [{"symbol": h["symbol"], "avg_price": h.get("avgPriceUSD") or h.get("avgPriceKRW"),
-                     "stored_pnl_pct": h.get("pnlPct")} for h in pf.get("holdings", [])]
+        latest = json.loads(LATEST.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return _fake_context()
 
-    def fetchers_for(sym):
-        def yf():
-            from corvin_jarvis.ew_providers import live_vix_fetcher  # reuse yahoo
-            import yfinance as yfin
-            h = yfin.Ticker(sym).history(period="5d")["Close"].dropna()
-            return float(h.iloc[-1]) if len(h) else None
-        return {"yfinance": yf}
-    return _ctx.build_context(holdings, fetchers_for, tol_pct=2.0)
+    holdings, low_conf = [], []
+    for p in latest.get("portfolio", []):
+        if not p.get("symbol"):
+            continue
+        price = p.get("current_price")
+        conf = "high" if p.get("source") == "kis_live" and price else ("medium" if price else "none")
+        if conf == "none":
+            low_conf.append(p["symbol"])
+        holdings.append({"symbol": p["symbol"], "avg_price": p.get("avg_price"),
+                         "live_pnl_pct": p.get("pnl_pct"),
+                         "price": {"value": price, "confidence": conf}})
+
+    idx = latest.get("indices", {})
+    def _pc(k):
+        v = idx.get(k, {})
+        return f"{v.get('pct_change')}%" if isinstance(v, dict) else "?"
+    market = f"코스피 {_pc('kospi')}, 나스닥 {_pc('nasdaq')}, S&P {_pc('sp500')}, VIX {idx.get('vix', {}).get('price')}"
+
+    from corvin_jarvis import cause_attribution as ca
+    ranked = ca.rank_causes(ca.candidates_from_snapshot(latest))
+    cause = ca.attribution_message(ranked, top_n=3)
+
+    return {"holdings": holdings, "low_confidence": low_conf,
+            "note": f"{market} | {cause}"}
 
 
 # ── 재사용 라우트 핸들러 (대시보드 통합용) ───────────────────

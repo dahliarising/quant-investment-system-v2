@@ -41,3 +41,16 @@ def test_verify_conclusion_runs_all_lenses():
     r = adv.verify_conclusion("전량 매도하자", fake_runner)
     assert r["survives"] is False
     assert len(r["votes"]) == 4
+
+
+def test_live_lens_runner_parses_cli_verdict():
+    lens = adv.LENSES[0]
+    # CLI=DI: "반증:예" → refuted True, 이유 파싱
+    refuted = adv.live_lens_runner(lens, "전량 매도",
+              cli=lambda p, **k: "반증:예\n장중 미완성봉으로 판단함")
+    assert refuted["refuted"] is True
+    assert "미완성봉" in refuted["reason"]
+    # "반증:아니오" → refuted False
+    ok = adv.live_lens_runner(lens, "코어 홀드",
+         cli=lambda p, **k: "반증:아니오\n근거 충분함")
+    assert ok["refuted"] is False
