@@ -75,6 +75,41 @@ def _live_context() -> dict:
     return _ctx.build_context(holdings, fetchers_for, tol_pct=2.0)
 
 
+# ── 재사용 라우트 핸들러 (대시보드 통합용) ───────────────────
+def serve_view(handler) -> None:
+    """GET /debate — 카톡 라이브 UI HTML."""
+    body = VIEW.read_bytes()
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def serve_stream(handler, query: dict) -> None:
+    """GET /debate/stream — 토론 SSE. handler.wfile로 emit."""
+    mode = query.get("mode", ["style"])[0]
+    fake = query.get("fake", ["0"])[0] == "1"
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("Connection", "keep-alive")
+    handler.end_headers()
+
+    def emit(s: str):
+        handler.wfile.write(s.encode("utf-8"))
+        handler.wfile.flush()
+
+    llm = _fake_llm_factory() if fake else _live_llm
+    ctx = _fake_context() if fake else _live_context()
+    emit(_stream.sse_event({"kind": "header", "mode": mode,
+         "low_confidence": ctx.get("low_confidence", []), "note": ctx.get("note", "")}))
+    try:
+        _stream.run_stream(mode, ctx, llm, emit, ["opening", "rebuttal"])
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # 조용히
         pass
@@ -82,43 +117,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/debate":
-            self._serve_view()
+            serve_view(self)
         elif u.path == "/debate/stream":
-            self._serve_stream(parse_qs(u.query))
+            serve_stream(self, parse_qs(u.query))
         else:
             self.send_error(404)
-
-    def _serve_view(self):
-        body = VIEW.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _serve_stream(self, q):
-        mode = (q.get("mode", ["style"])[0])
-        fake = q.get("fake", ["0"])[0] == "1"
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
-        self.end_headers()
-        llm = _fake_llm_factory() if fake else _live_llm
-        ctx = _fake_context() if fake else _live_context()
-        # 헤더 이벤트: 데이터 신뢰도
-        self._emit(_stream.sse_event({"kind": "header", "mode": mode,
-                   "low_confidence": ctx.get("low_confidence", []),
-                   "note": ctx.get("note", "")}))
-        rounds = ["opening", "rebuttal"]
-        try:
-            _stream.run_stream(mode, ctx, llm, self._emit, rounds)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-
-    def _emit(self, s: str):
-        self.wfile.write(s.encode("utf-8"))
-        self.wfile.flush()
 
 
 def serve(host: str = "127.0.0.1", port: int = 8530):

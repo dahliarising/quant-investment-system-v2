@@ -25,6 +25,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path == "/debate":
+            from corvin_jarvis.live_debate import server as debate
+            debate.serve_view(self)
+            return
+        if path == "/debate/stream":
+            from urllib.parse import parse_qs, urlparse
+            from corvin_jarvis.live_debate import server as debate
+            debate.serve_stream(self, parse_qs(urlparse(self.path).query))
+            return
         if path == "/api/snapshot":
             first = snapshot.get_snapshot(ttl=30.0)
             ttl = 30.0 if first.get("market_state") == "open" else 300.0
