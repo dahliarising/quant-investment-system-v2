@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import copy
+
 from corvin_jarvis import early_warning as ew
 from corvin_jarvis.ew_runner import _classify_all   # 프로덕션 분류 재사용(단일 진실원천)
 
@@ -134,3 +136,23 @@ def run_backtest(history: list[dict], cfg: dict, horizon: int,
     events = label_drawdowns(history, horizon, thresh_pct)
     return {name: evaluate(signal_dates(rep, pred), events)
             for name, pred in preds.items()}
+
+
+def sweep_param(history: list[dict], base_cfg: dict, section: str, key: str,
+                values: list, signal_name: str, horizon: int,
+                thresh_pct: float) -> list[dict]:
+    """한 임계 파라미터를 values로 스윕 → 해당 신호의 F1 기준 랭킹.
+
+    base_cfg는 변경하지 않는다(deepcopy). 더 나은 임계를 찾거나, 어떤 값으로도
+    엣지가 안 나오면(예: semis) 폐기 근거.
+    """
+    out = []
+    for v in values:
+        cfg = copy.deepcopy(base_cfg)
+        cfg.setdefault(section, {})[key] = v
+        m = run_backtest(history, cfg, horizon, thresh_pct).get(signal_name, {})
+        out.append({"value": v, "f1": m.get("f1", 0.0),
+                    "precision": m.get("precision", 0.0),
+                    "recall": m.get("recall", 0.0),
+                    "lead_time_avg": m.get("lead_time_avg", 0.0)})
+    return sorted(out, key=lambda r: r["f1"], reverse=True)

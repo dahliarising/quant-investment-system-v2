@@ -120,3 +120,22 @@ def test_build_history_computes_daily_readings():
     assert r["hy"]["value"] == 3.0 and abs(r["hy"]["chg_5d"]) < 1e-9
     assert r["curve"]["value"] == 0.5
     assert rec["spx"] == 200.0
+
+
+# ── sweep: 임계 최적화 (semis 약함 → 더 나은 값 탐색) ──────────────
+def test_sweep_param_ranks_by_f1_without_mutating_base():
+    history = [
+        {"date": "d0", "readings": _green_readings(), "spx": 100.0},
+        {"date": "d1", "readings": _semis_red_readings(), "spx": 100.0},
+        {"date": "d2", "readings": _green_readings(), "spx": 96.0},
+        {"date": "d3", "readings": _green_readings(), "spx": 97.0},
+    ]
+    base = dict(CFG)
+    before = CFG["semis"]["divergence_high_dist_pct"]
+    ranked = bt.sweep_param(history, base, "semis", "divergence_high_dist_pct",
+                            [1.0, 3.0, 10.0], "semis_red", horizon=2, thresh_pct=-3.0)
+    assert len(ranked) == 3
+    f1s = [r["f1"] for r in ranked]
+    assert f1s == sorted(f1s, reverse=True)          # F1 내림차순 정렬
+    assert all("value" in r and "precision" in r for r in ranked)
+    assert CFG["semis"]["divergence_high_dist_pct"] == before   # 원본 불변(immutable)
