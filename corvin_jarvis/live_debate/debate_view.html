@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💬 실시간 투자 토론</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --kakao-bg:#a7c0d4; --header:#9db6cb; --me:#fde64b; --other:#fff; --text:#1a1a1a; --time:#5b6b78;
+    --value:#e0a82e; --growth:#2e86ff; --trend:#ff5b5b; --macro:#1faf6a; --quant:#9b59ff;
+    --cut:#ff5b5b; --buy:#2e86ff; --hold:#1faf6a; --crow:#7d8a99;
+    --ok:#1faf6a; --warn:#e0a82e; --bad:#ff5b5b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#5a6b78;font-family:'Noto Sans KR',sans-serif;display:flex;justify-content:center;min-height:100vh;}
+  .phone{width:100%;max-width:470px;background:var(--kakao-bg);min-height:100vh;display:flex;flex-direction:column;}
+  .hdr{position:sticky;top:0;z-index:20;background:var(--header);padding:11px 14px;display:flex;align-items:center;gap:10px;}
+  .hdr .ttl{font-weight:700;font-size:15px;color:#1c2730;flex:1;}
+  .controls{background:#eef3f7;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #d6dee5;}
+  .seg{display:flex;border:1px solid #b6c2cd;border-radius:8px;overflow:hidden;}
+  .seg button{border:0;background:#fff;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;}
+  .seg button.on{background:#33414d;color:#fff;}
+  .start{margin-left:auto;background:#fee500;border:0;border-radius:8px;padding:7px 16px;font-weight:700;font-size:13px;cursor:pointer;}
+  .start:disabled{opacity:.5;}
+  .dataconf{font-size:11px;color:#46586a;width:100%;}
+  .chat{flex:1;padding:14px 12px 30px;display:flex;flex-direction:column;gap:3px;}
+  .row{display:flex;gap:8px;align-items:flex-start;margin-top:11px;}
+  .avatar{width:38px;height:38px;border-radius:13px;flex:0 0 38px;display:flex;align-items:center;justify-content:center;font-size:19px;background:#e3eaf0;}
+  .col{display:flex;flex-direction:column;max-width:78%;}
+  .name{font-size:12px;color:#33414d;margin:0 0 4px 3px;font-weight:600;}
+  .name .tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:5px;color:#fff;}
+  .bubble-line{display:flex;align-items:flex-end;gap:6px;}
+  .bubble{background:var(--other);color:var(--text);font-size:14.5px;line-height:1.5;padding:9px 12px;border-radius:16px;box-shadow:0 1px 1px rgba(0,0,0,.08);position:relative;}
+  .badge{font-size:10px;font-weight:700;margin-left:6px;padding:1px 5px;border-radius:6px;vertical-align:middle;}
+  .b-verified{background:rgba(31,175,106,.15);color:var(--ok);}
+  .b-unverified{background:rgba(224,168,46,.18);color:var(--warn);}
+  .b-mismatch{background:rgba(255,91,91,.16);color:var(--bad);}
+  .round-pill{align-self:center;background:rgba(60,80,95,.3);color:#fff;font-size:11px;padding:4px 13px;border-radius:13px;margin:12px 0 2px;}
+  .typing{align-self:flex-start;background:#fff;border-radius:16px;padding:10px 14px;margin-top:8px;display:none;}
+  .typing.show{display:block;}
+  .typing span{display:inline-block;width:7px;height:7px;background:#9aa6b2;border-radius:50%;margin:0 2px;animation:bd 1s infinite;}
+  .typing span:nth-child(2){animation-delay:.2s;} .typing span:nth-child(3){animation-delay:.4s;}
+  @keyframes bd{0%,60%,100%{opacity:.3;transform:translateY(0);}30%{opacity:1;transform:translateY(-4px);}}
+  .foot{align-self:center;color:#3a4a57;font-size:11px;margin:14px 0;text-align:center;opacity:.85;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="hdr"><div class="ttl">💬 실시간 투자 토론 <span style="font-size:11px;color:#46586a">· 검증 라이브</span></div></div>
+  <div class="controls">
+    <div class="seg" id="modeSeg">
+      <button data-mode="style" class="on">투자방법 5인</button>
+      <button data-mode="stance">손절·매수·홀딩</button>
+    </div>
+    <button class="start" id="startBtn">▶ 토론 시작</button>
+    <div class="dataconf" id="dataConf"></div>
+  </div>
+  <div class="chat" id="chat">
+    <div class="foot">모드 고르고 ▶ 토론 시작 — 말풍선이 실시간으로 등장합니다<br>각 발언은 데이터와 대조돼 ✓검증 / ⚠️미검증 / ✗불일치 배지가 붙어요</div>
+  </div>
+  <div class="typing" id="typing"><span></span><span></span><span></span></div>
+</div>
+<script>
+const ACCENT = {value:'#e0a82e',growth:'#2e86ff',trend:'#ff5b5b',macro:'#1faf6a',quant:'#9b59ff',cut:'#ff5b5b',buy:'#2e86ff',hold:'#1faf6a'};
+const BADGE = {verified:['✓','b-verified'],unverified:['⚠️','b-unverified'],mismatch:['✗','b-mismatch']};
+let mode='style', src=null, lastRound=null;
+const chat=document.getElementById('chat'), typing=document.getElementById('typing');
+const startBtn=document.getElementById('startBtn'), dataConf=document.getElementById('dataConf');
+
+document.getElementById('modeSeg').addEventListener('click',e=>{
+  if(e.target.dataset.mode){mode=e.target.dataset.mode;
+    [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));}
+});
+startBtn.addEventListener('click',start);
+
+function start(){
+  if(src) src.close();
+  chat.innerHTML=''; lastRound=null; startBtn.disabled=true; startBtn.textContent='● 진행중…';
+  typing.classList.add('show'); chat.after(typing);
+  src=new EventSource(`/debate/stream?mode=${mode}&fake=1`);
+  src.onmessage=ev=>{
+    const d=JSON.parse(ev.data);
+    if(d.kind==='header'){dataConf.textContent='📡 '+ (d.note||'') + (d.low_confidence&&d.low_confidence.length?` · ⚠️저신뢰: ${d.low_confidence.join(',')}`:' · 데이터 검증 ✓'); return;}
+    if(d.kind==='done'){finish(); return;}
+    if(d.kind==='turn'){renderTurn(d);}
+  };
+  src.onerror=()=>finish();
+}
+function finish(){ if(src)src.close(); typing.classList.remove('show'); startBtn.disabled=false; startBtn.textContent='▶ 다시 토론'; addFoot(); }
+function addFoot(){const f=document.createElement('div');f.className='foot';f.innerHTML='※ 모의 분석 · advisory only · 데이터는 코드(data_verify)가 교차검증';chat.appendChild(f);}
+
+function roundPill(r){if(r===lastRound)return;lastRound=r;
+  const p=document.createElement('div');p.className='round-pill';
+  p.textContent=r==='opening'?'🗣️ 오프닝':r==='rebuttal'?'🔥 반박':'🧾 정리';chat.appendChild(p);}
+
+function renderTurn(t){
+  roundPill(t.round);
+  const row=document.createElement('div');row.className='row';
+  const av=document.createElement('div');av.className='avatar';av.textContent=t.avatar;
+  av.style.boxShadow=`0 0 0 2px ${ACCENT[t.accent]||'#888'},0 1px 2px rgba(0,0,0,.12)`;
+  const col=document.createElement('div');col.className='col';
+  const nm=document.createElement('div');nm.className='name';
+  nm.innerHTML=`${t.name} <span class="tag" style="background:${ACCENT[t.accent]||'#888'}">${t.tag||''}</span>`;
+  const bl=document.createElement('div');bl.className='bubble-line';
+  const bb=document.createElement('div');bb.className='bubble';bb.textContent=t.text;
+  if(t.badge&&BADGE[t.badge]){const b=document.createElement('span');b.className='badge '+BADGE[t.badge][1];b.textContent=BADGE[t.badge][0];bb.appendChild(b);}
+  bl.appendChild(bb);col.appendChild(nm);col.appendChild(bl);row.appendChild(av);row.appendChild(col);
+  chat.appendChild(row); chat.after(typing);
+  window.scrollTo(0,document.body.scrollHeight);
+}
+</script>
+</body>
+</html>
