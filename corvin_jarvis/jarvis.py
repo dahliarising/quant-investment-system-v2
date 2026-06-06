@@ -410,6 +410,59 @@ def merge_signal_alerts() -> int:
     return len(s_alerts)
 
 
+def merge_early_warning_alerts() -> int:
+    """선행 경보 — 5지표 라이브 readings → 상태 악화 전환·게이지·−8% 하드스톱 alert merge.
+
+    네트워크 실패는 격리(빈 결과). 보유 pnl은 portfolio, universe는 latest에서 가져온다.
+    """
+    from corvin_jarvis import ew_providers as ewp
+    from corvin_jarvis import ew_runner
+
+    cfg = (_load(BASE_DIR / "config.json") or {}).get("early_warning", {})
+    if not cfg.get("enabled"):
+        return 0
+
+    latest = _load(LATEST_FILE) or {}
+    universe_syms = [e["symbol"] for e in latest.get("universe", []) if e.get("symbol")]
+    positions = [
+        {"sym": p["symbol"], "pnl_pct": p.get("pnl_pct")}
+        for p in latest.get("portfolio", [])
+        if p.get("symbol")
+    ]
+
+    try:
+        spy_closes = ewp.live_closes_fetcher("SPY", 252)
+        spx_high = max(spy_closes) if spy_closes else None
+        readings = ew_runner.build_live_readings(universe_syms, spx_high)
+        out = ew_runner.run(
+            readings=readings,
+            positions=positions,
+            cfg=cfg,
+            state_path=STATE_DIR / "ew_state.json",
+        )
+    except Exception as e:  # noqa: BLE001 — 라이브 fetch 격리
+        log.warning("early_warning 실패(격리): %s", e)
+        return 0
+
+    # ew_runner는 key를 쓰지만 briefing 포매터는 metric을 읽음 → 경계에서 매핑.
+    ew_alerts = [{**a, "metric": a["key"]} for a in out["alerts"]]
+    if not ew_alerts:
+        log.info("No early-warning alerts (gauge=%s)", out.get("gauge"))
+        return 0
+
+    now = datetime.now(KST)
+    if ALERTS_FILE.exists():
+        data = _load(ALERTS_FILE) or {}
+        data.setdefault("alerts", []).extend(ew_alerts)
+        data["count"] = len(data["alerts"])
+    else:
+        data = {"alerts": ew_alerts, "count": len(ew_alerts),
+                "generated_at": now.isoformat(timespec="seconds")}
+    ALERTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    log.info("Early-warning alerts merged: %d (gauge=%s)", len(ew_alerts), out.get("gauge"))
+    return len(ew_alerts)
+
+
 def compute_and_write_verdicts() -> int:
     """보유 + 알림 종목에 대한 행동 판정을 state/verdicts.json에 기록."""
     from corvin_jarvis.signals import verdict
@@ -461,6 +514,7 @@ def run_jarvis() -> Path:
     merge_narrative_alerts()
     merge_predictive_alerts()
     merge_signal_alerts()
+    merge_early_warning_alerts()
     detect_and_merge_regime_alert()
     compute_and_write_verdicts()
     run_weekly_attribution()

@@ -70,6 +70,16 @@
     "mode": "advisory_only",
     "_note": "CLAUDE.md: 실제 매매 주문 금지 (모의만)"
   },
+  "early_warning": {
+    "_comment": "선행 경보 — 지표별 상태 임계 (튜너블). 2026-06-06 초기값.",
+    "semis": {"divergence_high_dist_pct": 3.0},
+    "vix_term": {"green_max": 0.90, "amber_max": 1.00},
+    "breadth": {"green_min": 60.0, "amber_min": 40.0},
+    "hy": {"green_max": 3.5, "amber_max": 5.0, "rise_amber_5d": 0.3, "rise_red_5d": 0.5},
+    "curve": {"green_min": 0.5, "amber_min": 0.0, "fast_move_5d": 0.15},
+    "hard_stop_pct": -8.0,
+    "enabled": true
+  },
   "dca": {
     "_comment": "Daily DCA Timing (Tier 2.4) — Value-tilted, Tier-weighted, score≥50",
     "daily_budget_krw": 50000,
