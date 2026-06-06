@@ -22,6 +22,37 @@ def gather_candidates(readers: dict[str, Callable[[], dict | None]]) -> list[dic
     return out
 
 
+def candidates_from_snapshot(snapshot: dict, sector_thresh: float = -2.0,
+                             vix_thresh: float = 15.0) -> list[dict]:
+    """jarvis 스냅샷에서 원인 후보 추출 (순수, 무네트워크 — 이미 수집한 데이터 재활용).
+
+    섹터별 평균 등락(어디서 시작됐나) + VIX 급등(변동성). 임계 미달은 제외.
+    """
+    out = []
+
+    # 섹터 분해: universe를 섹터별 평균 등락 → 가장 약한 섹터
+    by_sector: dict[str, list[float]] = {}
+    for e in snapshot.get("universe", []):
+        pct = e.get("pct_change")
+        sec = e.get("sector")
+        if pct is not None and sec:
+            by_sector.setdefault(sec, []).append(pct)
+    for sec, pcts in by_sector.items():
+        avg = sum(pcts) / len(pcts)
+        if avg <= sector_thresh:
+            out.append({"factor": f"{sec} 약세", "magnitude": avg,
+                        "detail": f"{sec} 평균 {avg:+.1f}%"})
+
+    # VIX 급등 = 변동성 충격
+    vix = snapshot.get("indices", {}).get("vix", {})
+    vchg = vix.get("pct_change")
+    if vchg is not None and vchg >= vix_thresh:
+        out.append({"factor": "변동성 급등", "magnitude": vchg / 10,
+                    "detail": f"VIX {vchg:+.0f}% ({vix.get('price')})"})
+
+    return out
+
+
 def rank_causes(candidates: list[dict]) -> list[dict]:
     """이상치 크기(|magnitude|) 내림차순."""
     return sorted(candidates, key=lambda c: abs(c.get("magnitude", 0.0)), reverse=True)

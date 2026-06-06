@@ -41,3 +41,32 @@ def test_attribution_message_topn():
 
 def test_attribution_message_empty():
     assert "원인 불명" in ca.attribution_message([], top_n=3)
+
+
+# ── candidates_from_snapshot: jarvis 스냅샷 → 원인 후보 (순수, 무네트워크) ──
+def _snap():
+    return {
+        "indices": {"vix": {"price": 21.5, "pct_change": 40.0},
+                    "sp500": {"pct_change": -2.6}, "kospi": {"pct_change": -5.5}},
+        "universe": [
+            {"sector": "반도체", "pct_change": -5.0},
+            {"sector": "반도체", "pct_change": -5.4},
+            {"sector": "방어주", "pct_change": -0.2},
+            {"sector": "방어주", "pct_change": 0.1},
+        ],
+    }
+
+
+def test_candidates_from_snapshot_finds_worst_sector_and_vix():
+    cands = ca.candidates_from_snapshot(_snap())
+    sem = next((c for c in cands if "반도체" in c["factor"]), None)
+    assert sem is not None and sem["magnitude"] < -4          # 반도체 평균 -5.2
+    assert any("변동성" in c["factor"] for c in cands)         # VIX +40% → 변동성 후보
+
+
+def test_candidates_from_snapshot_quiet_market_few_causes():
+    quiet = {"indices": {"vix": {"price": 14.0, "pct_change": 1.0}},
+             "universe": [{"sector": "반도체", "pct_change": 0.3}]}
+    cands = ca.candidates_from_snapshot(quiet)
+    # 평온하면 강한 원인 후보 없음(이상치 임계 미달)
+    assert all(abs(c["magnitude"]) < 2 for c in cands) or cands == []
