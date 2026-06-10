@@ -179,11 +179,37 @@ def _predictive_signals(held: list[dict]) -> list[dict]:
     return [s.to_dict() for s in sigs]
 
 
-def _record_to_ledger(engine_sigs: list[dict], pred_sigs: list[dict]) -> None:
-    """Phase 1 원장 기록 — 실패해도 신호 흐름 무영향 (_safe로 호출)."""
-    from corvin_jarvis.signals import ledger
-    ledger.record_batch("signal_engine", engine_sigs)
-    ledger.record_batch("predictive", pred_sigs)
+def _record_to_ledger(engine_sigs: list[dict], pred_sigs: list[dict],
+                      market_open: bool = True) -> dict:
+    """Phase 1 원장 기록 + Phase 4 게이트 — 통과 신호만 기록 (스펙 §7).
+
+    staleness는 portfolio 기존 정책(STALE≥7 차단)을 따름 — WARN(4-6일)
+    구간 전체 차단은 기존 정책보다 과격 (plan 설계 결정 참조).
+    """
+    from corvin_jarvis import staleness
+    from corvin_jarvis.signals import data_gate, ledger
+    held_syms = [str(s.get("symbol", "")) for s in engine_sigs + pred_sigs
+                 if s.get("symbol")]
+    checks = _safe(lambda: data_gate.collect_price_checks(held_syms), {})
+    rep = _safe(staleness.check, None)
+    if rep and rep.block_strategy:
+        # 음수 = 파일 미존재 센티널 — 가장 심각한 staleness, 우회 금지
+        age = rep.days_since_update if rep.days_since_update >= 0 else 999
+    else:
+        age = None
+    g_eng = data_gate.gate_signals(engine_sigs, price_checks=checks,
+                                   market_open=market_open, data_age_days=age,
+                                   max_age_days=6)
+    g_pred = data_gate.gate_signals(pred_sigs, price_checks=checks,
+                                    market_open=market_open, data_age_days=age,
+                                    max_age_days=6)
+    ledger.record_batch("signal_engine", g_eng["passed"])
+    ledger.record_batch("predictive", g_pred["passed"])
+    for w in g_eng["warnings"] + g_pred["warnings"]:
+        log.warning("data_gate: %s", w)
+    return {"engine": g_eng["passed"], "predictive": g_pred["passed"],
+            "blocked": len(g_eng["blocked"]) + len(g_pred["blocked"]),
+            "warnings": g_eng["warnings"] + g_pred["warnings"]}
 
 
 def _scoreboard() -> list[dict]:
@@ -284,11 +310,21 @@ def build_snapshot() -> dict[str, Any]:
     held = _safe(lambda: _held_for_engine(pf, positions), [])
     engine_sigs = _safe(lambda: _engine_signals(held), [])
     pred_sigs = _safe(lambda: _predictive_signals(held), [])
-    _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs), None)
+    market_open = market_hours.is_kr_open(now) or market_hours.is_us_open(now)
+    gate_res = _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs,
+                                               market_open=market_open), None)
+    if gate_res is None:
+        # 게이트 자체 실패 — 신호 흐름 보존(미검증 그대로), blocked=-1로 실패 구분
+        gate_res = {"engine": engine_sigs, "predictive": pred_sigs,
+                    "blocked": -1,
+                    "warnings": ["⚠️ data_gate 실행 실패 — 미검증 신호 표시"]}
+    engine_sigs = gate_res["engine"]    # 스펙 §7: 통과 신호만 기록·발화
+    pred_sigs = gate_res["predictive"]
+    gate_info = {"blocked": gate_res["blocked"], "warnings": gate_res["warnings"]}
     playbook_sigs = _safe(lambda: _build_signals(holdings), [])
     return _sanitize({
         "ts": now.isoformat(timespec="seconds"),
-        "market_state": "open" if (market_hours.is_kr_open(now) or market_hours.is_us_open(now)) else "closed",
+        "market_state": "open" if market_open else "closed",
         "fx_usdkrw": fx,
         "totals": totals,
         "positions": positions,
@@ -300,6 +336,7 @@ def build_snapshot() -> dict[str, Any]:
         "predictive_signals": pred_sigs,
         "signal_scoreboard": _safe(_scoreboard, []),
         "final_actions": _safe(lambda: _final_actions(engine_sigs, pred_sigs, playbook_sigs), []),
+        "data_gate": gate_info,
         "paper": _safe(lambda: _paper(held), {}),
         "log": _safe(lambda: _action_log(pf), []),
         "equity_curve": _safe(lambda: _equity_curve_live(now, totals.get("equity_pnl_pct")), []),
