@@ -1,0 +1,68 @@
+"""signals/ledger.py — 신호 원장 기록·중복방지·만기조회·채점마킹."""
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from corvin_jarvis.signals import ledger
+
+KST = ZoneInfo("Asia/Seoul")
+NOW = datetime(2026, 6, 10, 9, 0, tzinfo=KST)
+
+
+def _sig(**over):
+    base = {"symbol": "NVDA", "kind": "VELOCITY", "urgency": 70,
+            "confidence": 65.0, "horizon_days": 5,
+            "stop": 180.0, "current_price": 190.0}
+    base.update(over)
+    return base
+
+
+def test_record_batch_inserts_and_returns_count(tmp_path):
+    db = tmp_path / "ledger.db"
+    n = ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
+    assert n == 1
+
+
+def test_record_batch_dedups_same_open_key(tmp_path):
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
+    n2 = ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
+    assert n2 == 0  # 같은 (engine,symbol,kind) open → skip
+
+
+def test_record_batch_skips_hold_unknown(tmp_path):
+    db = tmp_path / "ledger.db"
+    n = ledger.record_batch("signal_engine",
+                            [_sig(kind="HOLD"), _sig(kind="UNKNOWN")],
+                            db_path=db, now=NOW)
+    assert n == 0
+
+
+def test_default_horizon_stop_watch_5_else_10(tmp_path):
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("signal_engine",
+                        [_sig(kind="STOP", horizon_days=None),
+                         _sig(symbol="META", kind="RS_WEAK", horizon_days=None)],
+                        db_path=db, now=NOW)
+    due_at_6d = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=6))
+    kinds = {r["kind"] for r in due_at_6d}
+    assert kinds == {"STOP"}  # STOP=5일 만기, RS_WEAK=10일이라 아직
+
+
+def test_fetch_due_returns_evidence_dict_and_age(tmp_path):
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
+    due = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=6))
+    assert len(due) == 1
+    assert due[0]["evidence"]["stop"] == 180.0
+    assert due[0]["age_days"] == 6
+
+
+def test_mark_scored_closes_signal(tmp_path):
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
+    due = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=6))
+    ledger.mark_scored(due[0]["id"], "hit", {"min_close": 175.0}, db_path=db, now=NOW)
+    assert ledger.fetch_due(db_path=db, now=NOW + timedelta(days=6)) == []
+    # 채점 후 같은 키 재기록 가능 (open 아님)
+    n = ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
+    assert n == 1
