@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-_MIN_SAMPLES = 10          # calibration 신뢰 최소 표본 (calibration._MIN_SAMPLES와 동일)
+_MIN_SAMPLES = 10  # MUST match calibration._MIN_SAMPLES — 변경 시 양쪽 동시 수정
 _VELOCITY_DEFENSIVE_URGENCY = 70
 
 _ACTION_PRIORITY = {"매도검토": 95, "비중축소": 70, "보류": 60,
@@ -26,11 +26,13 @@ class FinalAction:
     action: str                 # 매도검토|비중축소|보류|매수후보|관찰|홀딩
     urgency: int                # _ACTION_PRIORITY 기반
     rationale: str              # 근거 + 상충 내역
-    sources: list[str] = field(default_factory=list)   # 관여 엔진들
+    sources: tuple[str, ...] = field(default_factory=tuple)   # 관여 엔진들
     conflict: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["sources"] = list(self.sources)
+        return d
 
 
 def _hit_rate(calibration: dict | None, engine: str, kind: str) -> float | None:
@@ -54,7 +56,7 @@ def _mk(symbol: str, action: str, rationale: str,
         sources: list[str], conflict: bool) -> FinalAction:
     return FinalAction(symbol=symbol, action=action,
                        urgency=_ACTION_PRIORITY[action], rationale=rationale,
-                       sources=sorted(set(sources)), conflict=conflict)
+                       sources=tuple(sorted(set(sources))), conflict=conflict)
 
 
 def _note_of(group: list[dict]) -> str:
@@ -94,7 +96,7 @@ def arbitrate(signals: list[dict[str, Any]],
         if buys and warns:
             buy_rate = _best_rate(buys, calibration)
             warn_rate = _best_rate(warns, calibration)
-            if buy_rate is not None and (warn_rate is None or buy_rate > warn_rate):
+            if buy_rate is not None and buy_rate > 0.0 and (warn_rate is None or buy_rate > warn_rate):
                 why = (f"매수·약세 상충 — 적중률 우세({buys[0]['engine']} "
                        f"{buy_rate:.0%} vs {'미검증' if warn_rate is None else f'{warn_rate:.0%}'})")
                 out.append(_mk(sym, "매수후보", why, engines, True))

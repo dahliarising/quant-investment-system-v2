@@ -101,3 +101,23 @@ def test_to_dict_roundtrip():
     acts = arbiter.arbitrate([_sig()])
     d = acts[0].to_dict()
     assert d["symbol"] == "NVDA" and d["action"] == "매도검토" and isinstance(d["sources"], list)
+
+
+def test_buy_proven_zero_hitrate_vs_unproven_warn_holds():
+    """검증된 0% 적중 buy가 미검증 warn을 이기면 안 됨 — 보수적 보류."""
+    sigs = [_sig(engine="playbook", kind="BUY_NOW", intent="buy", urgency=50),
+            _sig(engine="predictive", kind="RS_WEAK", intent="warn", urgency=48)]
+    cal = {"playbook": {"BUY_NOW": {"n": 20, "hit_rate": 0.0}}}
+    acts = arbiter.arbitrate(sigs, calibration=cal)
+    assert acts[0].action == "보류"
+
+
+def test_zero_hitrate_passes_through_hit_rate_lookup():
+    """n>=10 & hit_rate=0.0 — 미검증(None)과 구별돼야 함 (falsy 함정 회귀)."""
+    cal = {"predictive": {"RS_WEAK": {"n": 15, "hit_rate": 0.0}}}
+    sigs = [_sig(engine="playbook", kind="BUY_NOW", intent="buy", urgency=50),
+            _sig(engine="predictive", kind="RS_WEAK", intent="warn", urgency=48)]
+    cal["playbook"] = {"BUY_NOW": {"n": 20, "hit_rate": 0.6}}
+    acts = arbiter.arbitrate(sigs, calibration=cal)
+    assert acts[0].action == "매수후보"  # 0.6 > 0.0 (0.0이 None 취급되면 '미검증' 문구가 됐을 것)
+    assert "0%" in acts[0].rationale
