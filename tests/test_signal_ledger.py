@@ -81,3 +81,22 @@ def test_horizon_zero_clamped_to_one(tmp_path):
     ledger.record_batch("predictive", [_sig(horizon_days=0)], db_path=db, now=NOW)
     due = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=1))
     assert len(due) == 1  # horizon 0 → 1로 클램프 저장
+
+
+def test_leading_horizon_str_mapping(tmp_path):
+    """LeadingSignal horizon 문자열 → 일수 매핑."""
+    db = tmp_path / "ledger.db"
+    n = ledger.record_batch("leading", [
+        {"symbol": "NVDA", "kind": "RS_PILLAR", "direction": "bear",
+         "confidence": 70.0, "horizon_days": ledger.horizon_str_to_days("days")},
+    ], db_path=db, now=NOW)
+    assert n == 1
+    due = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=5))
+    assert due[0]["horizon_days"] == 5
+
+
+def test_horizon_str_to_days_mapping():
+    assert ledger.horizon_str_to_days("intraday") == 1
+    assert ledger.horizon_str_to_days("days") == 5
+    assert ledger.horizon_str_to_days("weeks") == 20
+    assert ledger.horizon_str_to_days("unknown") == 10  # fallback

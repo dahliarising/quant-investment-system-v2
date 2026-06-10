@@ -20,6 +20,7 @@ DB_PATH = Path(__file__).resolve().parent.parent / "state" / "signal_ledger.db"
 
 _DEFAULT_HORIZON = {"STOP": 5, "WATCH": 5}     # 스펙 §4.1: NULL이면 kind별 기본
 _FALLBACK_HORIZON = 10
+_HORIZON_STR = {"intraday": 1, "days": 5, "weeks": 20}
 _SKIP_KINDS = {"HOLD", "UNKNOWN"}               # 비액션 신호는 기록 제외
 _CORE_FIELDS = ("engine", "symbol", "kind", "direction", "urgency", "confidence",
                 "horizon_days")
@@ -52,6 +53,11 @@ def init_db(db_path: Path | None = None) -> Path:
     with sqlite3.connect(p) as conn:
         conn.executescript(SCHEMA)
     return p
+
+
+def horizon_str_to_days(horizon: str) -> int:
+    """LeadingSignal.horizon 문자열 → 평가 일수."""
+    return _HORIZON_STR.get(horizon, _FALLBACK_HORIZON)
 
 
 def record_batch(engine: str, signals: list[dict[str, Any]],

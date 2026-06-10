@@ -572,6 +572,17 @@ def run_jarvis() -> Path:
     merge_early_warning_alerts()
     merge_cause_attribution()
     detect_and_merge_regime_alert()
+    try:
+        from corvin_jarvis.signals import ledger
+        alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+        ledger.record_batch("jarvis", [{
+            "symbol": a.get("symbol", ""),
+            "kind": a.get("metric") or a.get("category", "ALERT"),
+            "urgency": {"critical": 90, "high": 70}.get(a.get("severity"), 40),
+            "message": a.get("message", ""),
+        } for a in alerts])
+    except Exception as e:  # noqa: BLE001 — 원장 실패는 신호 흐름 무영향
+        log.warning("ledger record failed: %s", e)
     compute_and_write_verdicts()
     _run_agent_layer()
     run_weekly_attribution()
