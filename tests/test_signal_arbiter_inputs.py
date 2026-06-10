@@ -88,3 +88,37 @@ def test_build_final_actions_writes_state(tmp_path, monkeypatch):
     saved = json.loads(out_path.read_text(encoding="utf-8"))
     assert saved["actions"] == result["actions"]
     assert "ts" in saved
+
+
+def test_normalize_playbook_unknown_color_skipped():
+    rows = ai.normalize_playbook_signals([
+        {"sym": "XXX", "zone": "?", "stance": "ENTER"},            # color 없음
+        {"sym": "YYY", "zone": "?", "stance": "ENTER", "color": "red"},  # 미지 색
+    ])
+    assert rows == []
+
+
+def test_collect_live_survives_partial_failure(monkeypatch, tmp_path):
+    """한 엔진 실패 → 빈 입력 강등, 중재는 계속 + state 파일 생성."""
+    from corvin_jarvis.dashboard import snapshot as snap
+    from corvin_jarvis.playbook import builder
+    from corvin_jarvis.signals import calibration as cal_mod
+    from corvin_jarvis.signals import ledger
+
+    monkeypatch.setattr(ai, "STATE_PATH", tmp_path / "fa.json")
+    monkeypatch.setattr(snap, "_load_portfolio", lambda: {"holdings": []})
+    monkeypatch.setattr(snap, "_positions", lambda pf, fx=None: [])
+    monkeypatch.setattr(snap, "_held_for_engine", lambda pf, pos: [])
+    monkeypatch.setattr(snap, "_engine_signals",
+                        lambda held: [{"symbol": "NVDA", "kind": "STOP", "urgency": 95, "reason": "이탈"}])
+    def _boom(held):
+        raise ConnectionError("pykrx down")
+    monkeypatch.setattr(snap, "_predictive_signals", _boom)
+    monkeypatch.setattr(builder, "load_holdings", lambda path=None: {})
+    monkeypatch.setattr(snap, "_build_signals", lambda holdings: [])
+    monkeypatch.setattr(ledger, "fetch_open", lambda db_path=None: [])
+    monkeypatch.setattr(cal_mod, "compute", lambda db_path=None: {})
+
+    res = ai.collect_live()
+    assert res["actions"][0]["symbol"] == "NVDA"   # 살아남은 엔진으로 중재 완료
+    assert (tmp_path / "fa.json").exists()

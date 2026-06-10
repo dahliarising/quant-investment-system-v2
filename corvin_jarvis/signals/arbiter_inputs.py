@@ -60,7 +60,10 @@ def normalize_playbook_signals(sigs: list[dict]) -> list[dict]:
     """
     out = []
     for s in sigs:
-        buy = s.get("color") == "green"
+        color = s.get("color")
+        if color not in ("green", "amber"):
+            continue  # 알 수 없는 색 → 추측 금지, 제외
+        buy = color == "green"
         out.append(_row("playbook", str(s.get("sym", "")),
                         "BUY_NOW" if buy else "TRIM_NOW",
                         "buy" if buy else "trim",
@@ -121,21 +124,27 @@ def build_final_actions(*, engine_sigs: list[dict], pred_sigs: list[dict],
 
 
 def collect_live() -> dict[str, Any]:
-    """라이브 수집 (snapshot 헬퍼 재사용) → build_final_actions. CLI 전용."""
+    """라이브 수집 (snapshot 헬퍼 재사용) → build_final_actions. CLI 전용.
+
+    snapshot 프라이빗 헬퍼(_load_portfolio/_positions/_held_for_engine/
+    _engine_signals/_predictive_signals/_build_signals)에 의존 — snapshot 내부
+    변경 시 이 함수도 함께 갱신할 것. 각 단계는 _safe 격리: 한 엔진 실패가
+    전체 중재를 막지 않고 빈 입력으로 강등된다.
+    """
     from corvin_jarvis.dashboard import snapshot as snap
     from corvin_jarvis.playbook import builder
     from corvin_jarvis.signals import calibration as cal_mod
     from corvin_jarvis.signals import ledger
 
     pf = snap._load_portfolio()
-    positions = snap._positions(pf)
-    held = snap._held_for_engine(pf, positions)
-    engine_sigs = snap._engine_signals(held)
-    pred_sigs = snap._predictive_signals(held)
-    holdings = builder.load_holdings()
-    playbook_sigs = snap._build_signals(holdings)
-    ledger_open = ledger.fetch_open()
-    calibration = cal_mod.compute()
+    positions = snap._safe(lambda: snap._positions(pf), [])
+    held = snap._safe(lambda: snap._held_for_engine(pf, positions), [])
+    engine_sigs = snap._safe(lambda: snap._engine_signals(held), [])
+    pred_sigs = snap._safe(lambda: snap._predictive_signals(held), [])
+    holdings = snap._safe(builder.load_holdings, {})
+    playbook_sigs = snap._safe(lambda: snap._build_signals(holdings), [])
+    ledger_open = snap._safe(ledger.fetch_open, [])
+    calibration = snap._safe(cal_mod.compute, None)
     return build_final_actions(engine_sigs=engine_sigs, pred_sigs=pred_sigs,
                                playbook_sigs=playbook_sigs, ledger_open=ledger_open,
                                calibration=calibration)
