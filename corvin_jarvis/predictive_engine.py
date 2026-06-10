@@ -126,7 +126,7 @@ def evaluate_velocity(
         days_lo = round(dist / (-s + se), 1) if (-s + se) > 0 else None  # 빠른 시나리오
         days_hi = round(dist / (-s - se), 1) if (-s - se) > 0 else None  # 느린 시나리오
         rng = ""
-        if days_lo is not None and days_hi is not None:
+        if days_lo is not None and days_hi is not None and days_lo != days_hi:
             rng = f" (범위 {math.floor(days_lo)}–{math.ceil(days_hi)}일)"
         urgency = max(40, min(85, int(85 - (days_to / horizon) * 45)))
         out.append(PredictiveSignal(

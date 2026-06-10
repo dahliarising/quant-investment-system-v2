@@ -180,6 +180,7 @@ def _mk_holding(sym="TSLA", price=100.0):
     return [{"symbol": sym, "market": "US", "price": price, "pnl_pct": -5.0}]
 
 
+@pytest.mark.unit
 def test_velocity_noise_gate_suppresses_weak_slope_in_choppy_market():
     """변동성 대비 미미한 기울기 — 노이즈 게이트 억제 (15봉 이상에서 활성)."""
     # 일변화 ±5 들쭉날쭉(ATR프록시≈5), 순기울기 -0.5 → strength 0.1 < 0.15 게이트
@@ -192,9 +193,13 @@ def test_velocity_noise_gate_suppresses_weak_slope_in_choppy_market():
     assert sigs == []  # days_to≈10.7 ≤ horizon인데도 게이트(strength≈0.05)가 억제
 
 
+@pytest.mark.unit
 def test_velocity_clean_downtrend_still_fires_with_atr_data():
     """저변동 명확한 하락 추세 — 게이트 통과, 신뢰구간 evidence 포함."""
-    closes = [float(120 - i) for i in range(16)]  # 일정한 -1/일, 16봉
+    # 평균 -1/일 + 미세 변동(se>0) — 완전 선형이면 lo==hi라 범위 표기가 생략됨
+    closes = [120.0]
+    for i in range(15):
+        closes.append(closes[-1] + (-0.9 if i % 2 == 0 else -1.1))
     price, stop = closes[-1], closes[-1] - 5
     sigs = pe.evaluate_velocity(_mk_holding(price=price), {"TSLA": stop}, {"TSLA": closes})
     assert len(sigs) == 1
@@ -205,6 +210,7 @@ def test_velocity_clean_downtrend_still_fires_with_atr_data():
     assert "범위" in sigs[0].message  # "(범위 X–Y일)" 표기
 
 
+@pytest.mark.unit
 def test_velocity_short_series_skips_gate_backcompat():
     """15봉 미만 — ATR 산출 불가 → 게이트 미적용 (기존 동작 보존)."""
     closes = [110.0, 108.0, 106.0, 104.0]  # 4봉, 기존 테스트 스타일
