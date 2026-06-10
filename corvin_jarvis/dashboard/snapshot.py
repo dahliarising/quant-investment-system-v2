@@ -191,6 +191,18 @@ def _scoreboard() -> list[dict]:
     return calibration.scoreboard()
 
 
+def _final_actions(engine_sigs: list[dict], pred_sigs: list[dict],
+                   playbook_sigs: list[dict]) -> list[dict]:
+    """Phase 2 중재 — 라이브 신호 + ledger open(leading/jarvis) → 종목별 최종 액션."""
+    from corvin_jarvis.signals import arbiter_inputs as ai
+    from corvin_jarvis.signals import calibration as cal_mod
+    from corvin_jarvis.signals import ledger
+    res = ai.build_final_actions(
+        engine_sigs=engine_sigs, pred_sigs=pred_sigs, playbook_sigs=playbook_sigs,
+        ledger_open=ledger.fetch_open(), calibration=cal_mod.compute())
+    return res["actions"]
+
+
 def _paper(held: list[dict]) -> dict:
     """STAGE② 페이퍼 — 룰 트리거 모의청산 '제안' + 원장 실현손익(모의·실주문 0)."""
     from corvin_jarvis import paper_trader as pt
@@ -273,6 +285,7 @@ def build_snapshot() -> dict[str, Any]:
     engine_sigs = _safe(lambda: _engine_signals(held), [])
     pred_sigs = _safe(lambda: _predictive_signals(held), [])
     _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs), None)
+    playbook_sigs = _safe(lambda: _build_signals(holdings), [])
     return _sanitize({
         "ts": now.isoformat(timespec="seconds"),
         "market_state": "open" if (market_hours.is_kr_open(now) or market_hours.is_us_open(now)) else "closed",
@@ -282,10 +295,11 @@ def build_snapshot() -> dict[str, Any]:
         "indices": _safe(_indices, []),
         "macro_ticker": _safe(_macro_ticker, []),
         "allocation": _safe(lambda: _allocation(positions), []),
-        "signals": _safe(lambda: _build_signals(holdings), []),
+        "signals": playbook_sigs,
         "engine_signals": engine_sigs,
         "predictive_signals": pred_sigs,
         "signal_scoreboard": _safe(_scoreboard, []),
+        "final_actions": _safe(lambda: _final_actions(engine_sigs, pred_sigs, playbook_sigs), []),
         "paper": _safe(lambda: _paper(held), {}),
         "log": _safe(lambda: _action_log(pf), []),
         "equity_curve": _safe(lambda: _equity_curve_live(now, totals.get("equity_pnl_pct")), []),

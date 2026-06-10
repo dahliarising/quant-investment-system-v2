@@ -1,6 +1,7 @@
 import pytest
 
 from corvin_jarvis.dashboard import snapshot
+from corvin_jarvis.signals import arbiter_inputs as _ai
 from corvin_jarvis.signals import ledger as _ledger
 
 
@@ -8,6 +9,7 @@ from corvin_jarvis.signals import ledger as _ledger
 def _isolate_signal_ledger(monkeypatch, tmp_path):
     """build_snapshot의 원장 기록 훅이 실제 signal_ledger.db를 오염시키지 않게 격리."""
     monkeypatch.setattr(_ledger, "DB_PATH", tmp_path / "signal_ledger.db")
+    monkeypatch.setattr(_ai, "STATE_PATH", tmp_path / "fa.json")
 
 
 class _Q:
@@ -119,6 +121,16 @@ def test_snapshot_has_signal_scoreboard_section(monkeypatch):
     s = snapshot.build_snapshot()
     assert "signal_scoreboard" in s
     assert isinstance(s["signal_scoreboard"], list)
+
+
+def test_snapshot_has_final_actions_section(monkeypatch):
+    """final_actions 섹션 — arbiter 중재 결과. 실패해도 빈 리스트."""
+    from corvin_jarvis.dashboard import snapshot as snap
+    _mock_quotes(monkeypatch)
+    snap._CACHE["data"] = None
+    s = snap.build_snapshot()
+    assert "final_actions" in s
+    assert isinstance(s["final_actions"], list)
 
 
 def test_snapshot_records_signals_to_ledger(monkeypatch):
