@@ -181,4 +181,6 @@ def run(db_path=None, now=None,
 if __name__ == "__main__":
     import json as _json
     res = run()
+    from corvin_jarvis.signals import calibration
+    calibration.write_state()
     print(_json.dumps(res, ensure_ascii=False))
