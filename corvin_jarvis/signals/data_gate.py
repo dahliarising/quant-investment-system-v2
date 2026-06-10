@@ -75,3 +75,51 @@ def gate_signals(signals: list[dict[str, Any]], *,
             continue
         passed.append(_fix_label(s, market_open))
     return {"passed": passed, "blocked": blocked, "warnings": warnings}
+
+
+# ── 라이브 다소스 바인딩 ──────────────────────────────────
+
+def _kis_price(symbol: str) -> float | None:
+    """KIS 시세 (KR/US 자동 분기). env 없으면 None."""
+    from corvin_jarvis import kis_quote
+    from corvin_jarvis import quote_provider as qp
+    env = qp._get_kis_env()
+    if env is None:
+        return None
+    if qp.is_kr_stock(symbol):
+        price, _ = kis_quote.get_kr_quote(symbol, env=env)
+    else:
+        price, _ = kis_quote.get_us_quote(
+            symbol, exchange=qp._exchange_for(symbol), env=env)
+    return price
+
+
+def _alt_price(symbol: str) -> float | None:
+    """교차 소스 — KR: pykrx (yfinance 금지 규칙), US: yfinance."""
+    from corvin_jarvis import quote_provider as qp
+    if qp.is_kr_stock(symbol):
+        from kr_data import get_kr_stock_data  # noqa: PLC0415
+        data = get_kr_stock_data(symbol)
+        return None if "에러" in data else float(data["현재가"])
+    return qp._yfinance_quote(symbol).price
+
+
+def collect_price_checks(symbols: list[str],
+                         fetchers_for=None,
+                         tol_pct: float = _PRICE_TOL_PCT) -> dict[str, dict]:
+    """종목별 KIS vs 교차소스 검증 결과 — gate_signals price_checks 입력.
+
+    fetchers_for(sym) -> {name: fetch} 주입 가능 (테스트/커스텀).
+    data_verify.verified가 예외·NaN을 소스 격리 처리.
+    """
+    from corvin_jarvis import data_verify
+    out: dict[str, dict] = {}
+    for sym in dict.fromkeys(symbols):       # 순서 보존 dedup
+        if fetchers_for is not None:
+            fetchers = fetchers_for(sym)
+        else:
+            fetchers = {"kis": lambda s=sym: _kis_price(s),
+                        "alt": lambda s=sym: _alt_price(s)}
+        out[sym] = data_verify.verified(sym, fetchers, tol_pct=tol_pct,
+                                        positive=True)
+    return out

@@ -85,3 +85,49 @@ def test_gate_custom_stale_limit():
     res2 = dg.gate_signals([_sig()], market_open=True,
                            data_age_days=7, max_age_days=6)
     assert res2["passed"] == []
+
+
+# ── collect_price_checks — DI fetcher 바인딩 ─────────────────
+
+@pytest.mark.unit
+def test_collect_price_checks_uses_injected_fetchers():
+    """주입된 fetcher 페어로 cross_check — 일치 시 flag None."""
+    def fetchers_for(sym):
+        return {"kis": lambda: 100.0, "alt": lambda: 100.5}
+    out = dg.collect_price_checks(["TSLA"], fetchers_for=fetchers_for)
+    assert out["TSLA"]["flag"] is None
+    assert out["TSLA"]["confidence"] == "high"
+
+
+@pytest.mark.unit
+def test_collect_price_checks_flags_discrepancy():
+    """±1% 초과 괴리 — discrepancy flag (스펙 §7 row 1)."""
+    def fetchers_for(sym):
+        return {"kis": lambda: 100.0, "alt": lambda: 103.0}
+    out = dg.collect_price_checks(["TSLA"], fetchers_for=fetchers_for)
+    assert out["TSLA"]["flag"] == "discrepancy"
+
+
+@pytest.mark.unit
+def test_collect_price_checks_single_source_passes():
+    """한 소스 죽음 — single_source, 게이트는 차단하지 않음 (소스 격리)."""
+    def fetchers_for(sym):
+        return {"kis": lambda: (_ for _ in ()).throw(RuntimeError("down")),
+                "alt": lambda: 100.0}
+    out = dg.collect_price_checks(["TSLA"], fetchers_for=fetchers_for)
+    assert out["TSLA"]["flag"] == "single_source"
+    # single_source는 gate_signals에서 discrepancy가 아니므로 통과되어야 함
+    res = dg.gate_signals([{"symbol": "TSLA", "kind": "STOP",
+                            "urgency": 50, "confidence": 60.0, "message": "x"}],
+                          price_checks=out, market_open=True)
+    assert len(res["passed"]) == 1
+
+
+@pytest.mark.unit
+def test_collect_price_checks_dedups_symbols():
+    calls = []
+    def fetchers_for(sym):
+        calls.append(sym)
+        return {"kis": lambda: 100.0, "alt": lambda: 100.0}
+    dg.collect_price_checks(["TSLA", "TSLA", "NVDA"], fetchers_for=fetchers_for)
+    assert calls == ["TSLA", "NVDA"]
