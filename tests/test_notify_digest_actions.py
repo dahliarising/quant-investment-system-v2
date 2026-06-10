@@ -47,3 +47,20 @@ def test_actions_block_skips_hold_only(tmp_path):
          "sources": ["signal_engine"], "conflict": False},
     ])
     assert notify._final_actions_block(state_path=p) == ""
+
+
+def test_actions_block_caps_rows_at_8(tmp_path):
+    actions = [{"symbol": f"S{i}", "action": "관찰", "urgency": 40,
+                "rationale": "w", "sources": [], "conflict": False} for i in range(12)]
+    p = _write_state(tmp_path, datetime.now(KST), actions)
+    block = notify._final_actions_block(state_path=p)
+    assert block.count("👀") == 8
+    assert "외 4건" in block
+
+
+def test_actions_block_stale_with_actionable_rows_still_empty(tmp_path):
+    p = _write_state(tmp_path, datetime.now(KST) - timedelta(hours=25), [
+        {"symbol": "X", "action": "매도검토", "urgency": 95, "rationale": "r",
+         "sources": [], "conflict": False},
+    ])
+    assert notify._final_actions_block(state_path=p) == ""

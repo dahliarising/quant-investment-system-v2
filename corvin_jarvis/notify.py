@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -285,7 +286,6 @@ _FINAL_ACTIONS_MAX_AGE_H = 24
 
 def _final_actions_block(state_path: Path | None = None) -> str:
     """digest용 중재 최종 액션 블록. 낡았거나(>24h) 없거나 홀딩뿐이면 ''."""
-    from zoneinfo import ZoneInfo
     p = state_path or _FINAL_ACTIONS_PATH
     try:
         data = json.loads(Path(p).read_text(encoding="utf-8"))
@@ -300,11 +300,14 @@ def _final_actions_block(state_path: Path | None = None) -> str:
     rows = [a for a in data.get("actions", []) if a.get("action") != "홀딩"]
     if not rows:
         return ""
+    shown, extra = rows[:8], len(rows) - 8
     lines = ["", "🎯 중재 최종 액션 (5엔진 통합)"]
-    for a in rows:
+    for a in shown:
         icon = _ACTION_ICONS.get(a.get("action", ""), "·")
         flag = " ⚔️" if a.get("conflict") else ""
         lines.append(f"{icon} {a.get('symbol')} {a.get('action')}{flag} — {a.get('rationale', '')}")
+    if extra > 0:
+        lines.append(f"… 외 {extra}건 (대시보드 참조)")
     return "\n".join(lines)
 
 
@@ -426,8 +429,12 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     if mode == "digest":
         actions_block = _final_actions_block()
         if actions_block:
-            msg_long += "\n" + actions_block
-            msg_short += "\n" + actions_block
+            # Discord 1900자 컷에서 액션 블록(최고 신호)이 잘리지 않게 헤더(첫 줄) 직후 삽입
+            def _insert_after_header(msg: str) -> str:
+                head, sep, rest = msg.partition("\n")
+                return head + sep + actions_block + "\n" + rest if sep else msg + "\n" + actions_block
+            msg_long = _insert_after_header(msg_long)
+            msg_short = _insert_after_header(msg_short)
     delivered: list[str] = []
 
     if channels.is_enabled("telegram"):
