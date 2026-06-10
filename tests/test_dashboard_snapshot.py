@@ -181,3 +181,36 @@ def test_get_snapshot_caches(monkeypatch):
     snapshot.get_snapshot(ttl=999, now=1000.0)
     snapshot.get_snapshot(ttl=999, now=1001.0)
     assert calls["n"] == 1
+
+
+# ── Phase 4: data gate 훅 ─────────────────────────────────
+
+@pytest.mark.unit
+def test_record_to_ledger_gates_signals(monkeypatch, tmp_path):
+    """게이트 차단 신호는 ledger에 기록되지 않음 (스펙 §7: 통과 신호만 기록)."""
+    from corvin_jarvis.signals import data_gate
+
+    db = tmp_path / "gate_ledger.db"
+    monkeypatch.setattr(_ledger, "DB_PATH", db)
+    # 가격 교차검증은 라이브 IO — 테스트에서는 항상 빈 dict
+    monkeypatch.setattr(data_gate, "collect_price_checks", lambda syms, **kw: {})
+    bad = {"symbol": "BAD", "kind": "STOP", "urgency": 50,
+           "confidence": float("nan"), "message": "x"}
+    good = {"symbol": "OK", "kind": "STOP", "urgency": 50,
+            "confidence": 60.0, "message": "x"}
+    info = snapshot._record_to_ledger([bad, good], [], market_open=True)
+    rows = _ledger.fetch_open(db_path=db)
+    assert [r["symbol"] for r in rows] == ["OK"]
+    assert info["blocked"] == 1
+
+
+@pytest.mark.unit
+def test_snapshot_exposes_data_gate_summary(monkeypatch):
+    """snapshot에 data_gate 요약 키 — blocked 수 + warnings."""
+    _mock_quotes(monkeypatch)
+    monkeypatch.setattr(snapshot, "_record_to_ledger",
+                        lambda *a, **kw: {"blocked": 2, "warnings": ["⚠️ w"]})
+    snapshot._CACHE["data"] = None
+    s = snapshot.build_snapshot()
+    assert s["data_gate"]["blocked"] == 2
+    assert s["data_gate"]["warnings"] == ["⚠️ w"]
