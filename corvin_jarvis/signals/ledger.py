@@ -122,6 +122,19 @@ def fetch_due(db_path: Path | None = None,
     return out
 
 
+def fetch_open(db_path: Path | None = None) -> list[dict[str, Any]]:
+    """open 신호 전체 (만기 무관) — arbiter 입력용. evidence는 dict로 파싱."""
+    p = init_db(db_path)
+    out: list[dict[str, Any]] = []
+    with sqlite3.connect(p) as conn:
+        conn.row_factory = sqlite3.Row
+        for r in conn.execute("SELECT * FROM signal_ledger WHERE status='open'"):
+            d = dict(r)
+            d["evidence"] = json.loads(d["evidence"] or "{}")
+            out.append(d)
+    return out
+
+
 def mark_scored(row_id: int, status: str, outcome: dict[str, Any],
                 db_path: Path | None = None, now: datetime | None = None) -> None:
     """채점 결과 기록 — status: hit | late_hit | miss | unscorable."""
