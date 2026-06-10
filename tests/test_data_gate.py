@@ -131,3 +131,37 @@ def test_collect_price_checks_dedups_symbols():
         return {"kis": lambda: 100.0, "alt": lambda: 100.0}
     dg.collect_price_checks(["TSLA", "TSLA", "NVDA"], fetchers_for=fetchers_for)
     assert calls == ["TSLA", "NVDA"]
+
+
+# ── 리뷰 반영: 별칭 변이·빈 심볼·캐시 ─────────────────────
+
+@pytest.mark.unit
+def test_gate_passed_signals_are_copies():
+    """passed 항목은 원본과 독립 — downstream 변이가 원본 오염 금지."""
+    orig = _sig()
+    res = dg.gate_signals([orig], market_open=True)
+    res["passed"][0]["message"] = "MUTATED"
+    assert orig["message"] == "현재가 $310 — 손절 임박"
+
+
+@pytest.mark.unit
+def test_gate_symbolless_signal_skips_price_check():
+    """symbol 없는 신호(EVENT 등)는 ''키 price_check에 오매칭되지 않음."""
+    checks = {"": {"value": 1.0, "flag": "discrepancy", "spread_pct": 9.9}}
+    ev = {"symbol": "", "kind": "EVENT", "urgency": 50, "confidence": 90.0,
+          "message": "FOMC D-3"}
+    res = dg.gate_signals([ev], price_checks=checks, market_open=True)
+    assert len(res["passed"]) == 1
+
+
+@pytest.mark.unit
+def test_collect_price_checks_caches_default_path(monkeypatch):
+    """기본(라이브) 경로는 TTL 캐시 — 같은 심볼 반복 호출 시 네트워크 1회."""
+    calls = []
+    monkeypatch.setattr(dg, "_kis_price", lambda s: calls.append(s) or 100.0)
+    monkeypatch.setattr(dg, "_alt_price", lambda s: 100.0)
+    dg._CHECK_CACHE.clear()
+    dg.collect_price_checks(["TSLA"])
+    dg.collect_price_checks(["TSLA"])
+    assert calls == ["TSLA"]
+    dg._CHECK_CACHE.clear()

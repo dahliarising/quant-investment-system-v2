@@ -209,8 +209,64 @@ def test_snapshot_exposes_data_gate_summary(monkeypatch):
     """snapshot에 data_gate 요약 키 — blocked 수 + warnings."""
     _mock_quotes(monkeypatch)
     monkeypatch.setattr(snapshot, "_record_to_ledger",
-                        lambda *a, **kw: {"blocked": 2, "warnings": ["⚠️ w"]})
+                        lambda *a, **kw: {"engine": [], "predictive": [],
+                                          "blocked": 2, "warnings": ["⚠️ w"]})
     snapshot._CACHE["data"] = None
     s = snapshot.build_snapshot()
     assert s["data_gate"]["blocked"] == 2
     assert s["data_gate"]["warnings"] == ["⚠️ w"]
+
+
+@pytest.mark.unit
+def test_record_to_ledger_blocks_on_negative_staleness_sentinel(monkeypatch, tmp_path):
+    """portfolio 미존재(days=-1, block_strategy=True) — 우회 금지, 전체 차단."""
+    from corvin_jarvis import staleness as _st
+    from corvin_jarvis.signals import data_gate
+
+    monkeypatch.setattr(_ledger, "DB_PATH", tmp_path / "neg_ledger.db")
+    monkeypatch.setattr(data_gate, "collect_price_checks", lambda syms, **kw: {})
+
+    class _Rep:
+        block_strategy = True
+        days_since_update = -1
+    monkeypatch.setattr(_st, "check", lambda: _Rep())
+    good = {"symbol": "OK", "kind": "STOP", "urgency": 50,
+            "confidence": 60.0, "message": "x"}
+    info = snapshot._record_to_ledger([good], [], market_open=True)
+    assert info["blocked"] == 1
+    assert _ledger.fetch_open(db_path=tmp_path / "neg_ledger.db") == []
+
+
+@pytest.mark.unit
+def test_snapshot_serves_gated_signal_lists(monkeypatch):
+    """스펙 §7 '기록·발화' — 대시보드 표시 리스트도 통과 신호만."""
+    _mock_quotes(monkeypatch)
+    bad = {"symbol": "BAD", "kind": "STOP", "urgency": 50,
+           "confidence": float("nan"), "message": "x"}
+    good = {"symbol": "OK", "kind": "STOP", "urgency": 50,
+            "confidence": 60.0, "message": "x"}
+    monkeypatch.setattr(snapshot, "_engine_signals", lambda held: [bad, good])
+    monkeypatch.setattr(snapshot, "_predictive_signals", lambda held: [])
+    from corvin_jarvis.signals import data_gate
+    monkeypatch.setattr(data_gate, "collect_price_checks", lambda syms, **kw: {})
+    snapshot._CACHE["data"] = None
+    s = snapshot.build_snapshot()
+    assert [x["symbol"] for x in s["engine_signals"]] == ["OK"]
+    assert s["data_gate"]["blocked"] == 1
+
+
+@pytest.mark.unit
+def test_snapshot_gate_failure_preserves_signals(monkeypatch):
+    """게이트 자체 실패 — 신호 흐름 보존(미검증 표시) + blocked=-1로 실패 구분."""
+    _mock_quotes(monkeypatch)
+    good = {"symbol": "OK", "kind": "STOP", "urgency": 50,
+            "confidence": 60.0, "message": "x"}
+    monkeypatch.setattr(snapshot, "_engine_signals", lambda held: [good])
+    monkeypatch.setattr(snapshot, "_predictive_signals", lambda held: [])
+    def _boom(*a, **kw):
+        raise RuntimeError("gate down")
+    monkeypatch.setattr(snapshot, "_record_to_ledger", _boom)
+    snapshot._CACHE["data"] = None
+    s = snapshot.build_snapshot()
+    assert [x["symbol"] for x in s["engine_signals"]] == ["OK"]
+    assert s["data_gate"]["blocked"] == -1

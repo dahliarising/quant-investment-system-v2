@@ -66,14 +66,16 @@ def gate_signals(signals: list[dict[str, Any]], *,
         if not _numbers_ok(s):
             blocked.append({"signal": s, "reason": "invalid_numeric"})
             continue
-        chk = checks.get(str(s.get("symbol", "")))
+        sym_key = str(s.get("symbol") or "")
+        chk = checks.get(sym_key) if sym_key else None
         if chk and chk.get("flag") == "discrepancy":
             blocked.append({"signal": s, "reason": "price_discrepancy"})
             warnings.append(
                 f"⚠️ {s.get('symbol')} 가격 소스 불일치 "
                 f"{chk.get('spread_pct', 0):.1f}% — 신호 보류")
             continue
-        passed.append(_fix_label(s, market_open))
+        # 얕은 복사 — passed 별칭 변이가 원본 신호 리스트 오염 방지
+        passed.append(_fix_label(dict(s), market_open))
     return {"passed": passed, "blocked": blocked, "warnings": warnings}
 
 
@@ -104,22 +106,36 @@ def _alt_price(symbol: str) -> float | None:
     return qp._yfinance_quote(symbol).price
 
 
+_CHECK_CACHE: dict[str, tuple[float, dict]] = {}   # sym -> (expires_at, result)
+_CHECK_TTL = 300.0   # 라이브 교차검증 캐시 — snapshot 30s TTL 미스마다 풀 fan-out 방지
+
+
 def collect_price_checks(symbols: list[str],
                          fetchers_for=None,
                          tol_pct: float = _PRICE_TOL_PCT) -> dict[str, dict]:
     """종목별 KIS vs 교차소스 검증 결과 — gate_signals price_checks 입력.
 
-    fetchers_for(sym) -> {name: fetch} 주입 가능 (테스트/커스텀).
+    fetchers_for(sym) -> {name: fetch} 주입 가능 (테스트/커스텀, 캐시 우회).
+    기본(라이브) 경로는 _CHECK_TTL 캐시 — 심볼당 네트워크 2콜 fan-out 억제.
     data_verify.verified가 예외·NaN을 소스 격리 처리.
     """
+    import time
+
     from corvin_jarvis import data_verify
     out: dict[str, dict] = {}
+    now = time.time()
     for sym in dict.fromkeys(symbols):       # 순서 보존 dedup
         if fetchers_for is not None:
-            fetchers = fetchers_for(sym)
-        else:
-            fetchers = {"kis": lambda s=sym: _kis_price(s),
-                        "alt": lambda s=sym: _alt_price(s)}
-        out[sym] = data_verify.verified(sym, fetchers, tol_pct=tol_pct,
-                                        positive=True)
+            out[sym] = data_verify.verified(sym, fetchers_for(sym),
+                                            tol_pct=tol_pct, positive=True)
+            continue
+        cached = _CHECK_CACHE.get(sym)
+        if cached and cached[0] > now:
+            out[sym] = cached[1]
+            continue
+        fetchers = {"kis": lambda s=sym: _kis_price(s),
+                    "alt": lambda s=sym: _alt_price(s)}
+        res = data_verify.verified(sym, fetchers, tol_pct=tol_pct, positive=True)
+        _CHECK_CACHE[sym] = (now + _CHECK_TTL, res)
+        out[sym] = res
     return out

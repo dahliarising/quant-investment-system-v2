@@ -192,7 +192,11 @@ def _record_to_ledger(engine_sigs: list[dict], pred_sigs: list[dict],
                  if s.get("symbol")]
     checks = _safe(lambda: data_gate.collect_price_checks(held_syms), {})
     rep = _safe(staleness.check, None)
-    age = rep.days_since_update if (rep and rep.block_strategy) else None
+    if rep and rep.block_strategy:
+        # 음수 = 파일 미존재 센티널 — 가장 심각한 staleness, 우회 금지
+        age = rep.days_since_update if rep.days_since_update >= 0 else 999
+    else:
+        age = None
     g_eng = data_gate.gate_signals(engine_sigs, price_checks=checks,
                                    market_open=market_open, data_age_days=age,
                                    max_age_days=6)
@@ -203,7 +207,8 @@ def _record_to_ledger(engine_sigs: list[dict], pred_sigs: list[dict],
     ledger.record_batch("predictive", g_pred["passed"])
     for w in g_eng["warnings"] + g_pred["warnings"]:
         log.warning("data_gate: %s", w)
-    return {"blocked": len(g_eng["blocked"]) + len(g_pred["blocked"]),
+    return {"engine": g_eng["passed"], "predictive": g_pred["passed"],
+            "blocked": len(g_eng["blocked"]) + len(g_pred["blocked"]),
             "warnings": g_eng["warnings"] + g_pred["warnings"]}
 
 
@@ -306,9 +311,16 @@ def build_snapshot() -> dict[str, Any]:
     engine_sigs = _safe(lambda: _engine_signals(held), [])
     pred_sigs = _safe(lambda: _predictive_signals(held), [])
     market_open = market_hours.is_kr_open(now) or market_hours.is_us_open(now)
-    gate_info = _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs,
-                                                market_open=market_open),
-                      {"blocked": 0, "warnings": []})
+    gate_res = _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs,
+                                               market_open=market_open), None)
+    if gate_res is None:
+        # 게이트 자체 실패 — 신호 흐름 보존(미검증 그대로), blocked=-1로 실패 구분
+        gate_res = {"engine": engine_sigs, "predictive": pred_sigs,
+                    "blocked": -1,
+                    "warnings": ["⚠️ data_gate 실행 실패 — 미검증 신호 표시"]}
+    engine_sigs = gate_res["engine"]    # 스펙 §7: 통과 신호만 기록·발화
+    pred_sigs = gate_res["predictive"]
+    gate_info = {"blocked": gate_res["blocked"], "warnings": gate_res["warnings"]}
     playbook_sigs = _safe(lambda: _build_signals(holdings), [])
     return _sanitize({
         "ts": now.isoformat(timespec="seconds"),
