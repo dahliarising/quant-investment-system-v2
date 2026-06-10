@@ -5,7 +5,7 @@ LATE 유예: VELOCITY·방향성 신호는 만기×1.5까지 보류(None 반환)
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 _EVENT_VOL_MULT = 1.3   # 이벤트일 변동 > 직전 평균 ×1.3 → HIT
 _GRACE_MULT = 1.5       # late_hit 유예 배수
@@ -99,3 +99,68 @@ def score_row(row: dict[str, Any], *,
         return "miss", {"ret_pct": round(r, 2)}
 
     return "unscorable", {"reason": f"no scoring rule for kind={kind}"}
+
+
+def _trading_days(age_days: int) -> int:
+    """달력일 → 거래일 근사 (주 5일). ±1~2일 오차 허용 — 스펙 §4.2 합의."""
+    return max(1, round(age_days * 5 / 7))
+
+
+def _default_fetch(symbol: str, days: int) -> list[float]:
+    from corvin_jarvis import quote_provider as qp
+    return qp.get_stock_daily_closes(symbol, days=days, completed_only=True)
+
+
+def run(db_path=None, now=None,
+        fetch_closes: Callable[[str, int], list[float]] | None = None) -> dict[str, Any]:
+    """만기 신호 일괄 채점. 반환: {"scored": n, "pending": n, "by_status": {...}}."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from corvin_jarvis.signals import ledger
+
+    kst = ZoneInfo("Asia/Seoul")
+    t = now or datetime.now(kst)
+    fetch = fetch_closes or _default_fetch
+    due = ledger.fetch_due(db_path=db_path, now=t)
+
+    by_status: dict[str, int] = {}
+    scored = pending = 0
+    bench_cache: dict[str, list[float]] = {}
+
+    def bench_for(symbol: str) -> str:
+        return "069500" if symbol.endswith(".KS") or (symbol.isdigit() and len(symbol) == 6) else "SPY"
+        # 069500 = KODEX200 ETF (KOSPI 프록시 — pykrx/KIS 모두 조회 가능)
+
+    for row in due:
+        sym = row["symbol"]
+        age = row["age_days"]
+        n_days = _trading_days(age)
+        closes_after = []
+        if sym:
+            full = fetch(sym, n_days + 30)
+            closes_after = full[-n_days:] if full else []
+        bkey = bench_for(sym or "SPY")
+        if bkey not in bench_cache:
+            bench_cache[bkey] = fetch(bkey, n_days + 30) or []
+        bench_full = bench_cache[bkey]
+        bench_after = bench_full[-n_days:] if bench_full else []
+        bench_before = bench_full[:-n_days][-21:] if len(bench_full) > n_days else []
+
+        verdict = score_row(row, closes_after=closes_after,
+                            bench_after=bench_after, bench_before=bench_before)
+        if verdict is None:
+            pending += 1
+            continue
+        status, outcome = verdict
+        ledger.mark_scored(row["id"], status, outcome, db_path=db_path, now=t)
+        by_status[status] = by_status.get(status, 0) + 1
+        scored += 1
+
+    return {"scored": scored, "pending": pending, "by_status": by_status}
+
+
+if __name__ == "__main__":
+    import json as _json
+    res = run()
+    print(_json.dumps(res, ensure_ascii=False))

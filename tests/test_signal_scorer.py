@@ -140,3 +140,47 @@ def test_event_zero_bench_price_unscorable():
     status, _ = scorer.score_row(row, closes_after=[], bench_after=[99.0],
                                  bench_before=[100, 0.0, 100.2])
     assert status == "unscorable"
+
+
+# ── 러너 ──────────────────────────────────────────────
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from corvin_jarvis.signals import ledger
+
+KST = ZoneInfo("Asia/Seoul")
+NOW = datetime(2026, 6, 10, 16, 30, tzinfo=KST)
+
+
+def test_run_scores_due_signals_and_updates_ledger(tmp_path):
+    db = tmp_path / "ledger.db"
+    fired = NOW - timedelta(days=9)  # horizon 5 → 만기 + 유예(7.5) 경과
+    ledger.record_batch("predictive", [{
+        "symbol": "NVDA", "kind": "VELOCITY", "urgency": 70, "confidence": 65.0,
+        "horizon_days": 5, "stop": 180.0, "current_price": 190.0,
+    }], db_path=db, now=fired)
+
+    def fake_fetch(symbol, days):
+        return [188, 185, 179, 182, 184, 183, 182]  # 3일째 hit
+
+    result = scorer.run(db_path=db, now=NOW, fetch_closes=fake_fetch)
+    assert result["scored"] == 1
+    assert result["by_status"]["hit"] == 1
+    assert ledger.fetch_due(db_path=db, now=NOW) == []
+
+
+def test_run_keeps_pending_signal_open(tmp_path):
+    db = tmp_path / "ledger.db"
+    fired = NOW - timedelta(days=6)  # 만기(5) 도달, 유예(7.5) 이내
+    ledger.record_batch("predictive", [{
+        "symbol": "NVDA", "kind": "VELOCITY", "urgency": 70, "confidence": 65.0,
+        "horizon_days": 5, "stop": 180.0,
+    }], db_path=db, now=fired)
+
+    def fake_fetch(symbol, days):
+        return [188, 186, 185, 184, 183, 182]  # 미도달
+
+    result = scorer.run(db_path=db, now=NOW, fetch_closes=fake_fetch)
+    assert result["scored"] == 0
+    assert result["pending"] == 1
+    assert len(ledger.fetch_due(db_path=db, now=NOW)) == 1  # 여전히 open
