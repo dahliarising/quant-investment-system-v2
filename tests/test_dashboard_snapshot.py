@@ -1,4 +1,13 @@
+import pytest
+
 from corvin_jarvis.dashboard import snapshot
+from corvin_jarvis.signals import ledger as _ledger
+
+
+@pytest.fixture(autouse=True)
+def _isolate_signal_ledger(monkeypatch, tmp_path):
+    """build_snapshot의 원장 기록 훅이 실제 signal_ledger.db를 오염시키지 않게 격리."""
+    monkeypatch.setattr(_ledger, "DB_PATH", tmp_path / "signal_ledger.db")
 
 
 class _Q:
@@ -88,6 +97,41 @@ def test_build_snapshot_equity_curve_is_live_pnl_pct(monkeypatch):
     assert all("date" in p and "pnl_pct" in p for p in curve)
     # the final (today) point reflects the LIVE recompute, matching the hero totals
     assert curve[-1]["pnl_pct"] == snap["totals"]["equity_pnl_pct"]
+
+
+def _mock_quotes(monkeypatch):
+    monkeypatch.setattr(snapshot.qp, "get_stock_quote", lambda s: _Q(100.0, 1.5))
+    monkeypatch.setattr(snapshot.qp, "get_kr_index_quote", lambda s: _Q(8600.0, -1.8))
+    monkeypatch.setattr(snapshot.qp, "get_us_index_quote", lambda s: _Q(7500.0, 0.4))
+    monkeypatch.setattr(snapshot.qp, "get_fx_quote", lambda s: _Q(1530.0, 1.0))
+    monkeypatch.setattr(snapshot.qp, "get_commodity_quote", lambda s: _Q(95.0, -2.0))
+    monkeypatch.setattr(snapshot, "_build_signals", lambda holdings: [])
+    monkeypatch.setattr(snapshot, "_polymarket_fetch", lambda: [])
+
+
+def test_snapshot_has_signal_scoreboard_section(monkeypatch):
+    """signal_scoreboard 섹션 존재 — 실패해도 빈 리스트 (panel 격리).
+
+    원장 DB는 autouse 픽스처(_isolate_signal_ledger)로 tmp 경로 격리 — 실제 코드 경로 통과.
+    """
+    _mock_quotes(monkeypatch)
+    snapshot._CACHE["data"] = None  # 캐시 무효화
+    s = snapshot.build_snapshot()
+    assert "signal_scoreboard" in s
+    assert isinstance(s["signal_scoreboard"], list)
+
+
+def test_snapshot_records_signals_to_ledger(monkeypatch):
+    """build_snapshot이 engine/predictive 신호를 원장에 기록."""
+    _mock_quotes(monkeypatch)
+    recorded = []
+    monkeypatch.setattr(_ledger, "record_batch",
+                        lambda engine, sigs, **kw: recorded.append((engine, len(sigs))) or 0)
+    snapshot._CACHE["data"] = None
+    snapshot.build_snapshot()
+    engines = {e for e, _ in recorded}
+    assert "signal_engine" in engines
+    assert "predictive" in engines
 
 
 def test_get_snapshot_caches(monkeypatch):

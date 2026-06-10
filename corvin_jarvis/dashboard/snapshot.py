@@ -168,6 +168,18 @@ def _predictive_signals(held: list[dict]) -> list[dict]:
     return [s.to_dict() for s in sigs]
 
 
+def _record_to_ledger(engine_sigs: list[dict], pred_sigs: list[dict]) -> None:
+    """Phase 1 원장 기록 — 실패해도 신호 흐름 무영향 (_safe로 호출)."""
+    from corvin_jarvis.signals import ledger
+    ledger.record_batch("signal_engine", engine_sigs)
+    ledger.record_batch("predictive", pred_sigs)
+
+
+def _scoreboard() -> list[dict]:
+    from corvin_jarvis.signals import calibration
+    return calibration.scoreboard()
+
+
 def _paper(held: list[dict]) -> dict:
     """STAGE② 페이퍼 — 룰 트리거 모의청산 '제안' + 원장 실현손익(모의·실주문 0)."""
     from corvin_jarvis import paper_trader as pt
@@ -247,6 +259,9 @@ def build_snapshot() -> dict[str, Any]:
     totals = _safe(lambda: _totals(pf, positions, fx), {})
     holdings = _safe(builder.load_holdings, {})
     held = _safe(lambda: _held_for_engine(pf, positions), [])
+    engine_sigs = _safe(lambda: _engine_signals(held), [])
+    pred_sigs = _safe(lambda: _predictive_signals(held), [])
+    _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs), None)
     return {
         "ts": now.isoformat(timespec="seconds"),
         "market_state": "open" if (market_hours.is_kr_open(now) or market_hours.is_us_open(now)) else "closed",
@@ -257,8 +272,9 @@ def build_snapshot() -> dict[str, Any]:
         "macro_ticker": _safe(_macro_ticker, []),
         "allocation": _safe(lambda: _allocation(positions), []),
         "signals": _safe(lambda: _build_signals(holdings), []),
-        "engine_signals": _safe(lambda: _engine_signals(held), []),
-        "predictive_signals": _safe(lambda: _predictive_signals(held), []),
+        "engine_signals": engine_sigs,
+        "predictive_signals": pred_sigs,
+        "signal_scoreboard": _safe(_scoreboard, []),
         "paper": _safe(lambda: _paper(held), {}),
         "log": _safe(lambda: _action_log(pf), []),
         "equity_curve": _safe(lambda: _equity_curve_live(now, totals.get("equity_pnl_pct")), []),
