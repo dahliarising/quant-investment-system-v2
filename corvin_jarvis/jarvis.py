@@ -559,6 +559,27 @@ def detect_and_merge_regime_alert() -> dict[str, Any]:
     return out
 
 
+_NON_SYMBOL_TOKENS = {"KR", "US"}  # 지역 태그 — 심볼 아님
+
+
+def _alert_kind_symbol(metric: str, category: str) -> tuple[str, str]:
+    """metric에서 심볼 토큰 분리 → (kind, symbol). 카디널리티 폭발 방지.
+
+    예: rs_NVDA_confirmed → (rs_confirmed, NVDA) · stop_loss_012450 → (stop_loss, 012450)
+        kospi → (kospi, "") · META → (portfolio, META)
+    """
+    import re
+    sym = ""
+    kept = []
+    for p in metric.split("_"):
+        if not sym and p not in _NON_SYMBOL_TOKENS and (
+                re.fullmatch(r"\d{6}", p) or re.fullmatch(r"[A-Z]{2,5}", p)):
+            sym = p
+        else:
+            kept.append(p)
+    return ("_".join(kept) or category or "ALERT", sym)
+
+
 def run_jarvis() -> Path:
     BRIEFING_HISTORY.mkdir(parents=True, exist_ok=True)
     log.info("=== Jarvis Orchestrator 시작 ===")
@@ -576,12 +597,15 @@ def run_jarvis() -> Path:
         from corvin_jarvis.signals import ledger
         alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
         # 주의: alerts.json 장기 잔존 알림은 dedup이 흡수 (Phase 2 방향태깅 전 max-age 가드 필요)
-        ledger.record_batch("jarvis", [{
-            "symbol": a.get("symbol", ""),
-            "kind": a.get("metric") or a.get("category", "ALERT"),
-            "urgency": {"critical": 90, "high": 70, "medium": 55, "low": 30}.get(a.get("severity"), 40),
-            "message": a.get("message", ""),
-        } for a in alerts])
+        records = []
+        for a in alerts:
+            kind, sym = _alert_kind_symbol(a.get("metric", ""), a.get("category", ""))
+            records.append({
+                "symbol": sym, "kind": kind,
+                "urgency": {"critical": 90, "high": 70, "medium": 55, "low": 30}.get(a.get("severity"), 40),
+                "message": a.get("message", ""), "metric": a.get("metric", ""),
+            })
+        ledger.record_batch("jarvis", records)
     except Exception as e:  # noqa: BLE001 — 원장 실패는 신호 흐름 무영향
         log.warning("ledger record failed: %s", e)
     compute_and_write_verdicts()
