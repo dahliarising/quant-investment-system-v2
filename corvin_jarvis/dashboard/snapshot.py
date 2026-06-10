@@ -155,22 +155,22 @@ def _predictive_signals(held: list[dict]) -> list[dict]:
     closes_by_sym: dict[str, list[float]] = {}
     for h in held:
         sym = h["symbol"]
-        closes = _safe(lambda s=sym: qp.get_stock_daily_closes(s, days=25, completed_only=True), [])
+        closes = _safe(lambda s=sym: qp.get_stock_daily_closes(s, days=90, completed_only=True), [])
         if closes:
             closes_by_sym[sym] = closes
 
     bench: dict[str, list[float]] = {}
-    spy = _safe(lambda: qp.get_stock_daily_closes("SPY", days=25, completed_only=True), [])
+    spy = _safe(lambda: qp.get_stock_daily_closes("SPY", days=90, completed_only=True), [])
     if spy:
         bench["US"] = spy
     try:
         from pykrx import stock as _px
         from datetime import datetime, timedelta
         _end = datetime.now(KST).strftime("%Y%m%d")
-        _start = (datetime.now(KST) - timedelta(days=55)).strftime("%Y%m%d")
+        _start = (datetime.now(KST) - timedelta(days=130)).strftime("%Y%m%d")
         df = _px.get_index_ohlcv_by_date(_start, _end, "1028")  # KOSPI composite
         if not df.empty:
-            bench["KR"] = [float(c) for c in df["종가"].tail(25).tolist() if c > 0]
+            bench["KR"] = [float(c) for c in df["종가"].tail(90).tolist() if c > 0]
     except Exception as _e:
         log.debug("KR bench fetch skipped: %s", _e)
 
