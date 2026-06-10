@@ -15,38 +15,39 @@ function renderHero(t) {
       <div class="dim">CASH ${fmtKRW(t.deployable_krw)}</div></div>`;
 }
 
-// 실시간 수익률(%) 추이 — 매 폴링마다 equity_pnl_pct를 누적해 0% 기준선 위로 라이브 드로잉.
-let RETURN_SERIES = [];
-function renderReturnCurve(series, nowPct) {
+// 실현 손익률(%) 추이 — 백엔드 equity_curve(스냅샷별 평단 대비 %)를 날짜순 좌→우로 그린다.
+// 0% 기준선 위(초록)/아래(빨강), 마지막 점이 라이브 현재 손익률.
+function renderReturnCurve(series) {
   const el = $("p-curve");
-  const pts = series.filter(v => v != null);
-  const nowLbl = nowPct == null ? "—" : (nowPct >= 0 ? "+" : "") + nowPct.toFixed(2) + "%";
-  const nowCls = nowPct == null ? "dim" : nowPct >= 0 ? "up" : "down";
-  if (pts.length < 1) {
-    el.innerHTML = `<div class="curve-meta"><span class="dim">LIVE · intraday return</span>
+  const pts = (series || []).filter(p => p && p.pnl_pct != null);
+  const last = pts.length ? pts[pts.length - 1].pnl_pct : null;
+  const nowLbl = last == null ? "—" : (last >= 0 ? "+" : "") + last.toFixed(2) + "%";
+  const nowCls = last == null ? "dim" : last >= 0 ? "up" : "down";
+  if (pts.length < 2) {
+    el.innerHTML = `<div class="curve-meta"><span class="dim">P&L% trend</span>
       <span class="now ${nowCls}">${nowLbl}</span></div>
-      <div class="dim" style="flex:1;display:flex;align-items:center">accumulating live…</div>`;
+      <div class="dim" style="flex:1;display:flex;align-items:center">need ≥2 snapshots…</div>`;
     return;
   }
-  const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = (hi - lo) || 1;
-  const W = 600, H = 110;
+  const vals = pts.map(p => p.pnl_pct);
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = (hi - lo) || 1;
+  const W = 600, H = 110, padL = 4, padR = 4;
+  const x = (i) => padL + (i / (pts.length - 1)) * (W - padL - padR);
   const y = (v) => H - ((v - lo) / span) * (H - 12) - 6;
-  // 최신점을 가로 중앙에 고정, 과거는 왼쪽으로 흐름(라이브 모니터식).
-  const cx = W / 2, step = 18;
-  const coords = pts.map((v, i) => [cx - (pts.length - 1 - i) * step, y(v)]).filter(c => c[0] >= -2);
-  const line = coords.map(c => `${c[0].toFixed(0)},${c[1].toFixed(1)}`).join(" ");
+  const line = pts.map((p, i) => `${x(i).toFixed(0)},${y(p.pnl_pct).toFixed(1)}`).join(" ");
   const y0 = y(0).toFixed(1);
-  const ey = y(pts[pts.length - 1]).toFixed(1);
+  const lastX = x(pts.length - 1).toFixed(0), lastY = y(last).toFixed(1);
+  const tip = last >= 0 ? "#7fe0a0" : "#ff8a8a";
   el.innerHTML = `
-    <div class="curve-meta"><span class="dim">LIVE · intraday return · ${pts.length}pt</span>
+    <div class="curve-meta"><span class="dim">P&L% trend · ${pts.length}pt</span>
       <span class="now ${nowCls}">${nowLbl}</span></div>
     <svg class="curve-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
       <line x1="0" y1="${y0}" x2="${W}" y2="${y0}" stroke="#5a4520" stroke-width="1" stroke-dasharray="4 4"/>
-      <line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#2a2010" stroke-width="1"/>
       <polyline fill="none" stroke="#ffae42" stroke-width="2" points="${line}"/>
-      <circle class="curve-tip" cx="${cx}" cy="${ey}" r="3.5" fill="#ffd27f"/>
+      <circle class="curve-tip" cx="${lastX}" cy="${lastY}" r="3.5" fill="${tip}"/>
     </svg>
-    <div class="curve-axis"><span>basis 0%</span><span>${hi >= 0 ? '+' : ''}${hi.toFixed(2)}% peak</span></div>`;
+    <div class="curve-axis"><span>${esc(pts[0].date)}</span>
+      <span>${hi >= 0 ? '+' : ''}${hi.toFixed(1)}% peak</span><span>${esc(pts[pts.length - 1].date)}</span></div>`;
 }
 
 function renderPositions(rows) {
@@ -160,9 +161,7 @@ async function refresh() {
     const snap = await (await fetch("/api/snapshot")).json();
     const state = snap.market_state || "open";
     renderHero(snap.totals || {});
-    const rp = snap.totals ? snap.totals.equity_pnl_pct : null;
-    if (rp != null) { RETURN_SERIES.push(rp); if (RETURN_SERIES.length > 120) RETURN_SERIES.shift(); }
-    renderReturnCurve(RETURN_SERIES, rp);
+    renderReturnCurve(snap.equity_curve || []);
     renderPositions(snap.positions || []);
     renderIndices(snap.indices || []);
     renderAlloc(snap.allocation || []);

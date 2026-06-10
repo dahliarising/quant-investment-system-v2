@@ -31,3 +31,14 @@ def test_collect_us_symbols_skips_korean(tmp_path: Path, monkeypatch: pytest.Mon
     assert "005930" not in syms
     assert "000660" not in syms
     assert "AAPL.KS" not in syms
+
+
+@pytest.mark.unit
+def test_alert_kind_symbol_split() -> None:
+    from corvin_jarvis.jarvis import _alert_kind_symbol
+    assert _alert_kind_symbol("rs_NVDA_confirmed", "rs") == ("rs_confirmed", "NVDA")
+    assert _alert_kind_symbol("stop_loss_012450", "portfolio") == ("stop_loss", "012450")
+    assert _alert_kind_symbol("kospi", "index") == ("kospi", "")
+    assert _alert_kind_symbol("META", "portfolio") == ("portfolio", "META")
+    assert _alert_kind_symbol("sector_auto_KR_provisional", "sector") == ("sector_auto_KR_provisional", "")
+    assert _alert_kind_symbol("usd_krw_level", "fx") == ("usd_krw_level", "")

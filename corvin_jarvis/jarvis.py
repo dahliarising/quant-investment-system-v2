@@ -477,6 +477,47 @@ def merge_cause_attribution() -> None:
     log.info("Cause attribution: %s", out["message"])
 
 
+def _run_agent_layer() -> None:
+    """Phase 4: LangGraph 멀티에이전트 분석 (ANTHROPIC_API_KEY 없으면 skip)."""
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        log.debug("ANTHROPIC_API_KEY 없음 — agents layer skip")
+        return
+    try:
+        from corvin_jarvis.agents import run_agent_analysis
+    except ImportError:
+        log.debug("langgraph 미설치 — agents layer skip")
+        return
+
+    latest = _load(LATEST_FILE) or {}
+    alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+    if not latest:
+        return
+
+    symbols = list({a.get("symbol") for a in alerts if a.get("symbol")})[:5]
+    if not symbols:
+        log.debug("agents layer: 분석할 종목 없음")
+        return
+
+    agent_results: list[dict] = []
+    for sym in symbols:
+        try:
+            result = run_agent_analysis(sym, latest, alerts)
+            agent_results.append({
+                "symbol": sym,
+                "action": result["action"],
+                "confidence": result["confidence"],
+                "rationale": result["rationale"],
+            })
+        except Exception as e:
+            log.warning("agents layer error for %s: %s", sym, e)
+
+    if agent_results:
+        agent_file = STATE_DIR / "agent_verdicts.json"
+        agent_file.write_text(json.dumps(agent_results, indent=2, ensure_ascii=False))
+        log.info("Agent verdicts: %d symbols → %s", len(agent_results), agent_file)
+
+
 def compute_and_write_verdicts() -> int:
     """보유 + 알림 종목에 대한 행동 판정을 state/verdicts.json에 기록."""
     from corvin_jarvis.signals import verdict
@@ -518,6 +559,27 @@ def detect_and_merge_regime_alert() -> dict[str, Any]:
     return out
 
 
+_NON_SYMBOL_TOKENS = {"KR", "US"}  # 지역 태그 — 심볼 아님
+
+
+def _alert_kind_symbol(metric: str, category: str) -> tuple[str, str]:
+    """metric에서 심볼 토큰 분리 → (kind, symbol). 카디널리티 폭발 방지.
+
+    예: rs_NVDA_confirmed → (rs_confirmed, NVDA) · stop_loss_012450 → (stop_loss, 012450)
+        kospi → (kospi, "") · META → (portfolio, META)
+    """
+    import re
+    sym = ""
+    kept = []
+    for p in metric.split("_"):
+        if not sym and p not in _NON_SYMBOL_TOKENS and (
+                re.fullmatch(r"\d{6}", p) or re.fullmatch(r"[A-Z]{2,5}", p)):
+            sym = p
+        else:
+            kept.append(p)
+    return ("_".join(kept) or category or "ALERT", sym)
+
+
 def run_jarvis() -> Path:
     BRIEFING_HISTORY.mkdir(parents=True, exist_ok=True)
     log.info("=== Jarvis Orchestrator 시작 ===")
@@ -531,7 +593,23 @@ def run_jarvis() -> Path:
     merge_early_warning_alerts()
     merge_cause_attribution()
     detect_and_merge_regime_alert()
+    try:
+        from corvin_jarvis.signals import ledger
+        alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+        # 주의: alerts.json 장기 잔존 알림은 dedup이 흡수 (Phase 2 방향태깅 전 max-age 가드 필요)
+        records = []
+        for a in alerts:
+            kind, sym = _alert_kind_symbol(a.get("metric", ""), a.get("category", ""))
+            records.append({
+                "symbol": sym, "kind": kind,
+                "urgency": {"critical": 90, "high": 70, "medium": 55, "low": 30}.get(a.get("severity"), 40),
+                "message": a.get("message", ""), "metric": a.get("metric", ""),
+            })
+        ledger.record_batch("jarvis", records)
+    except Exception as e:  # noqa: BLE001 — 원장 실패는 신호 흐름 무영향
+        log.warning("ledger record failed: %s", e)
     compute_and_write_verdicts()
+    _run_agent_layer()
     run_weekly_attribution()
     build_geo_signal()
     build_context()

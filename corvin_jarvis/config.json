@@ -56,8 +56,11 @@
     "geopolitical_check_every_n_pulses": 4
   },
   "notification": {
-    "channels": ["imessage", "log_only"],
-    "_channels_note": "크론잡 alert은 iMessage로만 (2026-05-28 폐하 지시). Discord 송출하려면 'discord' 추가.",
+    "channels": ["telegram", "log_only"],
+    "_channels_note": "크론잡 alert은 Telegram Dahlia봇으로만 (2026-06-01 폐하 지시: iMessage → Telegram 이전). token/chat_id는 .env TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID.",
+    "telegram": {
+      "chat_id": "8479910478"
+    },
     "discord_channel_id": null,
     "imessage_recipient": "+821092824761",
     "minimum_alert_severity": "medium",

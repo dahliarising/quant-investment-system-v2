@@ -110,6 +110,17 @@ def main() -> int:
         ),
     ]
     signals = orch.collect(providers)
+    try:
+        from corvin_jarvis.signals import ledger
+        ledger.record_batch("leading", [{
+            **s.evidence,
+            "symbol": s.symbol, "kind": s.pillar, "direction": s.direction,
+            "confidence": s.confidence,
+            "horizon_days": ledger.horizon_str_to_days(s.horizon),
+            "message": s.message,
+        } for s in signals])
+    except Exception as e:  # noqa: BLE001 — 원장 실패는 신호 흐름 무영향
+        log.warning("ledger record failed: %s", e)
     brief = orch.format_brief(signals, threshold=60.0)
     sent = orch.dispatch_brief(brief, sender=channels.send_telegram)
     log.info("leading brief: signals=%d sent=%s", len(signals), sent)

@@ -45,6 +45,12 @@ class Handler(BaseHTTPRequestHandler):
             snap = snapshot.get_snapshot(ttl=ttl)
             self._send(200, json.dumps(snap, ensure_ascii=False).encode(), _CTYPE[".json"])
             return
+        if path in ("/command", "/command_center", "/cc"):
+            self._serve_file(STATIC / "command_center.html")
+            return
+        if path in ("/flow", "/decision"):
+            self._serve_file(STATIC / "decision_flow.html")
+            return
         if path in ("/", "/index.html"):
             self._serve_file(STATIC / "index.html")
             return

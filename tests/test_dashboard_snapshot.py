@@ -1,4 +1,13 @@
+import pytest
+
 from corvin_jarvis.dashboard import snapshot
+from corvin_jarvis.signals import ledger as _ledger
+
+
+@pytest.fixture(autouse=True)
+def _isolate_signal_ledger(monkeypatch, tmp_path):
+    """build_snapshot의 원장 기록 훅이 실제 signal_ledger.db를 오염시키지 않게 격리."""
+    monkeypatch.setattr(_ledger, "DB_PATH", tmp_path / "signal_ledger.db")
 
 
 class _Q:
@@ -51,6 +60,102 @@ def test_positions_handles_nan_price(monkeypatch):
     assert rows[0]["price"] is None
     assert rows[0]["pnl_pct"] is None
     assert rows[0]["value_krw"] == 2345461  # graceful fallback to stale value, no crash
+
+
+def test_totals_recomputes_live_not_stored():
+    # stored totals claims +10%, but live positions are 90 vs 100 cost -> must report -10%
+    pf = {
+        "holdings": [{"symbol": "AAA", "shares": 10, "currency": "USD", "avgPriceUSD": 100.0}],
+        "totals": {"equityPnlPct": 10.0, "totalAssetsKRW": 999_999_999},
+        "cash": {"deployableKRW": 1000},
+    }
+    positions = [{"sym": "AAA", "value_krw": 10 * 90 * 1500.0}]
+    t = snapshot._totals(pf, positions, 1500.0)
+    assert round(t["equity_pnl_pct"], 2) == -10.0
+    assert t["equity_pnl_krw"] == round(10 * 90 * 1500 - 10 * 100 * 1500)
+    assert t["total_assets_krw"] == round(10 * 90 * 1500 + 1000)
+    assert t["deployable_krw"] == 1000
+
+
+def test_totals_zero_cost_is_graceful():
+    t = snapshot._totals({"holdings": [], "totals": {}, "cash": {}}, [], 1500.0)
+    assert t["equity_pnl_pct"] is None
+    assert t["equity_pnl_krw"] is None
+
+
+def test_build_snapshot_equity_curve_is_live_pnl_pct(monkeypatch):
+    monkeypatch.setattr(snapshot.qp, "get_stock_quote", lambda s: _Q(100.0, 1.5))
+    monkeypatch.setattr(snapshot.qp, "get_fx_quote", lambda s: _Q(1500.0, 0.0))
+    monkeypatch.setattr(snapshot.qp, "get_kr_index_quote", lambda s: _Q(1.0, 0.0))
+    monkeypatch.setattr(snapshot.qp, "get_us_index_quote", lambda s: _Q(1.0, 0.0))
+    monkeypatch.setattr(snapshot.qp, "get_commodity_quote", lambda s: _Q(1.0, 0.0))
+    monkeypatch.setattr(snapshot, "_build_signals", lambda holdings: [])
+    monkeypatch.setattr(snapshot, "_polymarket_fetch", lambda: [])
+    snap = snapshot.build_snapshot()
+    curve = snap["equity_curve"]
+    assert curve, "curve must not be empty"
+    assert all("date" in p and "pnl_pct" in p for p in curve)
+    # the final (today) point reflects the LIVE recompute, matching the hero totals
+    assert curve[-1]["pnl_pct"] == snap["totals"]["equity_pnl_pct"]
+
+
+def _mock_quotes(monkeypatch):
+    monkeypatch.setattr(snapshot.qp, "get_stock_quote", lambda s: _Q(100.0, 1.5))
+    monkeypatch.setattr(snapshot.qp, "get_kr_index_quote", lambda s: _Q(8600.0, -1.8))
+    monkeypatch.setattr(snapshot.qp, "get_us_index_quote", lambda s: _Q(7500.0, 0.4))
+    monkeypatch.setattr(snapshot.qp, "get_fx_quote", lambda s: _Q(1530.0, 1.0))
+    monkeypatch.setattr(snapshot.qp, "get_commodity_quote", lambda s: _Q(95.0, -2.0))
+    monkeypatch.setattr(snapshot, "_build_signals", lambda holdings: [])
+    monkeypatch.setattr(snapshot, "_polymarket_fetch", lambda: [])
+
+
+def test_snapshot_has_signal_scoreboard_section(monkeypatch):
+    """signal_scoreboard 섹션 존재 — 실패해도 빈 리스트 (panel 격리).
+
+    원장 DB는 autouse 픽스처(_isolate_signal_ledger)로 tmp 경로 격리 — 실제 코드 경로 통과.
+    """
+    _mock_quotes(monkeypatch)
+    snapshot._CACHE["data"] = None  # 캐시 무효화
+    s = snapshot.build_snapshot()
+    assert "signal_scoreboard" in s
+    assert isinstance(s["signal_scoreboard"], list)
+
+
+def test_snapshot_records_signals_to_ledger(monkeypatch):
+    """build_snapshot이 engine/predictive 신호를 원장에 기록."""
+    _mock_quotes(monkeypatch)
+    recorded = []
+    monkeypatch.setattr(_ledger, "record_batch",
+                        lambda engine, sigs, **kw: recorded.append((engine, len(sigs))) or 0)
+    snapshot._CACHE["data"] = None
+    snapshot.build_snapshot()
+    engines = {e for e, _ in recorded}
+    assert "signal_engine" in engines
+    assert "predictive" in engines
+
+
+def test_snapshot_json_is_strict_valid_even_with_nan_quotes(monkeypatch):
+    """NaN 쿼트가 끼어도 strict JSON 직렬화 가능 (브라우저 JSON.parse 호환)."""
+    import json as _json
+    from corvin_jarvis.dashboard import snapshot as snap
+    from corvin_jarvis import quote_provider as qp
+
+    class _Qnan:
+        price = float("nan")
+        pct_change = float("inf")
+        source = "test"
+        error = None
+    monkeypatch.setattr(qp, "get_kr_index_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_us_index_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_commodity_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_fx_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_stock_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_stock_daily_closes", lambda *a, **k: [])
+    monkeypatch.setattr(snap, "_build_signals", lambda holdings: [])
+    monkeypatch.setattr(snap, "_polymarket_fetch", lambda: [])
+    snap._CACHE["data"] = None
+    s = snap.build_snapshot()
+    _json.dumps(s, allow_nan=False)  # raises ValueError if any NaN/inf leaked
 
 
 def test_get_snapshot_caches(monkeypatch):

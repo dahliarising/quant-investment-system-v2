@@ -1,0 +1,123 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<title>CORVIN DECISION FLOW</title>
+<style>
+:root{--bg:#07070c;--grn:#00ff9c;--red:#ff3b6b;--mag:#ff39d4;--cyan:#36e0ff;--amber:#ffcc44;
+--dim:#5a6072;--txt:#c9d2e3;--mono:ui-monospace,'JetBrains Mono','Consolas',monospace;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--mono);padding:24px 30px;
+background-image:radial-gradient(circle at 15% -5%,rgba(54,224,255,.06),transparent 42%),
+ radial-gradient(circle at 95% 0%,rgba(255,57,212,.06),transparent 42%);}
+h1{font-size:18px;color:#fff;letter-spacing:1px;margin-bottom:2px}
+h1 b{color:var(--grn)} .sub{color:var(--dim);font-size:11px;margin-bottom:20px;letter-spacing:1px}
+.flow{display:flex;flex-direction:column;gap:0;max-width:760px;margin:0 auto}
+.step{display:flex;align-items:stretch;gap:14px}
+.rail{display:flex;flex-direction:column;align-items:center;width:34px}
+.num{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;
+ background:#0c0d16;border:1px solid var(--cyan);color:var(--cyan);flex:0 0 auto;box-shadow:0 0 10px rgba(54,224,255,.25)}
+.line{width:2px;flex:1;background:linear-gradient(180deg,var(--cyan),rgba(54,224,255,.15))}
+.box{flex:1;background:linear-gradient(180deg,#0c0d16,#10121f);border:1px solid #1c2030;border-radius:7px;
+ padding:11px 14px;margin-bottom:12px;position:relative;overflow:hidden}
+.box::before{content:'';position:absolute;top:0;left:0;width:100%;height:1px;
+ background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:.4}
+.box .t{font-size:13px;color:#fff;font-weight:700;margin-bottom:3px}
+.box .d{font-size:11px;color:var(--txt);line-height:1.55}
+.box .tag{display:inline-block;font-size:8.5px;letter-spacing:1px;padding:2px 6px;border-radius:3px;
+ margin-right:5px;margin-top:5px;text-transform:uppercase}
+.k{background:rgba(54,224,255,.12);color:var(--cyan);border:1px solid rgba(54,224,255,.3)}
+.gate{border-color:var(--mag)!important;box-shadow:0 0 16px rgba(255,57,212,.18)}
+.gate .num,.gate2{}
+.num.gate{border-color:var(--mag);color:var(--mag);box-shadow:0 0 12px rgba(255,57,212,.35)}
+.block{border-color:var(--red)!important}
+.num.block{border-color:var(--red);color:var(--red)}
+.hardline{display:flex;align-items:center;gap:10px;margin:6px 0 16px;color:var(--red);font-size:11px;letter-spacing:2px;font-weight:700}
+.hardline .bar{flex:1;height:2px;background:repeating-linear-gradient(90deg,var(--red) 0 10px,transparent 10px 18px)}
+/* evolution overlay */
+.evo{margin-top:26px;border:1px dashed #2a2f44;border-radius:8px;padding:16px 18px;max-width:760px;margin-left:auto;margin-right:auto;
+ background:rgba(255,204,68,.03)}
+.evo h2{font-size:13px;color:var(--amber);letter-spacing:1px;margin-bottom:12px}
+.evorow{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.stage{flex:1;min-width:130px;background:#0c0d16;border:1px solid #1c2030;border-radius:6px;padding:9px 11px}
+.stage.safe{border-color:rgba(0,255,156,.4)} .stage.danger{border-color:rgba(255,59,107,.4)}
+.stage .n{font-size:9px;letter-spacing:1px;color:var(--dim)} .stage .h{font-size:12px;color:#fff;font-weight:700;margin:2px 0 4px}
+.stage .x{font-size:10px;color:var(--txt);line-height:1.5}
+.stage .badge{font-size:8px;padding:1px 5px;border-radius:3px;margin-top:6px;display:inline-block}
+.b-safe{background:rgba(0,255,156,.14);color:var(--grn)} .b-now{background:rgba(54,224,255,.14);color:var(--cyan)}
+.b-danger{background:rgba(255,59,107,.14);color:var(--red)}
+.arrowcol{display:flex;align-items:center;color:var(--dim);font-size:16px}
+.legend{max-width:760px;margin:18px auto 0;color:var(--dim);font-size:10px;line-height:1.7;letter-spacing:.5px}
+.legend b{color:var(--txt)}
+</style></head><body>
+<h1>CORVIN <b>DECISION FLOW</b> — 우리가 결정을 내리는 프로세스</h1>
+<div class="sub">TRIGGER → 검증 → 분석 → 시그널 → 🚨폐하 승인 게이트 → 모의집행 → 기록 · (실주문 = 하드라인)</div>
+
+<div class="flow">
+  <div class="step"><div class="rail"><div class="num">1</div><div class="line"></div></div>
+    <div class="box"><div class="t">TRIGGER · 발화</div>
+      <div class="d">폐하 질문("지금 어때?"·"마감 어때?") 또는 cron(다이제스트·DCA·리딩). 결정 루프의 시작점.</div>
+      <span class="tag k">discord</span><span class="tag k">cron</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num block">2</div><div class="line"></div></div>
+    <div class="box block"><div class="t">STALENESS 게이트 · 신선도 차단</div>
+      <div class="d">portfolio.json 경과일 체크. FRESH(≤3d) 진행 · WARN(4-6d) 1회확인 · <b style="color:var(--red)">STALE(7-13d)/CRITICAL(≥14d) → 전략생성 차단</b> + 스샷요청. "오래된 보유 가정"으로 인한 오판 원천봉쇄.</div>
+      <span class="tag k">staleness.py</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num">3</div><div class="line"></div></div>
+    <div class="box"><div class="t">GROUND TRUTH · 실보유 확정</div>
+      <div class="d">portfolio.json read → 실제 8종목 확인. <b>메모리 기반 holdings 가정 절대 금지</b> (과거 위반 학습). 보유엔 '차익실현', 미보유엔 '신규진입 후보'로만 frame.</div>
+      <span class="tag k">portfolio.json</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num">4</div><div class="line"></div></div>
+    <div class="box"><div class="t">LIVE + CROSS-VERIFY · 다출처 교차검증</div>
+      <div class="d">quote_provider(SSOT)로 라이브 시세 · KIS실전/FDR/yfinance 교차. <b>가격 시점 라벨</b>(종가/장중/전일). 단일출처 불신 — 불일치 시 보류·정직 보고.</div>
+      <span class="tag k">quote_provider</span><span class="tag k">KIS prod</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num">5</div><div class="line"></div></div>
+    <div class="box"><div class="t">ANALYZE · 실시간 토론 분석</div>
+      <div class="d">평단대비 PnL · 기술레벨(MA·RSI) · 촉매 카테고리(지정학 vs 디레버리징) 판정. 멀티 페르소나 신뢰도 가중 토론. 근거=수치, 추측 금지.</div>
+      <span class="tag k">live-debate</span><span class="tag k">geopolitical</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num">6</div><div class="line"></div></div>
+    <div class="box"><div class="t">SIGNAL · 시그널 생성</div>
+      <div class="d">DCA신호(완성봉·장마감 후) · 손절선(종가기준=휩쏘방지) · 트림/add존. 알림은 양보다 질(HIGH/CRITICAL만 즉시, 나머지 1일1다이제스트).</div>
+      <span class="tag k">dca</span><span class="tag k">stop-loss</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num gate">7</div><div class="line"></div></div>
+    <div class="box gate"><div class="t">🚨 폐하 승인 게이트 · APPROVAL</div>
+      <div class="d">"X 확인 후 좋으면 Y"의 판단주체 = <b style="color:var(--mag)">폐하</b>. 머지·push·전송·매매 게이트는 <b>자가통과 금지</b>. Corvin은 결과 제시 → 명시 승인 대기. (조건부 승인 존중)</div>
+      <span class="tag k" style="border-color:var(--mag);color:var(--mag)">human-in-the-loop</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num">8</div><div class="line"></div></div>
+    <div class="box"><div class="t">EXECUTE (모의) · PAPER ONLY</div>
+      <div class="d">승인 시 <b>모의 집행</b>만. 가상 PnL 추적 · portfolio.json 반영 · backup 생성.</div>
+      <span class="tag k">paper</span></div></div>
+
+  <div class="step"><div class="rail"><div class="num">9</div></div>
+    <div class="box"><div class="t">RECORD · 기록 루프</div>
+      <div class="d">wiki-save(corvin-sessions) + 메모리. 같은 날 파일 있으면 append. 결정·결과·교훈 영구 보존 → 다음 루프의 입력.</div>
+      <span class="tag k">wiki-save</span><span class="tag k">memory</span></div></div>
+</div>
+
+<div class="hardline"><span>🚨 HARD LINE</span><div class="bar"></div><span>실주문 = 별개의 큰 결정</span></div>
+
+<div class="evo">
+  <h2>▸ 대시보드 → 자동매매 봇 진화 경로 (폐하 질문 답)</h2>
+  <div class="evorow">
+    <div class="stage"><div class="n">NOW</div><div class="h">👁 대시보드</div>
+      <div class="x">관측의 눈. 위 1~5단계를 한 화면에.</div><span class="badge b-now">현재</span></div>
+    <div class="arrowcol">→</div>
+    <div class="stage safe"><div class="n">STAGE ①</div><div class="h">시그널 엔진</div>
+      <div class="x">룰 코드화(DCA·손절·평단대비) → 자동 '추천' 생성. 이미 70% 존재.</div><span class="badge b-safe">실자금위험 0</span></div>
+    <div class="arrowcol">→</div>
+    <div class="stage safe"><div class="n">STAGE ②</div><div class="h">페이퍼 트레이딩</div>
+      <div class="x">모의 체결·가상 PnL 추적. 전략 검증. 실주문 X.</div><span class="badge b-safe">안전 한계선</span></div>
+    <div class="arrowcol" style="color:var(--red)">‖</div>
+    <div class="stage danger"><div class="n">STAGE ③④</div><div class="h">실주문 자동화</div>
+      <div class="x">KIS 주문API·무인루프. 실제 돈. <b style="color:var(--red)">폐하 명시승인+킬스위치+손실한도 필수.</b></div><span class="badge b-danger">하드라인 너머</span></div>
+  </div>
+</div>
+
+<div class="legend">
+  <b>읽는 법</b> · ① 빨강 테두리(2)=차단 가능 게이트 · ② 마젠타(7)=인간(폐하) 승인 필수 지점, Corvin 자가통과 불가 · ③ 점선 박스=아직 안 지은 진화 경로 ·
+  ④ 핵심 철학: <b>모든 결정은 데이터로 검증되고, 되돌리기 어려운 행동(실주문·머지·전송)은 반드시 폐하 게이트를 통과한다.</b> 추천 ②까지는 Corvin이 자율, ③부터는 폐하의 별도 결단.
+</div>
+</body></html>
