@@ -222,6 +222,14 @@ tr:hover td{background:rgba(54,224,255,.04)}
     <div class="log" id="log"></div>
   </div>
   <div class="panel glow">
+    <div class="ph"><span class="dot"></span><span class="lbl">Signal Scoreboard</span>
+      <span class="lbl" style="margin-left:auto" id="sbMeta">—</span></div>
+    <table><thead><tr>
+      <th>Engine·Kind</th><th>Hit%</th><th>N</th><th>Open</th>
+    </tr></thead><tbody id="sbBody"></tbody></table>
+    <div class="lbl" style="margin-top:4px">※ n&lt;10 = 보정 보류 · n=0 = 채점 대기(부트스트랩)</div>
+  </div>
+  <div class="panel glow">
     <div class="ph"><span class="dot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></span><span class="lbl">Live Analytics</span>
       <span class="lbl" style="margin-left:auto">예시 · 서버연결시 실측</span></div>
     <div class="spark" id="spark"></div>
@@ -533,6 +541,17 @@ function applyLive(live){
   (live.log||[]).slice(0,4).forEach(l=>sg.push({t:String(l.ts||"").slice(5,10),s:l.text}));
   if(sg.length)STATE.signals=sg;
   if(live.paper)STATE.paper=live.paper;
+  // SIGNAL SCOREBOARD (Phase 1)
+  if(live.signal_scoreboard){
+    const rows=live.signal_scoreboard;
+    $("#sbMeta").textContent=rows.length?`${rows.length} kinds`:"NO DATA";
+    $("#sbBody").innerHTML=rows.map(r=>{
+      const pct=r.hit_rate==null?"—":`${Math.round(r.hit_rate*100)}%`;
+      const cls=(r.n<10||r.hit_rate==null)?"neu":(r.hit_rate>=0.6?"up":"down");
+      return `<tr><td class="sym">${r.engine}·${r.kind}</td>`+
+        `<td class="${cls}">${pct}</td><td>${r.n}</td><td>${r.open}</td></tr>`;
+    }).join("")||`<tr><td colspan="4" class="neu">채점 데이터 없음 — 신호 원장 부트스트랩 중</td></tr>`;
+  }
   STATE.market_state=(live.market_state==="open"?"LIVE · 장중":"CLOSED")
     +(live.fx_usdkrw?` · fx ${Math.round(live.fx_usdkrw)}`:"");
   if(live.ts)STATE.stamp=String(live.ts).replace("T"," ").slice(0,16)+" · LIVE";
