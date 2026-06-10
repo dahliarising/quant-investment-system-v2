@@ -113,10 +113,11 @@ def main() -> int:
     try:
         from corvin_jarvis.signals import ledger
         ledger.record_batch("leading", [{
+            **s.evidence,
             "symbol": s.symbol, "kind": s.pillar, "direction": s.direction,
             "confidence": s.confidence,
             "horizon_days": ledger.horizon_str_to_days(s.horizon),
-            "message": s.message, **s.evidence,
+            "message": s.message,
         } for s in signals])
     except Exception as e:  # noqa: BLE001 — 원장 실패는 신호 흐름 무영향
         log.warning("ledger record failed: %s", e)

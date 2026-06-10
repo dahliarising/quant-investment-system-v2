@@ -575,10 +575,11 @@ def run_jarvis() -> Path:
     try:
         from corvin_jarvis.signals import ledger
         alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+        # 주의: alerts.json 장기 잔존 알림은 dedup이 흡수 (Phase 2 방향태깅 전 max-age 가드 필요)
         ledger.record_batch("jarvis", [{
             "symbol": a.get("symbol", ""),
             "kind": a.get("metric") or a.get("category", "ALERT"),
-            "urgency": {"critical": 90, "high": 70}.get(a.get("severity"), 40),
+            "urgency": {"critical": 90, "high": 70, "medium": 55, "low": 30}.get(a.get("severity"), 40),
             "message": a.get("message", ""),
         } for a in alerts])
     except Exception as e:  # noqa: BLE001 — 원장 실패는 신호 흐름 무영향

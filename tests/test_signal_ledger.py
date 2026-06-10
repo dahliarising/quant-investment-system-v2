@@ -100,3 +100,17 @@ def test_horizon_str_to_days_mapping():
     assert ledger.horizon_str_to_days("days") == 5
     assert ledger.horizon_str_to_days("weeks") == 20
     assert ledger.horizon_str_to_days("unknown") == 10  # fallback
+
+
+def test_record_batch_literal_kind_wins_over_evidence_kind(tmp_path):
+    """evidence에 'kind' 키가 있어도 canonical kind 유지 (스프레드 순서 회귀 방지)."""
+    db = tmp_path / "ledger.db"
+    sig = {"kind": "earnings", "days_to": 3}  # event evidence 모사
+    ledger.record_batch("leading", [{
+        **sig,
+        "symbol": "NVDA", "kind": "event", "direction": "neutral",
+        "confidence": 60.0, "horizon_days": 5,
+    }], db_path=db, now=NOW)
+    due = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=5))
+    assert due[0]["kind"] == "event"
+    assert due[0]["evidence"]["days_to"] == 3
