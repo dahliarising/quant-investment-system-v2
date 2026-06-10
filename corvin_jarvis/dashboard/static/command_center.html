@@ -230,6 +230,12 @@ tr:hover td{background:rgba(54,224,255,.04)}
     <div class="lbl" style="margin-top:4px">※ n&lt;10 = 보정 보류 · n=0 = 채점 대기(부트스트랩)</div>
   </div>
   <div class="panel glow">
+    <div class="ph"><span class="dot"></span><span class="lbl">Final Actions · 중재</span>
+      <span class="lbl" style="margin-left:auto" id="faMeta">—</span></div>
+    <table><thead><tr><th>SYM</th><th>ACTION</th><th>RATIONALE</th></tr></thead>
+      <tbody id="faBody"></tbody></table>
+  </div>
+  <div class="panel glow">
     <div class="ph"><span class="dot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></span><span class="lbl">Live Analytics</span>
       <span class="lbl" style="margin-left:auto">예시 · 서버연결시 실측</span></div>
     <div class="spark" id="spark"></div>
@@ -505,6 +511,7 @@ boot(structuredClone(SNAP));
 /* 메시 노드가 holding 객체를 참조하므로 in-place 오버레이로 캔버스도 라이브 갱신됨. */
 function applyLive(live){
   if(!live||!Array.isArray(live.positions))return false;
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const bySym=Object.fromEntries(STATE.holdings.map(h=>[h.sym,h]));
   live.positions.forEach(p=>{const h=bySym[p.sym];if(!h)return;
     if(p.price!=null)h.last=p.price;
@@ -543,7 +550,6 @@ function applyLive(live){
   if(live.paper)STATE.paper=live.paper;
   // SIGNAL SCOREBOARD (Phase 1)
   if(live.signal_scoreboard){
-    const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const rows=live.signal_scoreboard;
     $("#sbMeta").textContent=rows.length?`${rows.length} kinds`:"NO DATA";
     $("#sbBody").innerHTML=(rows.slice(0,12).map(r=>{
@@ -554,6 +560,18 @@ function applyLive(live){
     }).join("")
       +(rows.length>12?`<tr><td class="sym neu" colspan="4">… +${rows.length-12} more</td></tr>`:""))
       ||`<tr><td colspan="4" class="neu">채점 데이터 없음 — 신호 원장 부트스트랩 중</td></tr>`;
+  }
+  // FINAL ACTIONS (Phase 2)
+  if(live.final_actions){
+    const icons={"매도검토":"🛑","비중축소":"✂️","보류":"⏸️","매수후보":"➕","관찰":"👀","홀딩":"✅"};
+    const fa=live.final_actions.filter(a=>a.action!=="홀딩");
+    $("#faMeta").textContent=fa.length?`${fa.length} actions`:"ALL HOLD";
+    $("#faBody").innerHTML=(fa.slice(0,8).map(a=>{
+      const cls=a.action==="매수후보"?"up":(a.action==="매도검토"?"down":"neu");
+      return `<tr><td class="sym">${esc(a.symbol)}</td>`+
+        `<td class="${cls}">${icons[a.action]||""} ${esc(a.action)}${a.conflict?" ⚔️":""}</td>`+
+        `<td class="neu">${esc((a.rationale||"").slice(0,40))}</td></tr>`;
+    }).join(""))||`<tr><td colspan="3" class="neu">중재 데이터 없음</td></tr>`;
   }
   STATE.market_state=(live.market_state==="open"?"LIVE · 장중":"CLOSED")
     +(live.fx_usdkrw?` · fx ${Math.round(live.fx_usdkrw)}`:"");
