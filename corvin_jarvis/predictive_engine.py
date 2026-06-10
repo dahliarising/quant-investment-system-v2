@@ -1,0 +1,182 @@
+"""STAGE①.5 예측 시그널 엔진 — Reactive에서 Predictive로 확장.
+
+세 Pillar 통합:
+  VELOCITY — 가격 하락 속도(선형 기울기) → 손절선 도달 예상일
+  RS_WEAK  — 보유종목 n일 수익률 - 벤치마크 수익률 < threshold → 상대강도 약화
+  EVENT    — FOMC/BOK 등 거시 일정 D-N 선제 경보 (방향성 없음, 변동성 준비)
+
+순수 함수 · 부작용 없음 · 실주문 0. closes_by_sym 주입으로 테스트 가능.
+"""
+from __future__ import annotations
+
+import statistics
+from dataclasses import asdict, dataclass
+from datetime import date
+from typing import Any
+
+from corvin_jarvis.signals.event_calendar import macro_events_within
+
+_VELOCITY_HORIZON = 14
+
+
+def _fmt(v: float) -> str:
+    """가격 가독 포맷 — KRW 큰 수는 천단위, USD는 소수 유지. 1e+06 방지."""
+    return f"{round(v):,}" if v >= 10000 else f"{v:g}"     # 이 일수 이내 도달 예상이면 경보
+_RS_THRESHOLD = -5.0       # %p 이하면 상대강도 약세
+_RS_N_DAYS = 20
+_EVENT_HORIZON = 14
+
+
+@dataclass(frozen=True)
+class PredictiveSignal:
+    symbol: str            # "" = 매크로 이벤트 (종목 무관)
+    kind: str              # VELOCITY | RS_WEAK | EVENT
+    urgency: int           # 0-100
+    confidence: float      # 0-100
+    horizon_days: int | None
+    message: str
+    evidence: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+# ── 공통 헬퍼 ─────────────────────────────────────────────
+
+def _slope(closes: list[float]) -> float | None:
+    """oldest→newest 종가 리스트의 1일 평균 변화량(가격 단위)."""
+    if len(closes) < 3:
+        return None
+    changes = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    return statistics.mean(changes)
+
+
+def _n_day_return(closes: list[float], n: int) -> float | None:
+    """최근 n봉 수익률(%). 데이터 부족 시 None."""
+    if len(closes) < n + 1:
+        return None
+    old, new = closes[-(n + 1)], closes[-1]
+    if old <= 0:
+        return None
+    return (new / old - 1) * 100.0
+
+
+# ── VELOCITY ──────────────────────────────────────────────
+
+def evaluate_velocity(
+    holdings: list[dict[str, Any]],
+    stops: dict[str, float],
+    closes_by_sym: dict[str, list[float]],
+    horizon: int = _VELOCITY_HORIZON,
+) -> list[PredictiveSignal]:
+    """하락 추세 기울기로 손절선 도달 예상일 경보.
+
+    이미 손절선 이하인 경우는 signal_engine(STOP)이 담당 — 여기선 불개입.
+    """
+    out: list[PredictiveSignal] = []
+    for pos in holdings:
+        sym = str(pos.get("symbol", ""))
+        stop = stops.get(sym)
+        if stop is None:
+            continue
+        closes = closes_by_sym.get(sym, [])
+        s = _slope(closes)
+        if s is None or s >= 0:
+            continue  # 상승·횡보 추세
+        price = pos.get("price") or (closes[-1] if closes else None)
+        if price is None or price <= stop:
+            continue  # 이미 손절 이탈 → signal_engine 담당
+        dist = price - stop
+        days_to = dist / (-s)
+        if days_to > horizon:
+            continue
+        urgency = max(40, min(85, int(85 - (days_to / horizon) * 45)))
+        out.append(PredictiveSignal(
+            symbol=sym, kind="VELOCITY", urgency=urgency, confidence=65.0,
+            horizon_days=round(days_to),
+            message=f"하락 속도 기준 손절선({_fmt(stop)}) ~{round(days_to)}일 내 도달 예상",
+            evidence={"slope_per_day": round(s, 4), "days_to_stop": round(days_to, 1),
+                      "stop": stop, "current_price": price},
+        ))
+    return out
+
+
+# ── RS_WEAK ────────────────────────────────────────────────
+
+def evaluate_relative_strength(
+    holdings: list[dict[str, Any]],
+    closes_by_sym: dict[str, list[float]],
+    bench_closes_by_market: dict[str, list[float]],
+    n_days: int = _RS_N_DAYS,
+    threshold: float = _RS_THRESHOLD,
+) -> list[PredictiveSignal]:
+    """보유종목 n일 수익률 - 벤치마크 수익률 < threshold%p → RS_WEAK."""
+    out: list[PredictiveSignal] = []
+    for pos in holdings:
+        sym = str(pos.get("symbol", ""))
+        market = str(pos.get("market", "US"))
+        closes = closes_by_sym.get(sym, [])
+        bench = bench_closes_by_market.get(market, [])
+        h_ret = _n_day_return(closes, n_days)
+        b_ret = _n_day_return(bench, n_days)
+        if h_ret is None or b_ret is None:
+            continue
+        rs = h_ret - b_ret
+        if rs >= threshold:
+            continue
+        urgency = max(30, min(75, int(30 + (threshold - rs) * 4)))
+        bench_label = "KOSPI" if market == "KR" else "S&P500"
+        out.append(PredictiveSignal(
+            symbol=sym, kind="RS_WEAK", urgency=urgency, confidence=60.0,
+            horizon_days=None,
+            message=f"{n_days}일 {bench_label} 대비 상대강도 {rs:+.1f}%p — 약세 심화 추세",
+            evidence={"holding_ret_pct": round(h_ret, 2), "bench_ret_pct": round(b_ret, 2),
+                      "rs_pct": round(rs, 2), "n_days": n_days},
+        ))
+    return out
+
+
+# ── EVENT ──────────────────────────────────────────────────
+
+def evaluate_events(
+    as_of: date,
+    held_symbols: list[str],
+    horizon_days: int = _EVENT_HORIZON,
+) -> list[PredictiveSignal]:
+    """FOMC/BOK D-N 선제 경보. 방향성 없음 — 변동성 준비 신호."""
+    events = macro_events_within(as_of, horizon_days=horizon_days)
+    out: list[PredictiveSignal] = []
+    for ev in events:
+        d = ev["days_to"]
+        urgency = 80 if d <= 1 else (65 if d <= 3 else 50)
+        out.append(PredictiveSignal(
+            symbol="", kind="EVENT", urgency=urgency, confidence=90.0,
+            horizon_days=d,
+            message=f"{ev['name']} D-{d} — 장중 변동성 확대 가능",
+            evidence={"event": ev["name"], "event_date": str(ev["event_date"]), "days_to": d},
+        ))
+    return sorted(out, key=lambda s: s.horizon_days or 99)
+
+
+# ── 통합 ──────────────────────────────────────────────────
+
+def evaluate(
+    holdings: list[dict[str, Any]],
+    *,
+    stops: dict[str, float] | None = None,
+    closes_by_sym: dict[str, list[float]] | None = None,
+    bench_closes_by_market: dict[str, list[float]] | None = None,
+    as_of: date | None = None,
+) -> list[PredictiveSignal]:
+    """세 Pillar 통합 → 긴급도 내림차순."""
+    from corvin_jarvis.signal_engine import load_stops
+    _stops = stops if stops is not None else load_stops()
+    _closes = closes_by_sym or {}
+    _bench = bench_closes_by_market or {}
+    _date = as_of or date.today()
+
+    sigs: list[PredictiveSignal] = []
+    sigs.extend(evaluate_velocity(holdings, _stops, _closes))
+    sigs.extend(evaluate_relative_strength(holdings, _closes, _bench))
+    sigs.extend(evaluate_events(_date, [str(p.get("symbol", "")) for p in holdings]))
+    return sorted(sigs, key=lambda s: s.urgency, reverse=True)

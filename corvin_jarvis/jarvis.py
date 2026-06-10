@@ -477,6 +477,47 @@ def merge_cause_attribution() -> None:
     log.info("Cause attribution: %s", out["message"])
 
 
+def _run_agent_layer() -> None:
+    """Phase 4: LangGraph 멀티에이전트 분석 (ANTHROPIC_API_KEY 없으면 skip)."""
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        log.debug("ANTHROPIC_API_KEY 없음 — agents layer skip")
+        return
+    try:
+        from corvin_jarvis.agents import run_agent_analysis
+    except ImportError:
+        log.debug("langgraph 미설치 — agents layer skip")
+        return
+
+    latest = _load(LATEST_FILE) or {}
+    alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+    if not latest:
+        return
+
+    symbols = list({a.get("symbol") for a in alerts if a.get("symbol")})[:5]
+    if not symbols:
+        log.debug("agents layer: 분석할 종목 없음")
+        return
+
+    agent_results: list[dict] = []
+    for sym in symbols:
+        try:
+            result = run_agent_analysis(sym, latest, alerts)
+            agent_results.append({
+                "symbol": sym,
+                "action": result["action"],
+                "confidence": result["confidence"],
+                "rationale": result["rationale"],
+            })
+        except Exception as e:
+            log.warning("agents layer error for %s: %s", sym, e)
+
+    if agent_results:
+        agent_file = STATE_DIR / "agent_verdicts.json"
+        agent_file.write_text(json.dumps(agent_results, indent=2, ensure_ascii=False))
+        log.info("Agent verdicts: %d symbols → %s", len(agent_results), agent_file)
+
+
 def compute_and_write_verdicts() -> int:
     """보유 + 알림 종목에 대한 행동 판정을 state/verdicts.json에 기록."""
     from corvin_jarvis.signals import verdict
@@ -532,6 +573,7 @@ def run_jarvis() -> Path:
     merge_cause_attribution()
     detect_and_merge_regime_alert()
     compute_and_write_verdicts()
+    _run_agent_layer()
     run_weekly_attribution()
     build_geo_signal()
     build_context()

@@ -394,6 +394,13 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     delivered: list[str] = []
 
+    if channels.is_enabled("telegram"):
+        if channels.send_telegram(msg_long):
+            delivered.append("telegram")
+            log.info("Telegram 전송 성공 → chat_id %s", channels.telegram_chat_id())
+        else:
+            log.warning("Telegram 전송 실패")
+
     webhook = _webhook_url()
     if channels.is_enabled("discord") and webhook:
         if _send_discord(webhook, msg_long):
