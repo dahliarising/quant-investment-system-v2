@@ -9,10 +9,12 @@
 """
 from __future__ import annotations
 
+import json
 import math
 import statistics
 from dataclasses import asdict, dataclass
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 from corvin_jarvis.signals.event_calendar import macro_events_within
@@ -30,6 +32,9 @@ def _fmt(v: float) -> str:
 _RS_THRESHOLD = -5.0       # %p 이하면 상대강도 약세
 _RS_N_DAYS = 20
 _EVENT_HORIZON = 14
+
+_DEFAULT_CONFIDENCE = {"VELOCITY": 65.0, "RS_WEAK": 60.0, "EVENT": 90.0}
+_CALIBRATION_PATH = Path(__file__).resolve().parent / "state" / "calibration.json"
 
 
 @dataclass(frozen=True)
@@ -89,6 +94,23 @@ def _n_day_return(closes: list[float], n: int) -> float | None:
     return (new / old - 1) * 100.0
 
 
+def _load_calibration(path: Path | None = None) -> dict:
+    """Phase 1 scorer cron이 쓰는 state/calibration.json 로드. 없으면 {}."""
+    try:
+        return json.loads(Path(path or _CALIBRATION_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def confidence_for(kind: str, calibration: dict | None = None,
+                   engine: str = "predictive") -> float:
+    """적중률 보정 confidence — calibrated 없으면(n<10 포함) 기본값 fallback."""
+    cal = calibration if calibration is not None else _load_calibration()
+    entry = (cal.get(engine) or {}).get(kind) or {}
+    c = entry.get("calibrated_confidence")
+    return float(c) if c is not None else _DEFAULT_CONFIDENCE.get(kind, 50.0)
+
+
 # ── VELOCITY ──────────────────────────────────────────────
 
 def evaluate_velocity(
@@ -96,12 +118,14 @@ def evaluate_velocity(
     stops: dict[str, float],
     closes_by_sym: dict[str, list[float]],
     horizon: int = _VELOCITY_HORIZON,
+    confidence: float | None = None,
 ) -> list[PredictiveSignal]:
     """하락 추세 기울기로 손절선 도달 예상일 경보 (Phase 3: 노이즈 게이트 + 신뢰구간).
 
     이미 손절선 이하인 경우는 signal_engine(STOP)이 담당 — 여기선 불개입.
     """
     out: list[PredictiveSignal] = []
+    conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE["VELOCITY"]
     for pos in holdings:
         sym = str(pos.get("symbol", ""))
         stop = stops.get(sym)
@@ -130,7 +154,7 @@ def evaluate_velocity(
             rng = f" (범위 {math.floor(days_lo)}–{math.ceil(days_hi)}일)"
         urgency = max(40, min(85, int(85 - (days_to / horizon) * 45)))
         out.append(PredictiveSignal(
-            symbol=sym, kind="VELOCITY", urgency=urgency, confidence=65.0,
+            symbol=sym, kind="VELOCITY", urgency=urgency, confidence=conf,
             horizon_days=round(days_to),
             message=f"하락 속도 기준 손절선({_fmt(stop)}) ~{round(days_to)}일 내 도달 예상{rng}",
             evidence={"slope_per_day": round(s, 4), "days_to_stop": round(days_to, 1),
@@ -150,9 +174,11 @@ def evaluate_relative_strength(
     bench_closes_by_market: dict[str, list[float]],
     n_days: int = _RS_N_DAYS,
     threshold: float = _RS_THRESHOLD,
+    confidence: float | None = None,
 ) -> list[PredictiveSignal]:
     """보유종목 n일 수익률 - 벤치마크 수익률 < threshold%p → RS_WEAK."""
     out: list[PredictiveSignal] = []
+    conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE["RS_WEAK"]
     for pos in holdings:
         sym = str(pos.get("symbol", ""))
         market = str(pos.get("market", "US"))
@@ -168,7 +194,7 @@ def evaluate_relative_strength(
         urgency = max(30, min(75, int(30 + (threshold - rs) * 4)))
         bench_label = "KOSPI" if market == "KR" else "S&P500"
         out.append(PredictiveSignal(
-            symbol=sym, kind="RS_WEAK", urgency=urgency, confidence=60.0,
+            symbol=sym, kind="RS_WEAK", urgency=urgency, confidence=conf,
             horizon_days=None,
             message=f"{n_days}일 {bench_label} 대비 상대강도 {rs:+.1f}%p — 약세 심화 추세",
             evidence={"holding_ret_pct": round(h_ret, 2), "bench_ret_pct": round(b_ret, 2),
@@ -183,15 +209,17 @@ def evaluate_events(
     as_of: date,
     held_symbols: list[str],
     horizon_days: int = _EVENT_HORIZON,
+    confidence: float | None = None,
 ) -> list[PredictiveSignal]:
     """FOMC/BOK D-N 선제 경보. 방향성 없음 — 변동성 준비 신호."""
+    conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE["EVENT"]
     events = macro_events_within(as_of, horizon_days=horizon_days)
     out: list[PredictiveSignal] = []
     for ev in events:
         d = ev["days_to"]
         urgency = 80 if d <= 1 else (65 if d <= 3 else 50)
         out.append(PredictiveSignal(
-            symbol="", kind="EVENT", urgency=urgency, confidence=90.0,
+            symbol="", kind="EVENT", urgency=urgency, confidence=conf,
             horizon_days=d,
             message=f"{ev['name']} D-{d} — 장중 변동성 확대 가능",
             evidence={"event": ev["name"], "event_date": str(ev["event_date"]), "days_to": d},
@@ -208,16 +236,21 @@ def evaluate(
     closes_by_sym: dict[str, list[float]] | None = None,
     bench_closes_by_market: dict[str, list[float]] | None = None,
     as_of: date | None = None,
+    calibration: dict | None = None,
 ) -> list[PredictiveSignal]:
-    """세 Pillar 통합 → 긴급도 내림차순."""
+    """세 Pillar 통합 → 긴급도 내림차순. confidence는 적중률 보정값 주입."""
     from corvin_jarvis.signal_engine import load_stops
     _stops = stops if stops is not None else load_stops()
     _closes = closes_by_sym or {}
     _bench = bench_closes_by_market or {}
     _date = as_of or date.today()
+    _cal = calibration if calibration is not None else _load_calibration()
 
     sigs: list[PredictiveSignal] = []
-    sigs.extend(evaluate_velocity(holdings, _stops, _closes))
-    sigs.extend(evaluate_relative_strength(holdings, _closes, _bench))
-    sigs.extend(evaluate_events(_date, [str(p.get("symbol", "")) for p in holdings]))
+    sigs.extend(evaluate_velocity(holdings, _stops, _closes,
+                                  confidence=confidence_for("VELOCITY", _cal)))
+    sigs.extend(evaluate_relative_strength(holdings, _closes, _bench,
+                                           confidence=confidence_for("RS_WEAK", _cal)))
+    sigs.extend(evaluate_events(_date, [str(p.get("symbol", "")) for p in holdings],
+                                confidence=confidence_for("EVENT", _cal)))
     return sorted(sigs, key=lambda s: s.urgency, reverse=True)

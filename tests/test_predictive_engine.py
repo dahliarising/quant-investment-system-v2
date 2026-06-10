@@ -217,3 +217,38 @@ def test_velocity_short_series_skips_gate_backcompat():
     sigs = pe.evaluate_velocity(_mk_holding(price=104.0), {"TSLA": 98.0}, {"TSLA": closes})
     assert len(sigs) == 1
     assert sigs[0].evidence["atr_proxy"] is None
+
+
+# ── Phase 3: confidence 캘리브레이션 주입 ─────────────
+
+@pytest.mark.unit
+def test_confidence_for_uses_calibrated_value():
+    cal = {"predictive": {"VELOCITY": {"n": 20, "hit_rate": 0.4,
+                                       "calibrated_confidence": 47.5}}}
+    assert pe.confidence_for("VELOCITY", calibration=cal) == 47.5
+
+
+@pytest.mark.unit
+def test_confidence_for_falls_back_to_default():
+    assert pe.confidence_for("VELOCITY", calibration={}) == 65.0
+    assert pe.confidence_for("RS_WEAK", calibration={}) == 60.0
+    assert pe.confidence_for("EVENT", calibration={}) == 90.0
+
+
+@pytest.mark.unit
+def test_confidence_for_ignores_uncalibrated_none():
+    """n<10이라 calibrated_confidence=None — 기본값 유지."""
+    cal = {"predictive": {"VELOCITY": {"n": 3, "hit_rate": 1.0,
+                                       "calibrated_confidence": None}}}
+    assert pe.confidence_for("VELOCITY", calibration=cal) == 65.0
+
+
+@pytest.mark.unit
+def test_evaluate_injects_calibrated_confidence():
+    closes = [110.0, 108.0, 106.0, 104.0]
+    cal = {"predictive": {"VELOCITY": {"n": 20, "hit_rate": 0.4,
+                                       "calibrated_confidence": 47.5}}}
+    sigs = pe.evaluate(_mk_holding(price=104.0), stops={"TSLA": 98.0},
+                       closes_by_sym={"TSLA": closes}, calibration=cal)
+    vel = [s for s in sigs if s.kind == "VELOCITY"]
+    assert vel and vel[0].confidence == 47.5
