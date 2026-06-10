@@ -188,8 +188,8 @@ def test_velocity_noise_gate_suppresses_weak_slope_in_choppy_market():
     for d in deltas:
         closes.append(closes[-1] + d)
     sigs = pe.evaluate_velocity(_mk_holding(price=closes[-1]),
-                                {"TSLA": closes[-1] - 5}, {"TSLA": closes})
-    assert sigs == []  # 같은 거리·기울기라도 고변동 노이즈면 침묵
+                                {"TSLA": closes[-1] - 3}, {"TSLA": closes})
+    assert sigs == []  # days_to≈10.7 ≤ horizon인데도 게이트(strength≈0.05)가 억제
 
 
 def test_velocity_clean_downtrend_still_fires_with_atr_data():
