@@ -1,4 +1,4 @@
-"""만기 신호 채점 — HIT / LATE_HIT / MISS / UNSCORABLE (스펙 §4.2).
+"""만기 신호 채점 — hit / late_hit / miss / unscorable (스펙 §4.2).
 
 score_row는 순수 함수 (가격 주입). run()이 fetch + 채점 + 원장 갱신.
 LATE 유예: VELOCITY·방향성 신호는 만기×1.5까지 보류(None 반환) 후 최종 판정.
@@ -27,6 +27,9 @@ def score_row(row: dict[str, Any], *,
 
     closes_after/bench_after: 발화일 이후 종가 oldest→newest.
     bench_before: EVENT 채점용 — 발화 직전 벤치마크 종가.
+
+    closes_after/bench_after는 거래일 시계열 — 호출자(러너)가 달력일 age를
+    거래일 수로 변환해 슬라이스해서 전달할 책임 (horizon은 원소 개수로 사용됨).
     """
     kind = str(row["kind"])
     horizon = int(row.get("horizon_days") or 10)
@@ -41,7 +44,7 @@ def score_row(row: dict[str, Any], *,
         within = closes_after[:horizon]
         if any(c <= stop for c in within):
             return "hit", {"min_close": min(within), "stop": stop}
-        late = closes_after[:int(grace) + 1]
+        late = closes_after[:int(grace)]
         if any(c <= stop for c in late):
             return "late_hit", {"min_close": min(late), "stop": stop}
         if age < grace:
@@ -60,6 +63,8 @@ def score_row(row: dict[str, Any], *,
     if kind == "EVENT":
         if not bench_after or not bench_before or len(bench_before) < 3:
             return "unscorable", {"reason": "no bench data"}
+        if any(p <= 0 for p in bench_before):
+            return "unscorable", {"reason": "zero or negative bench price"}
         prior_moves = [abs(bench_before[i] / bench_before[i - 1] - 1)
                        for i in range(1, len(bench_before))]
         avg_move = sum(prior_moves) / len(prior_moves)
@@ -87,7 +92,7 @@ def score_row(row: dict[str, Any], *,
             return "hit", {"ret_pct": round(r, 2)}
         if age < grace:
             return None  # 방향성 신호도 유예
-        r_grace = _ret_pct(series[:int(grace) + 1])
+        r_grace = _ret_pct(series[:int(grace)])
         late = (r_grace or 0) > 0 if direction == "bull" else (r_grace or 0) < 0
         if late:
             return "late_hit", {"ret_pct": round(r_grace, 2)}

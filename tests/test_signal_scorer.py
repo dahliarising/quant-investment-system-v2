@@ -106,3 +106,37 @@ def test_unknown_kind_without_direction_unscorable():
     row = _row(kind="JARVIS_ALERT", direction=None, evidence={})
     status, _ = scorer.score_row(row, closes_after=[100], bench_after=[100])
     assert status == "unscorable"
+
+
+# ── 경계 조건 (리뷰 반영) ─────────────────────────────
+def test_velocity_delayed_scoring_beyond_grace_is_miss():
+    """grace(7.5일) 밖 8일째 도달 — 지연 채점이어도 miss (리뷰 재현 케이스)."""
+    closes = [188, 186, 185, 184, 183, 182, 181, 180, 175]
+    status, _ = scorer.score_row(_row(age_days=9), closes_after=closes, bench_after=[])
+    assert status == "miss"
+
+
+def test_velocity_exactly_at_stop_is_hit():
+    closes = [188, 185, 180.0, 184, 186]  # close == stop → 도달
+    status, _ = scorer.score_row(_row(), closes_after=closes, bench_after=[])
+    assert status == "hit"
+
+
+def test_stop_exactly_at_ref_is_miss():
+    row = _row(kind="STOP", horizon_days=5, age_days=5, evidence={"price": 100.0})
+    status, _ = scorer.score_row(row, closes_after=[100.0, 101, 102, 103, 104], bench_after=[])
+    assert status == "miss"  # 추가 하락 없음 (low == ref)
+
+
+def test_rs_weak_zero_rs_is_miss():
+    row = _row(kind="RS_WEAK", horizon_days=10, age_days=10, evidence={})
+    same = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109]
+    status, _ = scorer.score_row(row, closes_after=same, bench_after=list(same))
+    assert status == "miss"  # rs == 0 → 약세 지속 아님
+
+
+def test_event_zero_bench_price_unscorable():
+    row = _row(kind="EVENT", symbol="", horizon_days=2, age_days=3, evidence={})
+    status, _ = scorer.score_row(row, closes_after=[], bench_after=[99.0],
+                                 bench_before=[100, 0.0, 100.2])
+    assert status == "unscorable"
