@@ -172,3 +172,42 @@ def test_predictive_signal_to_dict():
     d = sigs[0].to_dict()
     assert "symbol" in d and "kind" in d and "urgency" in d
     assert "message" in d and "evidence" in d
+
+
+# ── Phase 3: VELOCITY 고도화 ──────────────────────────
+
+def _mk_holding(sym="TSLA", price=100.0):
+    return [{"symbol": sym, "market": "US", "price": price, "pnl_pct": -5.0}]
+
+
+def test_velocity_noise_gate_suppresses_weak_slope_in_choppy_market():
+    """변동성 대비 미미한 기울기 — 노이즈 게이트 억제 (15봉 이상에서 활성)."""
+    # 일변화 ±5 들쭉날쭉(ATR프록시≈5), 순기울기 -0.5 → strength 0.1 < 0.15 게이트
+    closes = [100.0]
+    deltas = [+5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -6.0]
+    for d in deltas:
+        closes.append(closes[-1] + d)
+    sigs = pe.evaluate_velocity(_mk_holding(price=closes[-1]),
+                                {"TSLA": closes[-1] - 5}, {"TSLA": closes})
+    assert sigs == []  # 같은 거리·기울기라도 고변동 노이즈면 침묵
+
+
+def test_velocity_clean_downtrend_still_fires_with_atr_data():
+    """저변동 명확한 하락 추세 — 게이트 통과, 신뢰구간 evidence 포함."""
+    closes = [float(120 - i) for i in range(16)]  # 일정한 -1/일, 16봉
+    price, stop = closes[-1], closes[-1] - 5
+    sigs = pe.evaluate_velocity(_mk_holding(price=price), {"TSLA": stop}, {"TSLA": closes})
+    assert len(sigs) == 1
+    ev = sigs[0].evidence
+    assert ev["atr_proxy"] is not None and ev["strength"] >= 0.15
+    assert ev["days_lo"] is not None and ev["days_hi"] is not None
+    assert ev["days_lo"] <= ev["days_to_stop"] <= ev["days_hi"]
+    assert "범위" in sigs[0].message  # "(범위 X–Y일)" 표기
+
+
+def test_velocity_short_series_skips_gate_backcompat():
+    """15봉 미만 — ATR 산출 불가 → 게이트 미적용 (기존 동작 보존)."""
+    closes = [110.0, 108.0, 106.0, 104.0]  # 4봉, 기존 테스트 스타일
+    sigs = pe.evaluate_velocity(_mk_holding(price=104.0), {"TSLA": 98.0}, {"TSLA": closes})
+    assert len(sigs) == 1
+    assert sigs[0].evidence["atr_proxy"] is None

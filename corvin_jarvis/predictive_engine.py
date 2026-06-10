@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import asdict, dataclass
 from datetime import date
@@ -16,12 +17,16 @@ from typing import Any
 
 from corvin_jarvis.signals.event_calendar import macro_events_within
 
-_VELOCITY_HORIZON = 14
+_VELOCITY_HORIZON = 14     # 이 일수 이내 도달 예상이면 경보
+_NOISE_GATE = 0.15         # |기울기|/ATR프록시 미만 = 변동성 노이즈 → 억제
+_ATR_WINDOW = 14
 
 
 def _fmt(v: float) -> str:
     """가격 가독 포맷 — KRW 큰 수는 천단위, USD는 소수 유지. 1e+06 방지."""
-    return f"{round(v):,}" if v >= 10000 else f"{v:g}"     # 이 일수 이내 도달 예상이면 경보
+    return f"{round(v):,}" if v >= 10000 else f"{v:g}"
+
+
 _RS_THRESHOLD = -5.0       # %p 이하면 상대강도 약세
 _RS_N_DAYS = 20
 _EVENT_HORIZON = 14
@@ -51,6 +56,29 @@ def _slope(closes: list[float]) -> float | None:
     return statistics.mean(changes)
 
 
+def _atr_proxy(closes: list[float], window: int = _ATR_WINDOW) -> float | None:
+    """종가 기반 변동성 프록시 — 최근 window일 |일변화| 평균.
+
+    데이터 제약: quote_provider가 종가만 제공(OHLC 없음) → 진짜 ATR 대신
+    close-to-close 변동성으로 대체 (스펙 §6 의도 동일: 변동성 정규화).
+    window+1봉 미만이거나 변동 0이면 None.
+    """
+    if len(closes) < window + 1:
+        return None
+    tail = closes[-(window + 1):]
+    changes = [abs(tail[i] - tail[i - 1]) for i in range(1, len(tail))]
+    atr = statistics.mean(changes)
+    return atr if atr > 0 else None
+
+
+def _slope_se(closes: list[float]) -> float:
+    """일변화량 평균의 표준오차 — 신뢰구간용. 변화 표본<2 → 0."""
+    changes = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    if len(changes) < 2:
+        return 0.0
+    return statistics.stdev(changes) / math.sqrt(len(changes))
+
+
 def _n_day_return(closes: list[float], n: int) -> float | None:
     """최근 n봉 수익률(%). 데이터 부족 시 None."""
     if len(closes) < n + 1:
@@ -69,7 +97,7 @@ def evaluate_velocity(
     closes_by_sym: dict[str, list[float]],
     horizon: int = _VELOCITY_HORIZON,
 ) -> list[PredictiveSignal]:
-    """하락 추세 기울기로 손절선 도달 예상일 경보.
+    """하락 추세 기울기로 손절선 도달 예상일 경보 (Phase 3: 노이즈 게이트 + 신뢰구간).
 
     이미 손절선 이하인 경우는 signal_engine(STOP)이 담당 — 여기선 불개입.
     """
@@ -86,17 +114,30 @@ def evaluate_velocity(
         price = pos.get("price") or (closes[-1] if closes else None)
         if price is None or price <= stop:
             continue  # 이미 손절 이탈 → signal_engine 담당
+        atr = _atr_proxy(closes)
+        strength = (-s / atr) if atr else None
+        if strength is not None and strength < _NOISE_GATE:
+            continue  # 변동성 대비 미미한 기울기 — 노이즈 억제
         dist = price - stop
         days_to = dist / (-s)
         if days_to > horizon:
             continue
+        se = _slope_se(closes)
+        days_lo = round(dist / (-s + se), 1) if (-s + se) > 0 else None  # 빠른 시나리오
+        days_hi = round(dist / (-s - se), 1) if (-s - se) > 0 else None  # 느린 시나리오
+        rng = ""
+        if days_lo is not None and days_hi is not None:
+            rng = f" (범위 {math.floor(days_lo)}–{math.ceil(days_hi)}일)"
         urgency = max(40, min(85, int(85 - (days_to / horizon) * 45)))
         out.append(PredictiveSignal(
             symbol=sym, kind="VELOCITY", urgency=urgency, confidence=65.0,
             horizon_days=round(days_to),
-            message=f"하락 속도 기준 손절선({_fmt(stop)}) ~{round(days_to)}일 내 도달 예상",
+            message=f"하락 속도 기준 손절선({_fmt(stop)}) ~{round(days_to)}일 내 도달 예상{rng}",
             evidence={"slope_per_day": round(s, 4), "days_to_stop": round(days_to, 1),
-                      "stop": stop, "current_price": price},
+                      "stop": stop, "current_price": price,
+                      "atr_proxy": round(atr, 4) if atr else None,
+                      "strength": round(strength, 3) if strength is not None else None,
+                      "days_lo": days_lo, "days_hi": days_hi},
         ))
     return out
 
