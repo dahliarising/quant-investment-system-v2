@@ -86,3 +86,30 @@ def test_scoreboard_rows_for_dashboard(tmp_path):
     assert r["n"] == 10
     assert r["hit_rate"] == 0.70
     assert r["open"] == 0
+
+
+def test_scoreboard_shows_open_only_pairs(tmp_path):
+    """채점 이력 없는 open-only 페어 — 부트스트랩 기간에도 행 표시."""
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("signal_engine", [{
+        "symbol": "NVDA", "kind": "WATCH", "confidence": None, "horizon_days": 5,
+    }], db_path=db, now=NOW)
+    rows = calibration.scoreboard(db_path=db)
+    assert len(rows) == 1
+    assert rows[0]["engine"] == "signal_engine"
+    assert rows[0]["kind"] == "WATCH"
+    assert rows[0]["n"] == 0
+    assert rows[0]["hit_rate"] is None
+    assert rows[0]["open"] == 1
+
+
+def test_no_calibration_when_all_confidence_null(tmp_path):
+    """confidence 미기록 엔진 — n 충분해도 보정 보류 (None)."""
+    db = tmp_path / "ledger.db"
+    _seed(db, n_hit=8, n_miss=2)
+    import sqlite3
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE signal_ledger SET confidence=NULL")
+    stats = calibration.compute(db_path=db)
+    assert stats["predictive"]["VELOCITY"]["calibrated_confidence"] is None
+    assert stats["predictive"]["VELOCITY"]["n"] == 10

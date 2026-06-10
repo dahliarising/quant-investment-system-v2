@@ -19,9 +19,8 @@ _MIN_SAMPLES = 10
 
 
 def _shrink(n: int) -> float:
-    if n >= 50:
-        return 0.2
-    return 0.7 - 0.5 * (n - _MIN_SAMPLES) / 40  # n=10→0.7, n=50→0.2 선형
+    # n=10→0.7, n≥50→0.2, 선형. 공식이 n=50에서 정확히 0.2 — max로 하한만 고정.
+    return max(0.2, 0.7 - 0.5 * (n - _MIN_SAMPLES) / 40)
 
 
 def compute(db_path: Path | None = None) -> dict[str, dict[str, dict[str, Any]]]:
@@ -63,7 +62,7 @@ def write_state(db_path: Path | None = None, out_path: Path | None = None) -> Pa
 
 
 def scoreboard(db_path: Path | None = None) -> list[dict[str, Any]]:
-    """대시보드용 행 — open 신호 수 포함, n 내림차순."""
+    """대시보드용 행 — open 신호 수 포함, n 내림차순. 채점 이력 없는 open-only 페어도 표시."""
     p = ledger.init_db(db_path)
     stats = compute(db_path)
     with sqlite3.connect(p) as conn:
@@ -71,10 +70,19 @@ def scoreboard(db_path: Path | None = None) -> list[dict[str, Any]]:
             "SELECT engine || '|' || kind, COUNT(*) FROM signal_ledger"
             " WHERE status='open' GROUP BY engine, kind").fetchall())
     rows = []
+    seen = set()
     for engine, kinds in stats.items():
         for kind, e in kinds.items():
+            key = f"{engine}|{kind}"
+            seen.add(key)
             rows.append({"engine": engine, "kind": kind, "n": e["n"],
                          "hit_rate": round(e["hit_rate"], 2),
                          "calibrated_confidence": e["calibrated_confidence"],
-                         "open": open_counts.get(f"{engine}|{kind}", 0)})
-    return sorted(rows, key=lambda r: -r["n"])
+                         "open": open_counts.get(key, 0)})
+    for key, cnt in open_counts.items():
+        if key in seen:
+            continue
+        engine, kind = key.split("|", 1)
+        rows.append({"engine": engine, "kind": kind, "n": 0,
+                     "hit_rate": None, "calibrated_confidence": None, "open": cnt})
+    return sorted(rows, key=lambda r: (-r["n"], -r["open"]))
