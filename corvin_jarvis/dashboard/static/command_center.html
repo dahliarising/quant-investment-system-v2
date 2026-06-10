@@ -543,13 +543,14 @@ function applyLive(live){
   if(live.paper)STATE.paper=live.paper;
   // SIGNAL SCOREBOARD (Phase 1)
   if(live.signal_scoreboard){
+    const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const rows=live.signal_scoreboard;
     $("#sbMeta").textContent=rows.length?`${rows.length} kinds`:"NO DATA";
     $("#sbBody").innerHTML=rows.map(r=>{
       const pct=r.hit_rate==null?"—":`${Math.round(r.hit_rate*100)}%`;
       const cls=(r.n<10||r.hit_rate==null)?"neu":(r.hit_rate>=0.6?"up":"down");
-      return `<tr><td class="sym">${r.engine}·${r.kind}</td>`+
-        `<td class="${cls}">${pct}</td><td>${r.n}</td><td>${r.open}</td></tr>`;
+      return `<tr><td class="sym">${esc(r.engine)}·${esc(r.kind)}</td>`+
+        `<td class="${cls}">${esc(pct)}</td><td>${esc(r.n)}</td><td>${esc(r.open)}</td></tr>`;
     }).join("")||`<tr><td colspan="4" class="neu">채점 데이터 없음 — 신호 원장 부트스트랩 중</td></tr>`;
   }
   STATE.market_state=(live.market_state==="open"?"LIVE · 장중":"CLOSED")
