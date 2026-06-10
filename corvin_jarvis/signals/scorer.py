@@ -5,7 +5,10 @@ LATE 유예: VELOCITY·방향성 신호는 만기×1.5까지 보류(None 반환)
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
+
+log = logging.getLogger("corvin.signals.scorer")
 
 _EVENT_VOL_MULT = 1.3   # 이벤트일 변동 > 직전 평균 ×1.3 → HIT
 _GRACE_MULT = 1.5       # late_hit 유예 배수
@@ -129,23 +132,38 @@ def run(db_path=None, now=None,
     bench_cache: dict[str, list[float]] = {}
 
     def bench_for(symbol: str) -> str:
-        return "069500" if symbol.endswith(".KS") or (symbol.isdigit() and len(symbol) == 6) else "SPY"
         # 069500 = KODEX200 ETF (KOSPI 프록시 — pykrx/KIS 모두 조회 가능)
+        return "069500" if symbol.endswith(".KS") or (symbol.isdigit() and len(symbol) == 6) else "SPY"
 
     for row in due:
         sym = row["symbol"]
         age = row["age_days"]
         n_days = _trading_days(age)
-        closes_after = []
-        if sym:
-            full = fetch(sym, n_days + 30)
-            closes_after = full[-n_days:] if full else []
-        bkey = bench_for(sym or "SPY")
-        if bkey not in bench_cache:
-            bench_cache[bkey] = fetch(bkey, n_days + 30) or []
+        try:
+            closes_after: list[float] = []
+            if sym:
+                full = fetch(sym, n_days + 30)
+                if not full:
+                    # 일시 결손/상폐 가능 — 이번 사이클 skip, open 유지 (영구 unscorable 방지)
+                    pending += 1
+                    continue
+                closes_after = full[-n_days:]
+            bkey = bench_for(sym or "SPY")
+            if bkey not in bench_cache:
+                bench_cache[bkey] = fetch(bkey, n_days + 30) or []
+        except Exception as e:  # noqa: BLE001 — fetch 실패는 이 행만 skip
+            log.warning("scorer: fetch failed for %s: %s", sym or "(macro)", e)
+            by_status["fetch_error"] = by_status.get("fetch_error", 0) + 1
+            continue
         bench_full = bench_cache[bkey]
         bench_after = bench_full[-n_days:] if bench_full else []
         bench_before = bench_full[:-n_days][-21:] if len(bench_full) > n_days else []
+
+        needs_bench = row["kind"] in ("RS_WEAK", "EVENT") or (
+            row.get("direction") in ("bull", "bear") and not sym)
+        if needs_bench and (not bench_after or (row["kind"] == "EVENT" and not bench_before)):
+            pending += 1  # 벤치 데이터 일시 결손 — open 유지
+            continue
 
         verdict = score_row(row, closes_after=closes_after,
                             bench_after=bench_after, bench_before=bench_before)

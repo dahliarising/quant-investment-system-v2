@@ -184,3 +184,36 @@ def test_run_keeps_pending_signal_open(tmp_path):
     assert result["scored"] == 0
     assert result["pending"] == 1
     assert len(ledger.fetch_due(db_path=db, now=NOW)) == 1  # 여전히 open
+
+
+def test_run_skips_row_on_fetch_error(tmp_path):
+    """fetch 예외 — 해당 행만 skip, open 유지 (cron 배치 생존)."""
+    db = tmp_path / "ledger.db"
+    fired = NOW - timedelta(days=9)
+    ledger.record_batch("predictive", [{
+        "symbol": "NVDA", "kind": "VELOCITY", "urgency": 70, "confidence": 65.0,
+        "horizon_days": 5, "stop": 180.0,
+    }], db_path=db, now=fired)
+
+    def failing_fetch(symbol, days):
+        raise ConnectionError("network down")
+
+    result = scorer.run(db_path=db, now=NOW, fetch_closes=failing_fetch)
+    assert result["scored"] == 0
+    assert result["by_status"]["fetch_error"] == 1
+    assert len(ledger.fetch_due(db_path=db, now=NOW)) == 1  # 여전히 open
+
+
+def test_run_leaves_open_on_empty_fetch(tmp_path):
+    """fetch 빈 응답 — 영구 unscorable 금지, open 유지."""
+    db = tmp_path / "ledger.db"
+    fired = NOW - timedelta(days=9)
+    ledger.record_batch("predictive", [{
+        "symbol": "NVDA", "kind": "VELOCITY", "urgency": 70, "confidence": 65.0,
+        "horizon_days": 5, "stop": 180.0,
+    }], db_path=db, now=fired)
+
+    result = scorer.run(db_path=db, now=NOW, fetch_closes=lambda s, d: [])
+    assert result["scored"] == 0
+    assert result["pending"] == 1
+    assert len(ledger.fetch_due(db_path=db, now=NOW)) == 1
