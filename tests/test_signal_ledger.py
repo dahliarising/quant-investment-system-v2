@@ -66,3 +66,18 @@ def test_mark_scored_closes_signal(tmp_path):
     # 채점 후 같은 키 재기록 가능 (open 아님)
     n = ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
     assert n == 1
+
+
+def test_fetch_due_accepts_naive_datetime(tmp_path):
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("predictive", [_sig()], db_path=db, now=NOW)
+    # naive datetime → KST 가정, TypeError 없이 due 반환
+    due = ledger.fetch_due(db_path=db, now=datetime(2026, 6, 16, 9, 0))
+    assert len(due) == 1
+
+
+def test_horizon_zero_clamped_to_one(tmp_path):
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("predictive", [_sig(horizon_days=0)], db_path=db, now=NOW)
+    due = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=1))
+    assert len(due) == 1  # horizon 0 → 1로 클램프 저장

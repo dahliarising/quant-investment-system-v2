@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+
+log = logging.getLogger("corvin.signals.ledger")
 
 KST = ZoneInfo("Asia/Seoul")
 DB_PATH = Path(__file__).resolve().parent.parent / "state" / "signal_ledger.db"
@@ -18,7 +21,8 @@ DB_PATH = Path(__file__).resolve().parent.parent / "state" / "signal_ledger.db"
 _DEFAULT_HORIZON = {"STOP": 5, "WATCH": 5}     # 스펙 §4.1: NULL이면 kind별 기본
 _FALLBACK_HORIZON = 10
 _SKIP_KINDS = {"HOLD", "UNKNOWN"}               # 비액션 신호는 기록 제외
-_CORE_FIELDS = ("symbol", "kind", "direction", "urgency", "confidence", "horizon_days")
+_CORE_FIELDS = ("engine", "symbol", "kind", "direction", "urgency", "confidence",
+                "horizon_days")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS signal_ledger (
@@ -55,7 +59,10 @@ def record_batch(engine: str, signals: list[dict[str, Any]],
                  now: datetime | None = None) -> int:
     """신호 dict 리스트 기록. 반환 = 신규 insert 수 (dedup·skip 제외)."""
     p = init_db(db_path)
-    ts = (now or datetime.now(KST)).isoformat(timespec="seconds")
+    t = now or datetime.now(KST)
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=KST)  # 방어: naive datetime → KST 가정
+    ts = t.isoformat(timespec="seconds")
     inserted = 0
     with sqlite3.connect(p) as conn:
         for s in signals:
@@ -71,6 +78,7 @@ def record_batch(engine: str, signals: list[dict[str, Any]],
             horizon = s.get("horizon_days")
             if horizon is None:
                 horizon = _DEFAULT_HORIZON.get(kind, _FALLBACK_HORIZON)
+            horizon = max(1, int(horizon))  # 0 이하 → 만기 불능 방지
             evidence = {k: v for k, v in s.items() if k not in _CORE_FIELDS}
             conn.execute(
                 """INSERT INTO signal_ledger
@@ -78,7 +86,7 @@ def record_batch(engine: str, signals: list[dict[str, Any]],
                     horizon_days, evidence)
                    VALUES (?,?,?,?,?,?,?,?,?)""",
                 (ts, engine, sym, kind, s.get("direction"), s.get("urgency"),
-                 s.get("confidence"), int(horizon),
+                 s.get("confidence"), horizon,
                  json.dumps(evidence, ensure_ascii=False, default=str)))
             inserted += 1
     return inserted
@@ -89,6 +97,8 @@ def fetch_due(db_path: Path | None = None,
     """만기(발화 후 horizon_days 경과) open 신호. evidence는 dict로 파싱, age_days 포함."""
     p = init_db(db_path)
     t = now or datetime.now(KST)
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=KST)  # 방어: naive datetime → KST 가정 (aware-naive 빼기 방지)
     out: list[dict[str, Any]] = []
     with sqlite3.connect(p) as conn:
         conn.row_factory = sqlite3.Row
@@ -110,8 +120,13 @@ def mark_scored(row_id: int, status: str, outcome: dict[str, Any],
                 db_path: Path | None = None, now: datetime | None = None) -> None:
     """채점 결과 기록 — status: hit | late_hit | miss | unscorable."""
     p = init_db(db_path)
-    ts = (now or datetime.now(KST)).isoformat(timespec="seconds")
+    t = now or datetime.now(KST)
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=KST)  # 방어: naive datetime → KST 가정
+    ts = t.isoformat(timespec="seconds")
     with sqlite3.connect(p) as conn:
-        conn.execute(
+        cur = conn.execute(
             "UPDATE signal_ledger SET status=?, scored_at=?, outcome=? WHERE id=?",
             (status, ts, json.dumps(outcome, ensure_ascii=False, default=str), row_id))
+        if cur.rowcount == 0:
+            log.warning("mark_scored: id=%s not found", row_id)
