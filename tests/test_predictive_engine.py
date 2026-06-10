@@ -252,3 +252,56 @@ def test_evaluate_injects_calibrated_confidence():
                        closes_by_sym={"TSLA": closes}, calibration=cal)
     vel = [s for s in sigs if s.kind == "VELOCITY"]
     assert vel and vel[0].confidence == 47.5
+
+
+# ── Phase 3: RS_WEAK 적응 임계값 ─────────────────────
+
+@pytest.mark.unit
+def test_adaptive_threshold_falls_back_on_short_history():
+    """이력 부족(90봉 미만) — 기본 -5.0 유지 (기존 동작 보존)."""
+    closes = [100.0 + i * 0.1 for i in range(30)]
+    bench = list(closes)
+    assert pe._adaptive_rs_threshold(closes, bench) == -5.0
+
+
+@pytest.mark.unit
+def test_adaptive_threshold_widens_for_volatile_pair():
+    """변동 큰 종목 — 하위 10분위가 -5보다 깊어짐 (오탐 억제)."""
+    import random
+    rng = random.Random(42)
+    closes, bench = [100.0], [100.0]
+    for _ in range(100):
+        closes.append(max(1.0, closes[-1] * (1 + rng.uniform(-0.05, 0.048))))
+        bench.append(bench[-1] * 1.001)
+    thr = pe._adaptive_rs_threshold(closes, bench)
+    assert thr < -5.0          # 더 깊은(느슨한) 임계
+    assert thr >= -20.0        # 하한 클램프
+
+
+@pytest.mark.unit
+def test_adaptive_threshold_clamped_upper():
+    """안정 페어 — 임계가 -2보다 얕아지지 않게 클램프 (과민 방지)."""
+    closes = [100.0 + i * 0.01 for i in range(100)]
+    bench = [100.0 + i * 0.012 for i in range(100)]
+    thr = pe._adaptive_rs_threshold(closes, bench)
+    assert -5.0 <= thr <= -2.0
+
+
+@pytest.mark.unit
+def test_rs_weak_uses_adaptive_threshold_with_long_history():
+    """90봉 이력 — 적응 임계 적용, evidence에 사용 임계 기록."""
+    import random
+    rng = random.Random(7)
+    closes, bench = [100.0], [100.0]
+    for _ in range(100):
+        closes.append(max(1.0, closes[-1] * (1 + rng.uniform(-0.05, 0.048))))
+        bench.append(bench[-1] * 1.001)
+    # 최근 20일 급락 페어 추가 — rs가 적응 임계도 뚫도록
+    for _ in range(20):
+        closes.append(closes[-1] * 0.93)
+        bench.append(bench[-1] * 1.001)
+    holdings = [{"symbol": "XXX", "market": "US", "price": closes[-1]}]
+    sigs = pe.evaluate_relative_strength(holdings, {"XXX": closes}, {"US": bench})
+    assert len(sigs) == 1
+    assert "threshold_pct" in sigs[0].evidence
+    assert sigs[0].evidence["threshold_pct"] != -5.0  # 적응값 사용됨

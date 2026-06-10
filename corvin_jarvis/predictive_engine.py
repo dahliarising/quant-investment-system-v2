@@ -31,6 +31,9 @@ def _fmt(v: float) -> str:
 
 _RS_THRESHOLD = -5.0       # %p 이하면 상대강도 약세
 _RS_N_DAYS = 20
+_RS_HIST_WINDOWS = 60      # 적응 임계 계산용 과거 rs 표본 수
+_RS_MIN_SAMPLES = 30       # 미만이면 기본 임계 fallback
+_RS_CLAMP = (-20.0, -2.0)  # 적응 임계 안전 클램프
 _EVENT_HORIZON = 14
 
 _DEFAULT_CONFIDENCE = {"VELOCITY": 65.0, "RS_WEAK": 60.0, "EVENT": 90.0}
@@ -168,15 +171,43 @@ def evaluate_velocity(
 
 # ── RS_WEAK ────────────────────────────────────────────────
 
+def _adaptive_rs_threshold(closes: list[float], bench: list[float],
+                           n_days: int = _RS_N_DAYS,
+                           default: float = _RS_THRESHOLD) -> float:
+    """종목별 과거 rs 분포의 하위 10분위 — 변동성 맞춤 임계 (스펙 §6).
+
+    rs_i = (종목 n일 수익률 - 벤치 n일 수익률), 과거 _RS_HIST_WINDOWS개 윈도.
+    표본 < _RS_MIN_SAMPLES → default(-5.0). 결과는 _RS_CLAMP로 클램프.
+    """
+    rs_vals: list[float] = []
+    for i in range(_RS_HIST_WINDOWS):
+        end_c, end_b = len(closes) - i, len(bench) - i
+        h = _n_day_return(closes[:end_c], n_days)
+        b = _n_day_return(bench[:end_b], n_days)
+        if h is None or b is None:
+            break
+        rs_vals.append(h - b)
+    if len(rs_vals) < _RS_MIN_SAMPLES:
+        return default
+    rs_sorted = sorted(rs_vals)
+    thr = rs_sorted[int(len(rs_sorted) * 0.10)]
+    lo, hi = _RS_CLAMP
+    return max(lo, min(hi, thr))
+
+
 def evaluate_relative_strength(
     holdings: list[dict[str, Any]],
     closes_by_sym: dict[str, list[float]],
     bench_closes_by_market: dict[str, list[float]],
     n_days: int = _RS_N_DAYS,
-    threshold: float = _RS_THRESHOLD,
+    threshold: float | None = None,
     confidence: float | None = None,
 ) -> list[PredictiveSignal]:
-    """보유종목 n일 수익률 - 벤치마크 수익률 < threshold%p → RS_WEAK."""
+    """보유종목 n일 수익률 - 벤치마크 수익률 < threshold%p → RS_WEAK.
+
+    threshold=None이면 종목별 적응 임계(_adaptive_rs_threshold) 사용 —
+    이력 부족 시 기본 _RS_THRESHOLD(-5.0)로 fallback해 기존 동작 보존.
+    """
     out: list[PredictiveSignal] = []
     conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE["RS_WEAK"]
     for pos in holdings:
@@ -189,16 +220,18 @@ def evaluate_relative_strength(
         if h_ret is None or b_ret is None:
             continue
         rs = h_ret - b_ret
-        if rs >= threshold:
+        thr = threshold if threshold is not None else _adaptive_rs_threshold(closes, bench)
+        if rs >= thr:
             continue
-        urgency = max(30, min(75, int(30 + (threshold - rs) * 4)))
+        urgency = max(30, min(75, int(30 + (thr - rs) * 4)))
         bench_label = "KOSPI" if market == "KR" else "S&P500"
         out.append(PredictiveSignal(
             symbol=sym, kind="RS_WEAK", urgency=urgency, confidence=conf,
             horizon_days=None,
             message=f"{n_days}일 {bench_label} 대비 상대강도 {rs:+.1f}%p — 약세 심화 추세",
             evidence={"holding_ret_pct": round(h_ret, 2), "bench_ret_pct": round(b_ret, 2),
-                      "rs_pct": round(rs, 2), "n_days": n_days},
+                      "rs_pct": round(rs, 2), "n_days": n_days,
+                      "threshold_pct": round(thr, 2)},
         ))
     return out
 
