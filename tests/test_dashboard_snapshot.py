@@ -134,6 +134,30 @@ def test_snapshot_records_signals_to_ledger(monkeypatch):
     assert "predictive" in engines
 
 
+def test_snapshot_json_is_strict_valid_even_with_nan_quotes(monkeypatch):
+    """NaN 쿼트가 끼어도 strict JSON 직렬화 가능 (브라우저 JSON.parse 호환)."""
+    import json as _json
+    from corvin_jarvis.dashboard import snapshot as snap
+    from corvin_jarvis import quote_provider as qp
+
+    class _Qnan:
+        price = float("nan")
+        pct_change = float("inf")
+        source = "test"
+        error = None
+    monkeypatch.setattr(qp, "get_kr_index_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_us_index_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_commodity_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_fx_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_stock_quote", lambda c: _Qnan())
+    monkeypatch.setattr(qp, "get_stock_daily_closes", lambda *a, **k: [])
+    monkeypatch.setattr(snap, "_build_signals", lambda holdings: [])
+    monkeypatch.setattr(snap, "_polymarket_fetch", lambda: [])
+    snap._CACHE["data"] = None
+    s = snap.build_snapshot()
+    _json.dumps(s, allow_nan=False)  # raises ValueError if any NaN/inf leaked
+
+
 def test_get_snapshot_caches(monkeypatch):
     calls = {"n": 0}
     def fake_build():

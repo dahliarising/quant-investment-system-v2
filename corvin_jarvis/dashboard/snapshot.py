@@ -54,6 +54,17 @@ def _num(x: float | None) -> float | None:
     return None if (math.isnan(f) or math.isinf(f)) else f
 
 
+def _sanitize(obj):
+    """JSON strict 호환 — NaN/inf를 None으로 (브라우저 JSON.parse 보호)."""
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    return obj
+
+
 def _load_portfolio() -> dict[str, Any]:
     try:
         return json.loads(PORTFOLIO.read_text(encoding="utf-8"))
@@ -92,10 +103,10 @@ def _indices() -> list[dict]:
     for code, label, kind in _INDICES:
         q = _safe(lambda c=code, k=kind: (qp.get_kr_index_quote(c) if k == "kr" else qp.get_us_index_quote(c)), None)
         if q:
-            out.append({"label": label, "price": q.price, "pct": q.pct_change})
+            out.append({"label": label, "price": _num(q.price), "pct": _num(q.pct_change)})
     fx = _safe(lambda: qp.get_fx_quote("USDKRW=X"), None)
     if fx:
-        out.append({"label": "USD/KRW", "price": fx.price, "pct": fx.pct_change})
+        out.append({"label": "USD/KRW", "price": _num(fx.price), "pct": _num(fx.pct_change)})
     return out
 
 
@@ -104,7 +115,7 @@ def _macro_ticker() -> list[dict]:
     for code, label in _COMMODITIES:
         q = _safe(lambda c=code: qp.get_commodity_quote(c), None)
         if q:
-            out.append({"label": label, "price": q.price, "pct": q.pct_change})
+            out.append({"label": label, "price": _num(q.price), "pct": _num(q.pct_change)})
     return out
 
 
@@ -262,7 +273,7 @@ def build_snapshot() -> dict[str, Any]:
     engine_sigs = _safe(lambda: _engine_signals(held), [])
     pred_sigs = _safe(lambda: _predictive_signals(held), [])
     _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs), None)
-    return {
+    return _sanitize({
         "ts": now.isoformat(timespec="seconds"),
         "market_state": "open" if (market_hours.is_kr_open(now) or market_hours.is_us_open(now)) else "closed",
         "fx_usdkrw": fx,
@@ -279,7 +290,7 @@ def build_snapshot() -> dict[str, Any]:
         "log": _safe(lambda: _action_log(pf), []),
         "equity_curve": _safe(lambda: _equity_curve_live(now, totals.get("equity_pnl_pct")), []),
         "polymarket": _safe(_polymarket_fetch, []),
-    }
+    })
 
 
 def get_snapshot(ttl: float = 30.0, now: float | None = None) -> dict[str, Any]:
