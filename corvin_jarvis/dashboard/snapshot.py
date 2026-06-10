@@ -155,22 +155,22 @@ def _predictive_signals(held: list[dict]) -> list[dict]:
     closes_by_sym: dict[str, list[float]] = {}
     for h in held:
         sym = h["symbol"]
-        closes = _safe(lambda s=sym: qp.get_stock_daily_closes(s, days=25, completed_only=True), [])
+        closes = _safe(lambda s=sym: qp.get_stock_daily_closes(s, days=90, completed_only=True), [])
         if closes:
             closes_by_sym[sym] = closes
 
     bench: dict[str, list[float]] = {}
-    spy = _safe(lambda: qp.get_stock_daily_closes("SPY", days=25, completed_only=True), [])
+    spy = _safe(lambda: qp.get_stock_daily_closes("SPY", days=90, completed_only=True), [])
     if spy:
         bench["US"] = spy
     try:
         from pykrx import stock as _px
         from datetime import datetime, timedelta
         _end = datetime.now(KST).strftime("%Y%m%d")
-        _start = (datetime.now(KST) - timedelta(days=55)).strftime("%Y%m%d")
+        _start = (datetime.now(KST) - timedelta(days=130)).strftime("%Y%m%d")
         df = _px.get_index_ohlcv_by_date(_start, _end, "1028")  # KOSPI composite
         if not df.empty:
-            bench["KR"] = [float(c) for c in df["종가"].tail(25).tolist() if c > 0]
+            bench["KR"] = [float(c) for c in df["종가"].tail(90).tolist() if c > 0]
     except Exception as _e:
         log.debug("KR bench fetch skipped: %s", _e)
 
@@ -189,6 +189,18 @@ def _record_to_ledger(engine_sigs: list[dict], pred_sigs: list[dict]) -> None:
 def _scoreboard() -> list[dict]:
     from corvin_jarvis.signals import calibration
     return calibration.scoreboard()
+
+
+def _final_actions(engine_sigs: list[dict], pred_sigs: list[dict],
+                   playbook_sigs: list[dict]) -> list[dict]:
+    """Phase 2 중재 — 라이브 신호 + ledger open(leading/jarvis) → 종목별 최종 액션."""
+    from corvin_jarvis.signals import arbiter_inputs as ai
+    from corvin_jarvis.signals import calibration as cal_mod
+    from corvin_jarvis.signals import ledger
+    res = ai.build_final_actions(
+        engine_sigs=engine_sigs, pred_sigs=pred_sigs, playbook_sigs=playbook_sigs,
+        ledger_open=ledger.fetch_open(), calibration=cal_mod.compute())
+    return res["actions"]
 
 
 def _paper(held: list[dict]) -> dict:
@@ -273,6 +285,7 @@ def build_snapshot() -> dict[str, Any]:
     engine_sigs = _safe(lambda: _engine_signals(held), [])
     pred_sigs = _safe(lambda: _predictive_signals(held), [])
     _safe(lambda: _record_to_ledger(engine_sigs, pred_sigs), None)
+    playbook_sigs = _safe(lambda: _build_signals(holdings), [])
     return _sanitize({
         "ts": now.isoformat(timespec="seconds"),
         "market_state": "open" if (market_hours.is_kr_open(now) or market_hours.is_us_open(now)) else "closed",
@@ -282,10 +295,11 @@ def build_snapshot() -> dict[str, Any]:
         "indices": _safe(_indices, []),
         "macro_ticker": _safe(_macro_ticker, []),
         "allocation": _safe(lambda: _allocation(positions), []),
-        "signals": _safe(lambda: _build_signals(holdings), []),
+        "signals": playbook_sigs,
         "engine_signals": engine_sigs,
         "predictive_signals": pred_sigs,
         "signal_scoreboard": _safe(_scoreboard, []),
+        "final_actions": _safe(lambda: _final_actions(engine_sigs, pred_sigs, playbook_sigs), []),
         "paper": _safe(lambda: _paper(held), {}),
         "log": _safe(lambda: _action_log(pf), []),
         "equity_curve": _safe(lambda: _equity_curve_live(now, totals.get("equity_pnl_pct")), []),

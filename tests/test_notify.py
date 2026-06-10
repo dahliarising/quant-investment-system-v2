@@ -46,6 +46,7 @@ def _write_state(tmp_path, monkeypatch, alerts):
     monkeypatch.setattr(notify, "PORTFOLIO_FILE", pf)
     monkeypatch.setattr(notify, "DEDUP_FILE", tmp_path / "push_dedup.json")
     monkeypatch.setattr(notify, "PENDING_FILE", tmp_path / "pending.json")
+    monkeypatch.setattr(notify, "_FINAL_ACTIONS_PATH", tmp_path / "final_actions.json")
 
 
 def test_urgent_mode_drops_medium(tmp_path, monkeypatch):

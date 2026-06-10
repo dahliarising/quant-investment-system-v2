@@ -114,3 +114,20 @@ def test_record_batch_literal_kind_wins_over_evidence_kind(tmp_path):
     due = ledger.fetch_due(db_path=db, now=NOW + timedelta(days=5))
     assert due[0]["kind"] == "event"
     assert due[0]["evidence"]["days_to"] == 3
+
+
+def test_fetch_open_returns_all_open_regardless_of_maturity(tmp_path):
+    """fetch_open — 만기 무관 전체 open (arbiter 입력용)."""
+    db = tmp_path / "ledger.db"
+    ledger.record_batch("leading", [
+        {"symbol": "NVDA", "kind": "ensemble", "direction": "bull",
+         "confidence": 70.0, "horizon_days": 20},
+    ], db_path=db, now=NOW)
+    rows = ledger.fetch_open(db_path=db)
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "NVDA"
+    assert rows[0]["direction"] == "bull"
+    assert rows[0]["evidence"] == {}
+    # 채점되면 안 나옴
+    ledger.mark_scored(rows[0]["id"], "hit", {}, db_path=db, now=NOW)
+    assert ledger.fetch_open(db_path=db) == []

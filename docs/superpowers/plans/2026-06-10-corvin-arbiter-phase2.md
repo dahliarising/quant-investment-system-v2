@@ -892,6 +892,7 @@ python3 -c "from corvin_jarvis import notify; print(notify._final_actions_block(
 
 ## Self-Review 결과
 
+- **스펙 §5 규칙③(최신 우선) 처리 방식**: arbiter 코드가 아닌 시스템 설계로 충족 — 라이브 신호는 매 실행 신선 재계산, ledger는 (engine,symbol,kind)당 open 1행 dedup이라 "최신 발화분만"이 구조적으로 보장됨. arbiter docstring의 ③은 fallback 순서(trim>buy>warn>hold)로 별개.
 - **스펙 §5 커버리지**: 중재 규칙 3단(T1) · 종목당 단일 FinalAction+rationale 상충명시(T1) · ledger open 입력(T2-3) · 소비자 snapshot(T4)→digest(T5) 전환 + 대시보드(T6) — 전부 매핑. debate 소비 전환은 스펙상 "단계적" — Phase 2 범위에서 제외(YAGNI), Phase 3+에서.
 - **이중 계상 방지**: ledger open에는 snapshot이 막 기록한 engine/predictive 행도 있음 → normalize_ledger_open이 leading/jarvis만 통과시켜 라이브 평가와 중복 계상 차단 (테스트 `test_normalize_ledger_open_rows`가 고정).
 - **타입 일관성**: FinalAction.to_dict 키(symbol/action/urgency/rationale/sources/conflict)가 T4 snapshot 섹션·T5 digest 블록·T6 JS 렌더러와 일치 확인.

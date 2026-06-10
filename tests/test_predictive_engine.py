@@ -172,3 +172,136 @@ def test_predictive_signal_to_dict():
     d = sigs[0].to_dict()
     assert "symbol" in d and "kind" in d and "urgency" in d
     assert "message" in d and "evidence" in d
+
+
+# ── Phase 3: VELOCITY 고도화 ──────────────────────────
+
+def _mk_holding(sym="TSLA", price=100.0):
+    return [{"symbol": sym, "market": "US", "price": price, "pnl_pct": -5.0}]
+
+
+@pytest.mark.unit
+def test_velocity_noise_gate_suppresses_weak_slope_in_choppy_market():
+    """변동성 대비 미미한 기울기 — 노이즈 게이트 억제 (15봉 이상에서 활성)."""
+    # 일변화 ±5 들쭉날쭉(ATR프록시≈5), 순기울기 -0.5 → strength 0.1 < 0.15 게이트
+    closes = [100.0]
+    deltas = [+5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -5.5, +5, -6.0]
+    for d in deltas:
+        closes.append(closes[-1] + d)
+    sigs = pe.evaluate_velocity(_mk_holding(price=closes[-1]),
+                                {"TSLA": closes[-1] - 3}, {"TSLA": closes})
+    assert sigs == []  # days_to≈10.7 ≤ horizon인데도 게이트(strength≈0.05)가 억제
+
+
+@pytest.mark.unit
+def test_velocity_clean_downtrend_still_fires_with_atr_data():
+    """저변동 명확한 하락 추세 — 게이트 통과, 신뢰구간 evidence 포함."""
+    # 평균 -1/일 + 미세 변동(se>0) — 완전 선형이면 lo==hi라 범위 표기가 생략됨
+    closes = [120.0]
+    for i in range(15):
+        closes.append(closes[-1] + (-0.9 if i % 2 == 0 else -1.1))
+    price, stop = closes[-1], closes[-1] - 5
+    sigs = pe.evaluate_velocity(_mk_holding(price=price), {"TSLA": stop}, {"TSLA": closes})
+    assert len(sigs) == 1
+    ev = sigs[0].evidence
+    assert ev["atr_proxy"] is not None and ev["strength"] >= 0.15
+    assert ev["days_lo"] is not None and ev["days_hi"] is not None
+    assert ev["days_lo"] <= ev["days_to_stop"] <= ev["days_hi"]
+    assert "범위" in sigs[0].message  # "(범위 X–Y일)" 표기
+
+
+@pytest.mark.unit
+def test_velocity_short_series_skips_gate_backcompat():
+    """15봉 미만 — ATR 산출 불가 → 게이트 미적용 (기존 동작 보존)."""
+    closes = [110.0, 108.0, 106.0, 104.0]  # 4봉, 기존 테스트 스타일
+    sigs = pe.evaluate_velocity(_mk_holding(price=104.0), {"TSLA": 98.0}, {"TSLA": closes})
+    assert len(sigs) == 1
+    assert sigs[0].evidence["atr_proxy"] is None
+
+
+# ── Phase 3: confidence 캘리브레이션 주입 ─────────────
+
+@pytest.mark.unit
+def test_confidence_for_uses_calibrated_value():
+    cal = {"predictive": {"VELOCITY": {"n": 20, "hit_rate": 0.4,
+                                       "calibrated_confidence": 47.5}}}
+    assert pe.confidence_for("VELOCITY", calibration=cal) == 47.5
+
+
+@pytest.mark.unit
+def test_confidence_for_falls_back_to_default():
+    assert pe.confidence_for("VELOCITY", calibration={}) == 65.0
+    assert pe.confidence_for("RS_WEAK", calibration={}) == 60.0
+    assert pe.confidence_for("EVENT", calibration={}) == 90.0
+
+
+@pytest.mark.unit
+def test_confidence_for_ignores_uncalibrated_none():
+    """n<10이라 calibrated_confidence=None — 기본값 유지."""
+    cal = {"predictive": {"VELOCITY": {"n": 3, "hit_rate": 1.0,
+                                       "calibrated_confidence": None}}}
+    assert pe.confidence_for("VELOCITY", calibration=cal) == 65.0
+
+
+@pytest.mark.unit
+def test_evaluate_injects_calibrated_confidence():
+    closes = [110.0, 108.0, 106.0, 104.0]
+    cal = {"predictive": {"VELOCITY": {"n": 20, "hit_rate": 0.4,
+                                       "calibrated_confidence": 47.5}}}
+    sigs = pe.evaluate(_mk_holding(price=104.0), stops={"TSLA": 98.0},
+                       closes_by_sym={"TSLA": closes}, calibration=cal)
+    vel = [s for s in sigs if s.kind == "VELOCITY"]
+    assert vel and vel[0].confidence == 47.5
+
+
+# ── Phase 3: RS_WEAK 적응 임계값 ─────────────────────
+
+@pytest.mark.unit
+def test_adaptive_threshold_falls_back_on_short_history():
+    """이력 부족(90봉 미만) — 기본 -5.0 유지 (기존 동작 보존)."""
+    closes = [100.0 + i * 0.1 for i in range(30)]
+    bench = list(closes)
+    assert pe._adaptive_rs_threshold(closes, bench) == -5.0
+
+
+@pytest.mark.unit
+def test_adaptive_threshold_widens_for_volatile_pair():
+    """변동 큰 종목 — 하위 10분위가 -5보다 깊어짐 (오탐 억제)."""
+    import random
+    rng = random.Random(42)
+    closes, bench = [100.0], [100.0]
+    for _ in range(100):
+        closes.append(max(1.0, closes[-1] * (1 + rng.uniform(-0.05, 0.048))))
+        bench.append(bench[-1] * 1.001)
+    thr = pe._adaptive_rs_threshold(closes, bench)
+    assert thr < -5.0          # 더 깊은(느슨한) 임계
+    assert thr >= -20.0        # 하한 클램프
+
+
+@pytest.mark.unit
+def test_adaptive_threshold_clamped_upper():
+    """안정 페어 — 임계가 -2보다 얕아지지 않게 클램프 (과민 방지)."""
+    closes = [100.0 + i * 0.01 for i in range(100)]
+    bench = [100.0 + i * 0.012 for i in range(100)]
+    thr = pe._adaptive_rs_threshold(closes, bench)
+    assert -5.0 <= thr <= -2.0
+
+
+@pytest.mark.unit
+def test_rs_weak_uses_adaptive_threshold_with_long_history():
+    """90봉 이력 — 적응 임계 적용, evidence에 사용 임계 기록."""
+    import random
+    rng = random.Random(7)
+    closes, bench = [100.0], [100.0]
+    for _ in range(100):
+        closes.append(max(1.0, closes[-1] * (1 + rng.uniform(-0.05, 0.048))))
+        bench.append(bench[-1] * 1.001)
+    # 최근 20일 급락 페어 추가 — rs가 적응 임계도 뚫도록
+    for _ in range(20):
+        closes.append(closes[-1] * 0.93)
+        bench.append(bench[-1] * 1.001)
+    holdings = [{"symbol": "XXX", "market": "US", "price": closes[-1]}]
+    sigs = pe.evaluate_relative_strength(holdings, {"XXX": closes}, {"US": bench})
+    assert len(sigs) == 1
+    assert "threshold_pct" in sigs[0].evidence
+    assert sigs[0].evidence["threshold_pct"] != -5.0  # 적응값 사용됨

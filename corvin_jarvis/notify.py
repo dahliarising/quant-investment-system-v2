@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -276,6 +277,39 @@ def _interpret_lines(alerts: list[dict[str, Any]]) -> list[str]:
 
 _ACTION_EMOJI = {"매수": "🟢", "분할매수": "🔵", "홀딩": "⚪", "비중축소": "🟠", "매도": "🔴", "관망": "⏸"}
 
+# ── 중재 최종 액션 (Phase 2 arbiter) — digest 전용 블록 ──
+_ACTION_ICONS = {"매도검토": "🛑", "비중축소": "✂️", "보류": "⏸️",
+                 "매수후보": "➕", "관찰": "👀", "홀딩": "✅"}
+_FINAL_ACTIONS_PATH = STATE_DIR / "final_actions.json"
+_FINAL_ACTIONS_MAX_AGE_H = 24
+
+
+def _final_actions_block(state_path: Path | None = None) -> str:
+    """digest용 중재 최종 액션 블록. 낡았거나(>24h) 없거나 홀딩뿐이면 ''."""
+    p = state_path or _FINAL_ACTIONS_PATH
+    try:
+        data = json.loads(Path(p).read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(data["ts"])
+    except (OSError, ValueError, KeyError):
+        return ""
+    kst = ZoneInfo("Asia/Seoul")
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=kst)
+    if datetime.now(kst) - ts > timedelta(hours=_FINAL_ACTIONS_MAX_AGE_H):
+        return ""
+    rows = [a for a in data.get("actions", []) if a.get("action") != "홀딩"]
+    if not rows:
+        return ""
+    shown, extra = rows[:8], len(rows) - 8
+    lines = ["", "🎯 중재 최종 액션 (5엔진 통합)"]
+    for a in shown:
+        icon = _ACTION_ICONS.get(a.get("action", ""), "·")
+        flag = " ⚔️" if a.get("conflict") else ""
+        lines.append(f"{icon} {a.get('symbol')} {a.get('action')}{flag} — {a.get('rationale', '')}")
+    if extra > 0:
+        lines.append(f"… 외 {extra}건 (대시보드 참조)")
+    return "\n".join(lines)
+
 
 def _format_message(alerts: list[dict[str, Any]], compact: bool = False,
                     title: str = "", limit: int = 5,
@@ -392,6 +426,15 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     count_label = "감지" if mode == "digest" else "신규"
     msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
+    if mode == "digest":
+        actions_block = _final_actions_block()
+        if actions_block:
+            # Discord 1900자 컷에서 액션 블록(최고 신호)이 잘리지 않게 헤더(첫 줄) 직후 삽입
+            def _insert_after_header(msg: str) -> str:
+                head, sep, rest = msg.partition("\n")
+                return head + sep + actions_block + "\n" + rest if sep else msg + "\n" + actions_block
+            msg_long = _insert_after_header(msg_long)
+            msg_short = _insert_after_header(msg_short)
     delivered: list[str] = []
 
     if channels.is_enabled("telegram"):
