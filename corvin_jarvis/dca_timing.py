@@ -87,6 +87,7 @@ class DCAReport:
     daily_budget_krw: int
     candidates: list[TickerScore]
     skipped: list[dict[str, Any]] = field(default_factory=list)
+    narrative_factor: float = 1.0   # KR 외국인·감성 throttle (1.0=미발동) — 가시화
 
 
 # ============================================================
@@ -358,7 +359,10 @@ def build_dca_report(
     kr_narr_factor = 1.0
     try:
         from corvin_jarvis import narrative
-        kr_narr_factor = narrative.entry_caution()["factor"]
+        _narr = narrative.entry_caution()
+        kr_narr_factor = _narr["factor"]
+        if kr_narr_factor != 1.0:   # 발동 시 가시화 (숨은 throttle 방지)
+            log.info("KR narrative throttle ×%.2f — %s", kr_narr_factor, _narr["reason"])
     except Exception as e:  # noqa: BLE001 — narrative DB 부재/오류 시 게이트 미적용
         log.debug("narrative entry gate skipped: %s", e)
     candidates: list[TickerScore] = []
@@ -390,6 +394,7 @@ def build_dca_report(
         daily_budget_krw=daily_budget_krw,
         candidates=candidates,
         skipped=skipped,
+        narrative_factor=kr_narr_factor,
     )
 
 

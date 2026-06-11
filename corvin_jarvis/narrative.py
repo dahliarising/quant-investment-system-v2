@@ -163,7 +163,7 @@ def entry_caution(db_path: Path | None = None, market: str = "KR",
     try:
         fnb = compute_zscore(p, "foreign_net_buy", lookback_days, market)
         tone = compute_zscore(p, "sentiment_tone", lookback_days, market)
-    except (ValueError, sqlite3.Error):
+    except (ValueError, sqlite3.Error, OSError):
         return {"caution": False, "factor": 1.0, "reason": ""}
     return entry_caution_from_z(fnb["zscore"] if fnb else None,
                                 tone["zscore"] if tone else None)
