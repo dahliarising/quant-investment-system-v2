@@ -77,6 +77,8 @@ def arbitrate(signals: list[dict[str, Any]],
     out: list[FinalAction] = []
     for sym, group in by_sym.items():
         engines = [s["engine"] for s in group]
+        # VELOCITY<70 = 추세 경고(긴급 손절 아님)이라 비방어. ※ VELOCITY(하락장)와
+        # RS_REVERT(비하락장 buy)는 레짐상 상호배타라 동시 출현 불가 — 충돌 무관.
         defensive = [s for s in group if s["intent"] == "defensive"
                      or (s["kind"] == "VELOCITY" and (s.get("urgency") or 0) >= _VELOCITY_DEFENSIVE_URGENCY)]
         buys = [s for s in group if s["intent"] == "buy"]
