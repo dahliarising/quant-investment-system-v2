@@ -224,9 +224,12 @@ def _final_actions(engine_sigs: list[dict], pred_sigs: list[dict],
     from corvin_jarvis.signals import arbiter_inputs as ai
     from corvin_jarvis.signals import calibration as cal_mod
     from corvin_jarvis.signals import ledger
+    dca_syms = frozenset(h["symbol"] for h in _load_portfolio().get("holdings", [])
+                         if str(h.get("bucket")) == "dca")
     res = ai.build_final_actions(
         engine_sigs=engine_sigs, pred_sigs=pred_sigs, playbook_sigs=playbook_sigs,
-        ledger_open=ledger.fetch_open(), calibration=cal_mod.compute())
+        ledger_open=ledger.fetch_open(), calibration=cal_mod.compute(),
+        dca_syms=dca_syms)
     return res["actions"]
 
 

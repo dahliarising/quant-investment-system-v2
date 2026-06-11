@@ -84,6 +84,16 @@ def _eval_one(pos: dict[str, Any], stops: dict[str, float],
     if price is None:
         return mk("UNKNOWN", "—", 0, "가격 미확보 — 평가 불가 (앱 확인)")
 
+    # dca(B) 버킷: 가격 손절 면제 — 익절만 유지, STOP 대신 정보성 HOLD (2-버킷)
+    if str(pos.get("bucket") or "trade") == "dca":
+        if pnl is not None and pnl >= take_profit_pct:
+            return mk("TRIM", "비중축소", 55,
+                      f"PnL +{pnl:.1f}% ≥ +{take_profit_pct:g}% — 일부 차익실현 검토")
+        zone = ""
+        if stop is not None and price <= stop:
+            zone = f" · 손절선 {_fmt(stop)} 이탈했으나 DCA 면제(예약추매/thesis 기준)"
+        return mk("HOLD", "홀딩", 25, f"DCA(B) 보유 — 가격손절 없음{zone}")
+
     # 1) 명시 손절선 종가 이탈 = 최우선
     if stop is not None and price <= stop:
         return mk("STOP", "손절검토", 95,

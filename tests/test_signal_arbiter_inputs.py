@@ -122,3 +122,17 @@ def test_collect_live_survives_partial_failure(monkeypatch, tmp_path):
     res = ai.collect_live()
     assert res["actions"][0]["symbol"] == "NVDA"   # 살아남은 엔진으로 중재 완료
     assert (tmp_path / "fa.json").exists()
+
+
+def test_normalize_ledger_excludes_dca_defensive():
+    """dca 종목의 jarvis 방어(stop) 행은 제외 — 가격손절 면제 일관성."""
+    rows = [
+        {"engine": "jarvis", "symbol": "012450", "kind": "stop_loss",
+         "urgency": 90, "confidence": 50, "evidence": {"message": "stop"}},
+        {"engine": "jarvis", "symbol": "TSLA", "kind": "stop_loss",
+         "urgency": 90, "confidence": 50, "evidence": {"message": "stop"}},
+    ]
+    out = ai.normalize_ledger_open(rows, dca_syms={"012450"})
+    syms = {r["symbol"] for r in out}
+    assert "012450" not in syms   # dca → 제외
+    assert "TSLA" in syms          # trade → 유지
