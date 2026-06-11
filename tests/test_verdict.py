@@ -240,3 +240,39 @@ def test_trade_bucket_is_default():
     """버킷 미지정 = trade(A) = 보호적 손절 기본 적용."""
     v = verdict.decide(_ctx(held=True, pnl_pct=-9.0))  # bucket 없음
     assert v.action == "매도"
+
+
+# ── 추적 익절 (상방 레이어, 2026-06-11) ─────────────────
+
+def test_trailing_tp_lets_winner_run():
+    v = verdict.decide(_ctx(held=True, pnl_pct=20.0, peak_pnl_pct=22.0,
+                            atr_pct=2.0, theme_alive=True))
+    assert v.action == "홀딩"
+
+
+def test_trailing_tp_triggers_on_pullback():
+    v = verdict.decide(_ctx(held=True, pnl_pct=18.0, peak_pnl_pct=30.0, atr_pct=2.0))
+    assert v.action == "비중축소" and "추적" in v.rationale
+
+
+def test_trailing_tp_inactive_below_activate():
+    v = verdict.decide(_ctx(held=True, pnl_pct=10.0, peak_pnl_pct=12.0,
+                            atr_pct=1.0, theme_alive=True))
+    assert v.action == "홀딩"
+
+
+def test_trailing_tp_flat_fallback_no_peak():
+    v = verdict.decide(_ctx(held=True, pnl_pct=26.0))
+    assert v.action == "비중축소"
+
+
+def test_trailing_tp_min_giveback_without_atr():
+    v = verdict.decide(_ctx(held=True, pnl_pct=24.0, peak_pnl_pct=30.0))
+    assert v.action == "비중축소"
+
+
+def test_trailing_helper_units():
+    assert verdict._trailing_take_profit(20.0, 22.0, 2.0) is False
+    assert verdict._trailing_take_profit(18.0, 30.0, 2.0) is True
+    assert verdict._trailing_take_profit(26.0, None, None) is True
+    assert verdict._trailing_take_profit(10.0, 12.0, 1.0) is False
