@@ -115,8 +115,8 @@ def test_rs_skipped_with_insufficient_data():
 
 @pytest.mark.unit
 def test_event_fires_for_upcoming_bok():
-    """BOK 금통위 D-2 (2026-06-11) — 신호 발생."""
-    sigs = pe.evaluate_events(as_of=date(2026, 6, 9), held_symbols=["012450"])
+    """BOK 금통위 D-2 (2026-07-09, 실제 금리결정 달) — 신호 발생."""
+    sigs = pe.evaluate_events(as_of=date(2026, 7, 7), held_symbols=["012450"])
     assert any("금융통화" in s.message or "BOK" in s.message for s in sigs)
 
 

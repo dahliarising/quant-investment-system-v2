@@ -15,9 +15,12 @@ from corvin_jarvis.signals.leading_signal import LeadingSignal
 
 # 분기마다 갱신하는 거시 캘린더. (name, ISO date)
 # 2026 FOMC/BOK 일정 — 갱신 시 이 리스트만 수정.
+# ⚠️ BOK 기준금리 결정회의는 2026년 8회뿐: 1·2·4·5·7·8·10·11월.
+#    6·9·12월은 금리결정이 아니라 금융안정회의 → 금리 이벤트로 넣지 말 것.
+#    (출처: 한국은행 통화정책방향 결정회의 일정. 직전 결정 5/28 2.5% 동결)
+_BOK_DECISION_MONTHS = frozenset({1, 2, 4, 5, 7, 8, 10, 11})
 MACRO_CALENDAR: list[tuple[str, str]] = [
     ("FOMC 금리결정", "2026-06-17"),
-    ("BOK 금융통화위원회", "2026-06-11"),
     ("FOMC 금리결정", "2026-07-29"),
     ("BOK 금융통화위원회", "2026-07-09"),
 ]
