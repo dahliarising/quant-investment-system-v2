@@ -439,3 +439,30 @@ def test_empty_message_flags_real_data_error() -> None:
     )
     msg = dca_timing.format_discord_message(report)
     assert "데이터오류" in msg
+
+
+# ── 2축 레짐: posture 기반 multiplier (2026-06-11) ──────
+
+@pytest.mark.unit
+def test_posture_multiplier_throttles_down_calm():
+    assert dca_timing._posture_multiplier("throttle") == 0.5
+    assert dca_timing._posture_multiplier("capitulation_buy") == 1.3
+    assert dca_timing._posture_multiplier("normal") == 1.0
+    assert dca_timing._posture_multiplier("accumulate") == 1.0
+
+
+@pytest.mark.unit
+def test_posture_multiplier_unknown_falls_back():
+    assert dca_timing._posture_multiplier(None) is None
+    assert dca_timing._posture_multiplier("weird") is None
+
+
+@pytest.mark.unit
+def test_load_posture_and_throttle_halves(monkeypatch, tmp_path):
+    """throttle posture → DCA 점수 반감 경로 (정돈된 하락 신규 억제)."""
+    import json as _json
+    (tmp_path / "last_regime.json").write_text(
+        _json.dumps({"label": "neutral", "posture": "throttle"}))
+    monkeypatch.setattr(dca_timing, "STATE_DIR", tmp_path)
+    assert dca_timing._load_posture() == "throttle"
+    assert dca_timing._posture_multiplier(dca_timing._load_posture()) == 0.5

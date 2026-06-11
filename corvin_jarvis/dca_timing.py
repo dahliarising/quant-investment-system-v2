@@ -190,7 +190,11 @@ def _score_to_multiplier(score: int) -> float:
 
 
 def _regime_multiplier(regime: str | None) -> float:
-    """regime.py는 lowercase ("crisis"/"risk_off"/...)로 반환 — case-insensitive."""
+    """regime.py는 lowercase ("crisis"/"risk_off"/...)로 반환 — case-insensitive.
+
+    ⚠️ 단일축 fallback. 2축 posture가 있으면 _posture_multiplier 우선
+    (risk_off가 무조건 가속하는 결함을 posture가 교정 — 정돈된 하락은 throttle).
+    """
     key = (regime or "").upper()
     return {
         "CRISIS": 1.3,
@@ -199,6 +203,31 @@ def _regime_multiplier(regime: str | None) -> float:
         "NEUTRAL": 1.0,
         "EUPHORIA": 0.7,
     }.get(key, 1.0)
+
+
+# 2축 레짐 posture → DCA 신규 진입 multiplier (점수 배율)
+_POSTURE_MULT = {
+    "capitulation_buy": 1.3,   # 진짜 투매 — 역발상 가속
+    "accumulate": 1.0,
+    "normal": 1.0,
+    "throttle": 0.5,           # 정돈된 하락(down+calm) — 신규 진입 억제(점수 반감)
+}
+
+
+def _posture_multiplier(posture: str | None) -> float | None:
+    """posture → multiplier. 미지/None이면 None (라벨 multiplier로 fallback)."""
+    return _POSTURE_MULT.get(posture) if posture in _POSTURE_MULT else None
+
+
+def _load_posture() -> str | None:
+    """jarvis 2축 레짐 posture — last_regime.json에서 (없으면 None)."""
+    last = STATE_DIR / "last_regime.json"
+    if last.exists():
+        try:
+            return json.loads(last.read_text()).get("posture")
+        except (json.JSONDecodeError, OSError):
+            return None
+    return None
 
 
 def _base_allocation_per_ticker(
@@ -322,7 +351,9 @@ def build_dca_report(
     for u in active:
         tier_counts[u["tier"]] = tier_counts.get(u["tier"], 0) + 1
 
-    regime_mult = _regime_multiplier(regime)
+    # posture(2축) 우선 — 없으면 라벨 단일축 fallback (회귀 0)
+    _pm = _posture_multiplier(_load_posture())
+    regime_mult = _pm if _pm is not None else _regime_multiplier(regime)
     candidates: list[TickerScore] = []
     skipped: list[dict[str, Any]] = []
 
