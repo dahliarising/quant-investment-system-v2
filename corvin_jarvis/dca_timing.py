@@ -354,16 +354,24 @@ def build_dca_report(
     # posture(2축) 우선 — 없으면 라벨 단일축 fallback (회귀 0)
     _pm = _posture_multiplier(_load_posture())
     regime_mult = _pm if _pm is not None else _regime_multiplier(regime)
+    # KR narrative 게이트 (외국인 순매도·감성 악화) — KR 심볼에만 throttle
+    kr_narr_factor = 1.0
+    try:
+        from corvin_jarvis import narrative
+        kr_narr_factor = narrative.entry_caution()["factor"]
+    except Exception as e:  # noqa: BLE001 — narrative DB 부재/오류 시 게이트 미적용
+        log.debug("narrative entry gate skipped: %s", e)
     candidates: list[TickerScore] = []
     skipped: list[dict[str, Any]] = []
 
     for u in active:
+        eff_mult = regime_mult * kr_narr_factor if _is_kr_symbol(u["symbol"]) else regime_mult
         scored, reason = _score_one(
             symbol=u["symbol"],
             tier=u["tier"],
             daily_budget_krw=daily_budget_krw,
             tier_counts=tier_counts,
-            regime_mult=regime_mult,
+            regime_mult=eff_mult,
             fetcher=fetcher,
             live_fetcher=live_fetcher,
         )
