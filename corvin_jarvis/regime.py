@@ -45,7 +45,10 @@ def entry_posture(trend: str, stress_label: str) -> str:
     """
     if trend == "down":
         return "capitulation_buy" if stress_label == "crisis" else "throttle"
-    if trend == "up" and stress_label not in ("crisis", "risk_off"):
+    # 비하락(up/chop): crisis 스트레스면 가속 금지(데드캣 반등·불안정) → throttle
+    if stress_label == "crisis":
+        return "throttle"
+    if trend == "up" and stress_label != "risk_off":
         return "accumulate"
     return "normal"
 
@@ -229,17 +232,23 @@ def detect_regime(
     out = label_from_signals(vix=vix, vix_zscore=vix_z, usd_krw_pct=fx_pct, correlation=correl)
 
     # 2축 trend — sp500 ~10세션 모멘텀 (가격축, 정돈된 하락 식별)
+    # quote_history는 시간당 기록 → 일별 종가(하루 마지막 ts)로 그룹핑해야
+    # ~10'세션'을 봄 (LIMIT만 쓰면 ~10'시간'을 봐 신호가 무력화됨).
     broad_pct: float | None = None
     if timeseries_db.exists():
         try:
             with sqlite3.connect(timeseries_db) as conn:
                 rows = conn.execute(
                     "SELECT price FROM quote_history WHERE symbol='sp500' "
-                    "AND price IS NOT NULL ORDER BY ts_utc DESC LIMIT 11"
+                    "AND price IS NOT NULL AND ts_utc IN ("
+                    "  SELECT MAX(ts_utc) FROM quote_history "
+                    "  WHERE symbol='sp500' AND price IS NOT NULL "
+                    "  GROUP BY date(ts_utc)) "
+                    "ORDER BY ts_utc DESC LIMIT 11"
                 ).fetchall()
             vals = [float(r[0]) for r in rows if r[0] is not None]
             if len(vals) >= 2 and vals[-1] > 0:
-                broad_pct = (vals[0] / vals[-1] - 1) * 100   # 최신/약10세션전
+                broad_pct = (vals[0] / vals[-1] - 1) * 100   # 최신일/약10세션전
         except sqlite3.Error:
             pass
     out["trend"] = trend_from_returns(broad_pct)
@@ -265,6 +274,7 @@ def detect_regime(
         "score": out["score"],
         "drivers": out["drivers"],
         "trend": out["trend"],
+        "broad_returns_pct": out["broad_returns_pct"],
         "posture": out["posture"],
         "timestamp": datetime.now().isoformat(timespec="seconds"),
     }, ensure_ascii=False, indent=2))

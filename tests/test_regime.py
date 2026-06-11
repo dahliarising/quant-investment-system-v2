@@ -213,3 +213,38 @@ def test_entry_posture_up_accumulates():
 @pytest.mark.unit
 def test_entry_posture_chop_normal():
     assert regime.entry_posture("chop", "neutral") == "normal"
+
+
+@pytest.mark.unit
+def test_entry_posture_nondown_crisis_throttles():
+    """리뷰 반영: up/chop + crisis(데드캣·불안정) → throttle (가속 금지)."""
+    assert regime.entry_posture("up", "crisis") == "throttle"
+    assert regime.entry_posture("chop", "crisis") == "throttle"
+
+
+@pytest.mark.unit
+def test_detect_regime_momentum_uses_daily_not_hourly(tmp_path):
+    """리뷰 CRITICAL 회귀 가드: 시간당 기록을 일별 종가로 그룹핑.
+
+    하루에 여러 시간행이 있어도 ~10'세션' 추세를 봐야 (시간 아님).
+    10일에 걸쳐 sp500 100→92 (-8%) → trend=down.
+    """
+    import sqlite3
+    db = tmp_path / "ts.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE quote_history (ts_utc TEXT, ts_kst TEXT, "
+                     "category TEXT, symbol TEXT, price REAL, pct_change REAL)")
+        # 11일, 각 날짜에 3개 시간행(09/12/15시) — 종가=15시
+        for d in range(11):
+            day = f"2026-06-{d+1:02d}"
+            close = 100.0 - d * 0.8           # 6/01=100 … 6/11=92 (최신이 더 낮음)
+            for hh, px in [("09", close + 0.5), ("12", close + 0.2), ("15", close)]:
+                conn.execute("INSERT INTO quote_history VALUES (?,?,?,?,?,?)",
+                             (f"{day}T{hh}:00:00", f"{day}T{hh}:00:00", "indices",
+                              "sp500", px, 0.0))
+    snap = {"indices": {"vix": {"price": 16.0}}, "fx": {"usd_krw": {"pct_change": 0.3}}}
+    out = regime.detect_regime(snap, db, tmp_path / "last_regime.json")
+    # 최신일(6/11=92) vs 약10일전(6/01=100) → -8% → down
+    assert out["trend"] == "down"
+    assert out["broad_returns_pct"] is not None and out["broad_returns_pct"] < -5
+    assert out["posture"] in ("throttle", "capitulation_buy")
