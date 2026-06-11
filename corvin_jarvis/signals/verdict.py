@@ -6,7 +6,9 @@ from typing import Any
 
 _STOP_LOSS = -8.0          # ATR 미가용 시 평면 fallback (A 버킷)
 _ATR_STOP_K = 5.0          # 손절선 = -(K × 일일 ATR%) — 변동성 조정
-_ATR_STOP_CLAMP = (-25.0, -4.0)   # (floor, ceiling) — 너무 넓/타이트 방지
+# 음수 손절 공간: -25=가장 깊은(넓은) 손절, -4=가장 얕은(타이트한) 손절.
+# (widest, tightest) 순서. 튜플 순서 바꾸면 클램프가 역전되니 주의.
+_ATR_STOP_CLAMP = (-25.0, -4.0)
 _TAKE_PROFIT = 25.0
 _RS_LAGGARD = -4.0
 _RS_LEADER = 4.0
@@ -32,8 +34,8 @@ def _atr_stop_threshold(atr_pct: float | None,
     """
     if not atr_pct or atr_pct <= 0:
         return None
-    lo, hi = _ATR_STOP_CLAMP
-    return max(lo, min(hi, -k * atr_pct))
+    widest, tightest = _ATR_STOP_CLAMP   # (-25, -4): 음수 공간 floor/ceiling
+    return max(widest, min(tightest, -k * atr_pct))
 
 
 def decide(ctx: dict[str, Any]) -> Verdict:

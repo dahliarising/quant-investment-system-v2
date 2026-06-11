@@ -188,6 +188,10 @@ def _effective_stop_pct(pos: dict[str, Any], flat: float) -> float | None:
 
     우선순위: 명시 stop_loss_pct override > ATR 조정(atr_pct) > 평면 flat.
     ATR 수학은 verdict._atr_stop_threshold 단일 출처 재사용 (2-버킷 시스템).
+
+    설계 주의: dca(B)는 가격손절 면제 — flat~pnl_alert(예: -8~-10%) 구간엔
+    의도적으로 STOP 미발동. DCA는 드로다운을 *예상*하는 모드이므로 정상.
+    심각한 손실은 pnl_alert(|pnl|≥임계)가 잡고, 근거 붕괴는 thesis 체크(verdict).
     """
     if str(pos.get("bucket") or "trade") == "dca":
         return None

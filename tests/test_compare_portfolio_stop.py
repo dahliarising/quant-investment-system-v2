@@ -64,3 +64,22 @@ def test_dca_position_take_profit_still_fires():
     alerts = compare.check_portfolio(
         _latest([{"symbol": "Y", "pnl_pct": 30.0, "bucket": "dca"}]), _TH)
     assert any(a.metric.startswith("take_profit_") for a in alerts)
+
+
+@pytest.mark.unit
+def test_bucket_survives_positionquote_serialization(monkeypatch):
+    """회귀 가드: pulse.PositionQuote→asdict 경로에서 bucket 보존 (compare 입력)."""
+    from dataclasses import asdict
+    from corvin_jarvis import pulse
+
+    class _Q:
+        price, pct_change, source, error = 100.0, 0.0, "test", None
+    monkeypatch.setattr(pulse.quote_provider, "get_stock_quote", lambda s: _Q())
+    pq = pulse._fetch_position_quote(
+        {"symbol": "012450", "shares": 4, "currency": "KRW",
+         "avgPriceKRW": 125.0, "bucket": "dca"})   # -20% 손실 유발
+    pos = asdict(pq)
+    assert pos["bucket"] == "dca"
+    # 직렬화 dict가 compare로 들어가도 dca 면제 작동
+    alerts = compare.check_portfolio(_latest([pos]), _TH)
+    assert _stop_alerts(alerts) == []
