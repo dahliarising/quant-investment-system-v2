@@ -10,6 +10,19 @@ import pytest
 from corvin_jarvis import dca_timing
 
 
+@pytest.fixture(autouse=True)
+def _isolate_regime_narrative(monkeypatch, tmp_path):
+    """라이브 last_regime.json(posture)·signals.db 의존 제거 — 결정적 배율.
+
+    STATE_DIR을 빈 tmp로 → last_regime.json 부재 → _load_posture None(자연).
+    개별 테스트가 STATE_DIR/narrative를 명시 설정하면 그 값이 우선(override).
+    """
+    monkeypatch.setattr(dca_timing, "STATE_DIR", tmp_path / "_isolated_state")
+    from corvin_jarvis import narrative
+    monkeypatch.setattr(narrative, "entry_caution",
+                        lambda *a, **k: {"caution": False, "factor": 1.0, "reason": ""})
+
+
 # ---------- 가격 시계열 helper ----------
 
 
