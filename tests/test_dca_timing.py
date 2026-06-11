@@ -466,3 +466,24 @@ def test_load_posture_and_throttle_halves(monkeypatch, tmp_path):
     monkeypatch.setattr(dca_timing, "STATE_DIR", tmp_path)
     assert dca_timing._load_posture() == "throttle"
     assert dca_timing._posture_multiplier(dca_timing._load_posture()) == 0.5
+
+
+@pytest.mark.unit
+def test_kr_narrative_gate_throttles_kr_only(monkeypatch):
+    """KR narrative caution → KR 심볼만 eff_mult 축소, US는 무영향."""
+    from corvin_jarvis import narrative
+    # narrative caution 강제 (factor 0.7)
+    monkeypatch.setattr(narrative, "entry_caution",
+                        lambda *a, **k: {"caution": True, "factor": 0.7, "reason": "외국인 순매도"})
+    monkeypatch.setattr(dca_timing, "_load_posture", lambda: None)
+    monkeypatch.setattr(dca_timing, "_regime_multiplier", lambda r: 1.0)
+    captured = {}
+    def fake_score_one(symbol, regime_mult, **kw):
+        captured[symbol] = regime_mult
+        return None, "skip"
+    monkeypatch.setattr(dca_timing, "_score_one", fake_score_one)
+    universe = [{"symbol": "012450", "tier": 1}, {"symbol": "NVDA", "tier": 1}]
+    dca_timing.build_dca_report(universe, market_window="ALL",
+                                fetcher=lambda s, d=252: [100.0] * 60)
+    assert captured["012450"] == 0.7   # KR → narrative throttle
+    assert captured["NVDA"] == 1.0     # US → 무영향
