@@ -382,3 +382,44 @@ def test_velocity_fires_when_regime_unknown():
         [{"symbol": "TSLA", "price": 385.0}], stops={"TSLA": 370.0},
         closes_by_sym={"TSLA": _mk_down_closes()}, regime_trend=None)
     assert any(s.kind == "VELOCITY" for s in sigs)
+
+
+# ── RS_WEAK 레짐별 의미 반전 (역발상 검증, 2026-06-11) ──
+
+def _weak_pair():
+    holding = [100.0 * (0.99 ** i) for i in range(21)]   # 약세
+    bench = [100.0 * (1.001 ** i) for i in range(21)]
+    return holding, bench
+
+
+@pytest.mark.unit
+def test_rs_weak_kept_in_down_regime():
+    """추세 하락장 → 기존 RS_WEAK(약세 경고) 유지."""
+    h, b = _weak_pair()
+    sigs = pe.evaluate_relative_strength(
+        [{"symbol": "X", "market": "US", "price": h[-1]}],
+        {"X": h}, {"US": b}, regime_trend="down")
+    assert sigs and sigs[0].kind == "RS_WEAK"
+    assert "약세" in sigs[0].message
+
+
+@pytest.mark.unit
+def test_rs_revert_in_non_down_regime():
+    """횡보/상승장 → RS_REVERT(과매도 반등 후보)로 반전 (역발상 +7% 검증)."""
+    h, b = _weak_pair()
+    for tr in ("chop", "up"):
+        sigs = pe.evaluate_relative_strength(
+            [{"symbol": "X", "market": "US", "price": h[-1]}],
+            {"X": h}, {"US": b}, regime_trend=tr)
+        assert sigs and sigs[0].kind == "RS_REVERT"
+        assert "반등" in sigs[0].message
+
+
+@pytest.mark.unit
+def test_rs_weak_backcompat_when_trend_none():
+    """레짐 미상(None) → 기존 RS_WEAK 보존 (회귀 0)."""
+    h, b = _weak_pair()
+    sigs = pe.evaluate_relative_strength(
+        [{"symbol": "X", "market": "US", "price": h[-1]}],
+        {"X": h}, {"US": b}, regime_trend=None)
+    assert sigs and sigs[0].kind == "RS_WEAK"

@@ -54,14 +54,15 @@ def score_row(row: dict[str, Any], *,
             return None  # 유예 중
         return "miss", {"min_close": min(closes_after), "stop": stop}
 
-    if kind == "RS_WEAK":
+    if kind in ("RS_WEAK", "RS_REVERT"):
         h_ret = _ret_pct(closes_after[:horizon])
         b_ret = _ret_pct(bench_after[:horizon])
         if h_ret is None or b_ret is None:
             return "unscorable", {"reason": "insufficient closes"}
         rs = h_ret - b_ret
-        verdict = "hit" if rs < 0 else "miss"
-        return verdict, {"rs_pct": round(rs, 2)}
+        # RS_WEAK=약세 지속(rs<0) hit / RS_REVERT=반등(rs>0) hit — 역발상
+        hit = (rs < 0) if kind == "RS_WEAK" else (rs > 0)
+        return ("hit" if hit else "miss"), {"rs_pct": round(rs, 2)}
 
     if kind == "EVENT":
         if not bench_after or not bench_before or len(bench_before) < 3:

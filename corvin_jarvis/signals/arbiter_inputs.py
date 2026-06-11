@@ -47,7 +47,10 @@ def normalize_predictive_signals(sigs: list[dict]) -> list[dict]:
         sym = str(s.get("symbol", ""))
         if not sym:
             continue
-        out.append(_row("predictive", sym, str(s.get("kind", "")), "warn",
+        kind = str(s.get("kind", ""))
+        # RS_REVERT(역발상 반등 후보)는 buy-lean, 그 외 예측은 warn(주의)
+        intent = "buy" if kind == "RS_REVERT" else "warn"
+        out.append(_row("predictive", sym, kind, intent,
                         int(s.get("urgency") or 0), s.get("confidence"),
                         str(s.get("message", ""))))
     return out
