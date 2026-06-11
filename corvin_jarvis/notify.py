@@ -301,14 +301,49 @@ def _final_actions_block(state_path: Path | None = None) -> str:
     rows = [a for a in data.get("actions", []) if a.get("action") != "홀딩"]
     if not rows:
         return ""
-    shown, extra = rows[:8], len(rows) - 8
+    # 매수후보(관찰 리스트)는 다수라 한 줄 요약, 액션성(보유 손절/익절 등)만 개별 노출
+    buys = [a for a in rows if a.get("action") == "매수후보"]
+    actionable = [a for a in rows if a.get("action") != "매수후보"]
+    shown, extra = actionable[:6], len(actionable) - 6
     lines = ["", "🎯 중재 최종 액션 (5엔진 통합)"]
     for a in shown:
         icon = _ACTION_ICONS.get(a.get("action", ""), "·")
         flag = " ⚔️" if a.get("conflict") else ""
         lines.append(f"{icon} {a.get('symbol')} {a.get('action')}{flag} — {a.get('rationale', '')}")
     if extra > 0:
-        lines.append(f"… 외 {extra}건 (대시보드 참조)")
+        lines.append(f"… 외 액션 {extra}건 (대시보드)")
+    if buys:
+        syms = "·".join(str(a.get("symbol", "")) for a in buys[:8])
+        more = f" 외 {len(buys) - 8}" if len(buys) > 8 else ""
+        lines.append(f"➕ 매수후보 {len(buys)}종목: {syms}{more} (대시보드)")
+    return "\n".join(lines)
+
+
+_PRED_ICONS = {"EVENT": "📅", "VELOCITY": "⚡", "RS_WEAK": "📉", "VELOCITY_UP": "📈"}
+
+
+def _predictive_block(state_path: Path | None = None) -> str:
+    """digest용 예측(선행) 신호 블록 — final_actions.json의 predictive 필드."""
+    p = state_path or _FINAL_ACTIONS_PATH
+    try:
+        data = json.loads(Path(p).read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(data["ts"])
+    except (OSError, ValueError, KeyError):
+        return ""
+    kst = ZoneInfo("Asia/Seoul")
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=kst)
+    if datetime.now(kst) - ts > timedelta(hours=_FINAL_ACTIONS_MAX_AGE_H):
+        return ""
+    preds = data.get("predictive", [])
+    if not preds:
+        return ""
+    lines = ["", "🔮 예측 신호 (선행)"]
+    for s in preds:
+        icon = _PRED_ICONS.get(str(s.get("kind", "")), "·")
+        sym = str(s.get("symbol") or "").strip()
+        head = f"{sym} " if sym else ""
+        lines.append(f"{icon} {head}{s.get('message', '')}")
     return "\n".join(lines)
 
 
@@ -428,12 +463,12 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     if mode == "digest":
-        actions_block = _final_actions_block()
-        if actions_block:
-            # Discord 1900자 컷에서 액션 블록(최고 신호)이 잘리지 않게 헤더(첫 줄) 직후 삽입
+        # 중재 액션 + 예측(선행) 신호를 헤더 직후 함께 삽입 (잘림 방지)
+        top_block = _final_actions_block() + _predictive_block()
+        if top_block:
             def _insert_after_header(msg: str) -> str:
                 head, sep, rest = msg.partition("\n")
-                return head + sep + actions_block + "\n" + rest if sep else msg + "\n" + actions_block
+                return head + sep + top_block + "\n" + rest if sep else msg + "\n" + top_block
             msg_long = _insert_after_header(msg_long)
             msg_short = _insert_after_header(msg_short)
     delivered: list[str] = []

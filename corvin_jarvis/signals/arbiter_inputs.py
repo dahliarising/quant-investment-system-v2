@@ -102,6 +102,17 @@ def normalize_ledger_open(rows: list[dict], dca_syms=frozenset()) -> list[dict]:
     return out
 
 
+def _summarize_predictive(pred_sigs: list[dict]) -> list[dict]:
+    """digest용 예측 요약 — EVENT 우선, 그 외 urgency 내림차순, cap 5."""
+    ranked = sorted(pred_sigs or [],
+                    key=lambda s: (0 if s.get("kind") == "EVENT" else 1,
+                                   -(s.get("urgency") or 0)))
+    return [{"kind": s.get("kind"), "symbol": s.get("symbol") or "",
+             "message": s.get("message", ""), "horizon_days": s.get("horizon_days"),
+             "urgency": s.get("urgency")}
+            for s in ranked[:5]]
+
+
 def build_final_actions(*, engine_sigs: list[dict], pred_sigs: list[dict],
                         playbook_sigs: list[dict], ledger_open: list[dict],
                         calibration: dict | None,
@@ -117,7 +128,8 @@ def build_final_actions(*, engine_sigs: list[dict], pred_sigs: list[dict],
     t = now or datetime.now(KST)
     if t.tzinfo is None:
         t = t.replace(tzinfo=KST)
-    result = {"ts": t.isoformat(timespec="seconds"), "actions": actions}
+    result = {"ts": t.isoformat(timespec="seconds"), "actions": actions,
+              "predictive": _summarize_predictive(pred_sigs)}
     target = out_path or STATE_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
