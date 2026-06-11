@@ -88,3 +88,30 @@ def test_load_stops_from_json(tmp_path):
 @pytest.mark.unit
 def test_empty_holdings():
     assert se.evaluate([]) == []
+
+
+@pytest.mark.unit
+def test_dca_bucket_below_stop_no_stop_signal():
+    """dca(B) 버킷 — 명시 손절선 이탈해도 STOP 아님 (가격손절 면제)."""
+    pos = {"symbol": "012450", "market": "KR", "price": 970000.0,
+           "pnl_pct": -21.0, "bucket": "dca"}
+    sig = se.evaluate([pos], stops={"012450": 1000000.0})
+    assert sig[0].kind != "STOP"
+    assert "DCA" in sig[0].reason or "면제" in sig[0].reason
+
+
+@pytest.mark.unit
+def test_dca_bucket_take_profit_still_fires():
+    """dca 버킷도 익절은 발동 (가격손절만 면제)."""
+    pos = {"symbol": "X", "market": "US", "price": 130.0, "pnl_pct": 30.0,
+           "bucket": "dca"}
+    sig = se.evaluate([pos], stops={"X": 90.0})
+    assert sig[0].kind == "TRIM"
+
+
+@pytest.mark.unit
+def test_trade_bucket_below_stop_still_stops():
+    """trade(기본) 버킷 — 기존 STOP 동작 보존 (회귀)."""
+    pos = {"symbol": "TSLA", "market": "US", "price": 370.0, "pnl_pct": -15.0}
+    sig = se.evaluate([pos], stops={"TSLA": 377.0})
+    assert sig[0].kind == "STOP"

@@ -71,12 +71,12 @@ def normalize_playbook_signals(sigs: list[dict]) -> list[dict]:
     return out
 
 
-def normalize_ledger_open(rows: list[dict]) -> list[dict]:
+def normalize_ledger_open(rows: list[dict], dca_syms=frozenset()) -> list[dict]:
     """ledger open 행 → 공통 dict. leading/jarvis만 (라이브 엔진 이중 계상 방지).
 
     leading: direction bull→buy / bear→warn.
     jarvis: stop_loss·hardstop→defensive, 그 외 정보성 제외 (방향 없음).
-    매크로(symbol="") 제외.
+    매크로(symbol="") 제외. dca_syms의 방어(stop) 행은 제외 — 가격손절 면제 일관성.
     """
     out = []
     for r in rows:
@@ -96,7 +96,7 @@ def normalize_ledger_open(rows: list[dict]) -> list[dict]:
                 out.append(_row(engine, sym, kind, "warn",
                                 int(r.get("urgency") or 50), conf, note))
             continue
-        if kind in _JARVIS_DEFENSIVE_KINDS:
+        if kind in _JARVIS_DEFENSIVE_KINDS and sym not in dca_syms:
             out.append(_row(engine, sym, kind, "defensive",
                             int(r.get("urgency") or 90), conf, note))
     return out
@@ -105,13 +105,14 @@ def normalize_ledger_open(rows: list[dict]) -> list[dict]:
 def build_final_actions(*, engine_sigs: list[dict], pred_sigs: list[dict],
                         playbook_sigs: list[dict], ledger_open: list[dict],
                         calibration: dict | None,
+                        dca_syms=frozenset(),
                         out_path: Path | None = None,
                         now: datetime | None = None) -> dict[str, Any]:
     """normalize → arbitrate → {ts, actions} 반환 + state 파일 기록."""
     signals = (normalize_engine_signals(engine_sigs)
                + normalize_predictive_signals(pred_sigs)
                + normalize_playbook_signals(playbook_sigs)
-               + normalize_ledger_open(ledger_open))
+               + normalize_ledger_open(ledger_open, dca_syms))
     actions = [a.to_dict() for a in arbiter.arbitrate(signals, calibration=calibration)]
     t = now or datetime.now(KST)
     if t.tzinfo is None:
@@ -145,9 +146,11 @@ def collect_live() -> dict[str, Any]:
     playbook_sigs = snap._safe(lambda: snap._build_signals(holdings), [])
     ledger_open = snap._safe(ledger.fetch_open, [])
     calibration = snap._safe(cal_mod.compute, None)
+    dca_syms = frozenset(h["symbol"] for h in held
+                         if str(h.get("bucket")) == "dca")
     return build_final_actions(engine_sigs=engine_sigs, pred_sigs=pred_sigs,
                                playbook_sigs=playbook_sigs, ledger_open=ledger_open,
-                               calibration=calibration)
+                               calibration=calibration, dca_syms=dca_syms)
 
 
 if __name__ == "__main__":
