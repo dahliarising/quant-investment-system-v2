@@ -138,7 +138,8 @@ def _held_for_engine(pf: dict, positions: list[dict]) -> list[dict]:
                     "market": "KR" if ccy == "KRW" else "US",
                     "price": p.get("price"), "pnl_pct": p.get("pnl_pct"),
                     "shares": m.get("shares"),
-                    "avg": m.get("avgPriceKRW") if ccy == "KRW" else m.get("avgPriceUSD")})
+                    "avg": m.get("avgPriceKRW") if ccy == "KRW" else m.get("avgPriceUSD"),
+                    "bucket": str(m.get("bucket") or "trade")})  # A(trade)/B(dca) 손절 버킷
     return out
 
 

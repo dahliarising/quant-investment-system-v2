@@ -183,6 +183,21 @@ def check_fx(latest: dict[str, Any], thresholds: dict[str, Any]) -> list[Alert]:
     return alerts
 
 
+def _effective_stop_pct(pos: dict[str, Any], flat: float) -> float | None:
+    """종목별 유효 손절 임계(%). None = dca(B) 버킷, 가격손절 면제.
+
+    우선순위: 명시 stop_loss_pct override > ATR 조정(atr_pct) > 평면 flat.
+    ATR 수학은 verdict._atr_stop_threshold 단일 출처 재사용 (2-버킷 시스템).
+    """
+    if str(pos.get("bucket") or "trade") == "dca":
+        return None
+    if pos.get("stop_loss_pct") is not None:
+        return float(pos["stop_loss_pct"])
+    from corvin_jarvis.signals.verdict import _atr_stop_threshold
+    atr_stop = _atr_stop_threshold(pos.get("atr_pct"))
+    return atr_stop if atr_stop is not None else flat
+
+
 def check_portfolio(latest: dict[str, Any], thresholds: dict[str, float]) -> list[Alert]:
     alerts: list[Alert] = []
     pnl_alert = thresholds.get("pnl_alert_pct", 10.0)
@@ -195,12 +210,13 @@ def check_portfolio(latest: dict[str, Any], thresholds: dict[str, float]) -> lis
         if pnl is None:
             continue
 
-        if pnl <= stop_loss:
+        eff_stop = _effective_stop_pct(pos, stop_loss)   # None = dca(가격손절 면제)
+        if eff_stop is not None and pnl <= eff_stop:
             alerts.append(Alert(
                 category="portfolio", metric=f"stop_loss_{sym}",
                 severity=Severity.CRITICAL,
-                message=f"🛑 {sym} STOP LOSS 도달: PnL {pnl:+.2f}% (임계 {stop_loss}%) — 손절 검토",
-                value=pnl, threshold=stop_loss,
+                message=f"🛑 {sym} STOP LOSS 도달: PnL {pnl:+.2f}% (임계 {eff_stop:.1f}%) — 손절 검토",
+                value=pnl, threshold=eff_stop,
             ))
         elif pnl >= take_profit:
             alerts.append(Alert(

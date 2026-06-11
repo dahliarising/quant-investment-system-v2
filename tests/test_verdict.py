@@ -163,3 +163,80 @@ def test_jarvis_writes_verdicts_file(tmp_path, monkeypatch):
     data = json.loads(vf.read_text())
     assert "NVDA" in data and "000660" in data
     assert data["NVDA"]["action"] == "홀딩"
+
+
+# ── ATR 변동성 조정 손절 + A/B 버킷 (2026-06-11) ──────────
+
+def test_atr_stop_threshold_widens_for_volatile():
+    """고변동(ATR% 큼) → 더 깊은(넓은) 손절선."""
+    thr = verdict._atr_stop_threshold(2.6)   # TSLA류
+    assert thr == -13.0   # -5 × 2.6
+
+
+def test_atr_stop_threshold_tightens_for_calm():
+    """저변동 → 더 얕은(타이트한) 손절선."""
+    assert verdict._atr_stop_threshold(1.0) == -5.0
+
+
+def test_atr_stop_threshold_clamped_both_ends():
+    """극단 변동성은 클램프 — 너무 넓거나 너무 타이트하지 않게."""
+    assert verdict._atr_stop_threshold(6.0) == -25.0   # floor
+    assert verdict._atr_stop_threshold(0.5) == -4.0    # ceiling
+
+
+def test_atr_stop_threshold_none_on_missing():
+    """ATR 없음 → None (호출측이 평면 -8% fallback)."""
+    assert verdict._atr_stop_threshold(None) is None
+    assert verdict._atr_stop_threshold(0) is None
+
+
+def test_held_uses_atr_stop_not_flat():
+    """ATR 손절이 평면보다 넓을 때 — 평면이면 팔릴 손실도 홀딩."""
+    # atr_pct 2.6 → 손절 -13%. pnl -10%는 평면(-8)이면 매도지만 ATR이면 홀딩
+    v = verdict.decide(_ctx(held=True, pnl_pct=-10.0, atr_pct=2.6, theme_alive=True))
+    assert v.action == "홀딩"
+
+
+def test_held_atr_stop_triggers_when_breached():
+    """ATR 손절선 돌파 — 매도 + ATR 근거 명시."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=-14.0, atr_pct=2.6))
+    assert v.action == "매도"
+    assert "ATR" in v.rationale
+
+
+def test_held_flat_fallback_when_no_atr():
+    """ATR 미제공 — 기존 평면 -8% 동작 보존 (회귀 방지)."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=-9.0))
+    assert v.action == "매도" and v.confidence == "상"
+
+
+def test_dca_bucket_skips_price_stop():
+    """B(dca) 버킷 — 가격 손절 미적용. -20%여도 매도 아님 (예약 추매 보존)."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=-20.0, bucket="dca", theme_alive=True))
+    assert v.action != "매도"
+
+
+def test_dca_bucket_still_trims_on_thesis_weakness():
+    """B 버킷도 thesis 약화(RS 약세+테마 식음)엔 비중축소 — 가격 아닌 근거 기준."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=-20.0, bucket="dca",
+                            rs=-6.0, theme_alive=False))
+    assert v.action == "비중축소"
+
+
+def test_dca_bucket_take_profit_still_works():
+    """B 버킷도 익절선은 작동."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=26.0, bucket="dca"))
+    assert v.action == "비중축소"
+
+
+def test_dca_bucket_hold_rationale_notes_no_price_stop():
+    """B 버킷 홀딩 시 근거에 '가격손절 없음' 표기 (투명성)."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=-3.0, bucket="dca"))
+    assert v.action == "홀딩"
+    assert "손절" in v.rationale  # "가격손절 없음" 류 표기
+
+
+def test_trade_bucket_is_default():
+    """버킷 미지정 = trade(A) = 보호적 손절 기본 적용."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=-9.0))  # bucket 없음
+    assert v.action == "매도"
