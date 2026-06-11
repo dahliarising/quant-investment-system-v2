@@ -348,3 +348,37 @@ def test_upside_velocity_noise_gated():
     for s in sigs:
         st = s.evidence["strength"]
         assert st is None or st >= pe._NOISE_GATE
+
+
+# ── VELOCITY 레짐 게이트 — 추세 하락장에서만 발화 (백테스트 검증, 2026-06-11) ──
+
+def _mk_down_closes():
+    return [450.0 - i * 5.0 for i in range(14)]   # 급락세
+
+
+@pytest.mark.unit
+def test_velocity_fires_in_down_regime():
+    """trend=down → VELOCITY 발화 (백테스트: 하락장 엣지 +5%)."""
+    sigs = pe.evaluate_velocity(
+        [{"symbol": "TSLA", "price": 385.0}], stops={"TSLA": 370.0},
+        closes_by_sym={"TSLA": _mk_down_closes()}, regime_trend="down")
+    assert any(s.kind == "VELOCITY" for s in sigs)
+
+
+@pytest.mark.unit
+def test_velocity_suppressed_in_chop_regime():
+    """trend=chop/up → VELOCITY 억제 (백테스트: 횡보장 엣지 -4%, 노이즈)."""
+    for tr in ("chop", "up"):
+        sigs = pe.evaluate_velocity(
+            [{"symbol": "TSLA", "price": 385.0}], stops={"TSLA": 370.0},
+            closes_by_sym={"TSLA": _mk_down_closes()}, regime_trend=tr)
+        assert sigs == [], f"trend={tr} should suppress"
+
+
+@pytest.mark.unit
+def test_velocity_fires_when_regime_unknown():
+    """trend=None(레짐 미상) → 기존 동작 보존 (회귀 0)."""
+    sigs = pe.evaluate_velocity(
+        [{"symbol": "TSLA", "price": 385.0}], stops={"TSLA": 370.0},
+        closes_by_sym={"TSLA": _mk_down_closes()}, regime_trend=None)
+    assert any(s.kind == "VELOCITY" for s in sigs)

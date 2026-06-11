@@ -106,6 +106,17 @@ def _load_calibration(path: Path | None = None) -> dict:
         return {}
 
 
+_REGIME_PATH = Path(__file__).resolve().parent / "state" / "last_regime.json"
+
+
+def _load_regime_trend(path: Path | None = None) -> str | None:
+    """2축 레짐 trend(up/chop/down) 로드 — VELOCITY 게이트용. 없으면 None(미게이트)."""
+    try:
+        return json.loads(Path(path or _REGIME_PATH).read_text(encoding="utf-8")).get("trend")
+    except (OSError, ValueError):
+        return None
+
+
 def confidence_for(kind: str, calibration: dict | None = None,
                    engine: str = "predictive") -> float:
     """적중률 보정 confidence — calibrated 없으면(n<10 포함) 기본값 fallback."""
@@ -123,11 +134,16 @@ def evaluate_velocity(
     closes_by_sym: dict[str, list[float]],
     horizon: int = _VELOCITY_HORIZON,
     confidence: float | None = None,
+    regime_trend: str | None = None,
 ) -> list[PredictiveSignal]:
     """하락 추세 기울기로 손절선 도달 예상일 경보 (Phase 3: 노이즈 게이트 + 신뢰구간).
 
     이미 손절선 이하인 경우는 signal_engine(STOP)이 담당 — 여기선 불개입.
+    regime_trend가 주어지고 "down"이 아니면 억제 (백테스트 2026-06-11: VELOCITY는
+    추세 하락장에서만 엣지 +5%, 횡보장 -4% 노이즈 → trend 게이트). None이면 발화(회귀 보존).
     """
+    if regime_trend is not None and regime_trend != "down":
+        return []
     out: list[PredictiveSignal] = []
     conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE["VELOCITY"]
     for pos in holdings:
@@ -318,18 +334,24 @@ def evaluate(
     bench_closes_by_market: dict[str, list[float]] | None = None,
     as_of: date | None = None,
     calibration: dict | None = None,
+    regime_trend: str | None = None,
 ) -> list[PredictiveSignal]:
-    """세 Pillar 통합 → 긴급도 내림차순. confidence는 적중률 보정값 주입."""
+    """세 Pillar 통합 → 긴급도 내림차순. confidence는 적중률 보정값 주입.
+
+    regime_trend(없으면 last_regime.json에서 로드) — VELOCITY는 하락추세에서만 발화.
+    """
     from corvin_jarvis.signal_engine import load_stops
     _stops = stops if stops is not None else load_stops()
     _closes = closes_by_sym or {}
     _bench = bench_closes_by_market or {}
     _date = as_of or date.today()
     _cal = calibration if calibration is not None else _load_calibration()
+    _trend = regime_trend if regime_trend is not None else _load_regime_trend()
 
     sigs: list[PredictiveSignal] = []
     sigs.extend(evaluate_velocity(holdings, _stops, _closes,
-                                  confidence=confidence_for("VELOCITY", _cal)))
+                                  confidence=confidence_for("VELOCITY", _cal),
+                                  regime_trend=_trend))
     sigs.extend(evaluate_upside_velocity(holdings, _closes,
                                          confidence=confidence_for("VELOCITY_UP", _cal)))
     sigs.extend(evaluate_relative_strength(holdings, _closes, _bench,
