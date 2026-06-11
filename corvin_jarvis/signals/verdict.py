@@ -9,7 +9,11 @@ _ATR_STOP_K = 5.0          # 손절선 = -(K × 일일 ATR%) — 변동성 조�
 # 음수 손절 공간: -25=가장 깊은(넓은) 손절, -4=가장 얕은(타이트한) 손절.
 # (widest, tightest) 순서. 튜플 순서 바꾸면 클램프가 역전되니 주의.
 _ATR_STOP_CLAMP = (-25.0, -4.0)
-_TAKE_PROFIT = 25.0
+_TAKE_PROFIT = 25.0        # peak 미상 시 평면 fallback
+_TP_ACTIVATE = 15.0        # 이 수익% 넘어야 추적 익절 가동 (그 전엔 승자 달리게)
+_TP_GIVEBACK_K = 3.0       # 고점에서 K×ATR% 되돌리면 익절 (이익 잠금)
+_TP_MIN_GIVEBACK = 5.0     # ATR 없을 때 최소 되돌림%
+_TP_PEAK_WINDOW = 15       # peak는 최근 N봉 스윙 고점만 (진입 전 고점 오염 방지)
 _RS_LAGGARD = -4.0
 _RS_LEADER = 4.0
 _DCA_DEEP = 75
@@ -38,6 +42,42 @@ def _atr_stop_threshold(atr_pct: float | None,
     return max(widest, min(tightest, -k * atr_pct))
 
 
+def _peak_pnl_pct(closes: list[float], price: float | None,
+                  pnl_pct: float | None, window: int = _TP_PEAK_WINDOW) -> float | None:
+    """최근 window 봉 스윙 고점 기준 peak PnL% — 추적 익절 기준값(무상태).
+
+    avg는 price/pnl에서 유도(진입가 필드 불요). *최근* 고점만 써서 진입 전
+    고점으로 인한 거짓 되돌림(조기 익절)을 방지 — 추적 손절의 정석 의미.
+    """
+    if pnl_pct is None or pnl_pct <= -100 or price is None or not closes:
+        return None
+    avg_implied = price / (1 + pnl_pct / 100)
+    if avg_implied <= 0:
+        return None
+    peak_close = max(closes[-window:] + [price])
+    return (peak_close / avg_implied - 1) * 100
+
+
+def _trailing_take_profit(pnl_pct: float | None, peak_pnl_pct: float | None,
+                          atr_pct: float | None, activate: float = _TP_ACTIVATE,
+                          k: float = _TP_GIVEBACK_K) -> bool:
+    """추적 익절 판정 — 고점 대비 되돌림이 ATR 비례 임계 넘으면 True.
+
+    peak None → 평면 _TAKE_PROFIT fallback(기존 동작 보존).
+    peak < activate → False (수익 미미, 승자 달리게).
+    되돌림(peak−pnl) ≥ max(_TP_MIN_GIVEBACK, k×atr_pct) → 익절(이익 잠금).
+    """
+    if pnl_pct is None:
+        return False
+    if peak_pnl_pct is None:
+        return pnl_pct >= _TAKE_PROFIT
+    peak = max(peak_pnl_pct, pnl_pct)
+    if peak < activate:
+        return False
+    trail = max(_TP_MIN_GIVEBACK, k * atr_pct) if atr_pct else _TP_MIN_GIVEBACK
+    return (peak - pnl_pct) >= trail
+
+
 def decide(ctx: dict[str, Any]) -> Verdict:
     """신호 컨텍스트를 행동 판정으로 융합 (advisory only)."""
     sym = ctx.get("symbol", "")
@@ -64,8 +104,12 @@ def decide(ctx: dict[str, Any]) -> Verdict:
                        if atr_stop is not None
                        else f"손절선({_STOP_LOSS}%) 도달 — 리스크 관리 우선")
                 return v("매도", "상", why)
-        if pnl is not None and pnl >= _TAKE_PROFIT:
-            return v("비중축소", cap, f"익절선(+{_TAKE_PROFIT}%) 도달 — 일부 차익실현 검토")
+        peak = ctx.get("peak_pnl_pct")
+        if _trailing_take_profit(pnl, peak, ctx.get("atr_pct")):
+            why = (f"추적 익절 — 고점 +{max(peak, pnl):.0f}%에서 되돌림, 이익 잠금"
+                   if peak is not None
+                   else f"익절선(+{_TAKE_PROFIT}%) 도달 — 일부 차익실현 검토")
+            return v("비중축소", cap, why)
         if rs is not None and rs <= _RS_LAGGARD and not alive:
             suffix = " — DCA(B) thesis 점검" if bucket == "dca" else ""
             return v("비중축소", "중", "지수 대비 약세 + 테마 식음 — 비중 점검" + suffix)
@@ -152,20 +196,21 @@ def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
             bucket = str(p.get("bucket") or "trade")  # 기본 trade(A)=보호적 손절
             break
 
-    # 변동성 조정 손절용 ATR%(일일) — A 버킷 보유분만, 이미 가져온 closes 재사용
-    atr_pct = None
-    if held and bucket != "dca" and closes and q.price:
+    # ATR%(일일) + peak PnL — 손절(A버킷)·추적익절(전버킷) 공용, 가져온 closes 재사용
+    atr_pct = peak_pnl_pct = None
+    if held and closes and q.price:
         from corvin_jarvis import predictive_engine as _pe
         atr = _pe._atr_proxy(closes)
         if atr:
             atr_pct = atr / q.price * 100
+        peak_pnl_pct = _peak_pnl_pct(closes, q.price, pnl)  # 최근 스윙 고점 기준
 
     sector = _sector_of(latest, symbol)
     ctx = {
         "symbol": symbol, "held": held, "pnl_pct": pnl, "dca_score": dca_score,
         "rs": rs, "pct_today": pct_today, "theme_alive": _theme_alive(latest, sector),
         "high_vol": sector is None or sector in _MOONSHOT_SECTORS,  # 미추적 or 미래기술 무어샷 = 보수
-        "bucket": bucket, "atr_pct": atr_pct,
+        "bucket": bucket, "atr_pct": atr_pct, "peak_pnl_pct": peak_pnl_pct,
     }
     return decide(ctx)
 
