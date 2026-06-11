@@ -306,3 +306,45 @@ def test_peak_pnl_at_high_no_false_giveback():
     closes = [100.0] * 14
     peak = verdict._peak_pnl_pct(closes, 120.0, 20.0)  # 현재가가 곧 최근 최고
     assert verdict._trailing_take_profit(20.0, peak, 2.0) is False
+
+
+# ── ③ 불타기(add-to-winners) + ④ 분할익절 사다리 (2026-06-11) ──
+
+def test_add_to_winner_on_confirmed_strength():
+    """수익 + 지수 주도(rs≥4) + 테마 살아있음 + 비과열 → 비중확대(불타기)."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=10.0, rs=5.0,
+                            theme_alive=True, pct_today=2.0))
+    assert v.action == "비중확대" and "불타기" in v.rationale
+
+
+def test_no_add_when_spiked_today():
+    """오늘 급등(과열)이면 불타기 보류 — FOMO 추격 방지."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=10.0, rs=5.0,
+                            theme_alive=True, pct_today=12.0))
+    assert v.action != "비중확대"
+
+
+def test_no_add_when_rs_weak():
+    """주도주 아니면(rs<4) 불타기 안 함."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=10.0, rs=1.0,
+                            theme_alive=True, pct_today=2.0))
+    assert v.action != "비중확대"
+
+
+def test_no_add_when_not_in_profit():
+    """손실 중이면 불타기 아님(승자 추가 원칙)."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=-3.0, rs=5.0,
+                            theme_alive=True, pct_today=2.0))
+    assert v.action != "비중확대"
+
+
+def test_scaleout_small_gain_trims_third():
+    """추적 익절 — 작은 고점(+30%, <40)은 1/3 차익실현."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=18.0, peak_pnl_pct=30.0, atr_pct=2.0))
+    assert v.action == "비중축소" and "1/3" in v.rationale
+
+
+def test_scaleout_big_gain_trims_half():
+    """추적 익절 — 큰 고점(≥+40%)은 절반 차익실현."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=30.0, peak_pnl_pct=45.0, atr_pct=2.0))
+    assert v.action == "비중축소" and "절반" in v.rationale

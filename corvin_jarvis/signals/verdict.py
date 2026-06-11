@@ -14,6 +14,8 @@ _TP_ACTIVATE = 15.0        # 이 수익% 넘어야 추적 익절 가동 (그 전
 _TP_GIVEBACK_K = 3.0       # 고점에서 K×ATR% 되돌리면 익절 (이익 잠금)
 _TP_MIN_GIVEBACK = 5.0     # ATR 없을 때 최소 되돌림%
 _TP_PEAK_WINDOW = 15       # peak는 최근 N봉 스윙 고점만 (진입 전 고점 오염 방지)
+_TP_BIG = 40.0             # 고점 수익% 이상이면 익절 시 절반(아니면 1/3) — 분할 사다리
+_ADD_SPIKE_CAP = 8.0       # 오늘 이 % 이상 급등이면 불타기 보류 (FOMO 추격 방지)
 _RS_LAGGARD = -4.0
 _RS_LEADER = 4.0
 _DCA_DEEP = 75
@@ -106,13 +108,23 @@ def decide(ctx: dict[str, Any]) -> Verdict:
                 return v("매도", "상", why)
         peak = ctx.get("peak_pnl_pct")
         if _trailing_take_profit(pnl, peak, ctx.get("atr_pct")):
-            why = (f"추적 익절 — 고점 +{max(peak, pnl):.0f}%에서 되돌림, 이익 잠금"
-                   if peak is not None
-                   else f"익절선(+{_TAKE_PROFIT}%) 도달 — 일부 차익실현 검토")
+            if peak is not None:
+                eff_peak = max(peak, pnl)
+                tranche = "절반" if eff_peak >= _TP_BIG else "1/3"   # ④ 분할 사다리
+                why = (f"추적 익절 — 고점 +{eff_peak:.0f}%에서 되돌림, "
+                       f"{tranche} 차익실현(잔여 추적 유지)")
+            else:
+                why = f"익절선(+{_TAKE_PROFIT}%) 도달 — 일부 차익실현 검토"
             return v("비중축소", cap, why)
         if rs is not None and rs <= _RS_LAGGARD and not alive:
             suffix = " — DCA(B) thesis 점검" if bucket == "dca" else ""
             return v("비중축소", "중", "지수 대비 약세 + 테마 식음 — 비중 점검" + suffix)
+        # ③ 불타기 — 강세 지속 승자에 분할 추가 (DCA 약세물타기의 대칭, FOMO 가드)
+        if (pnl is not None and pnl > 0 and alive
+                and rs is not None and rs >= _RS_LEADER
+                and (today is None or today < _ADD_SPIKE_CAP)):
+            return v("비중확대", cap,
+                     "강세 지속(지수 주도+테마 살아있음) — 불타기 후보(분할 추가)")
         if bucket == "dca":
             return v("홀딩", cap if alive else "중",
                      "DCA(B) 보유 · 가격손절 없음(예약추매/thesis 기준)"
