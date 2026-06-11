@@ -305,3 +305,46 @@ def test_rs_weak_uses_adaptive_threshold_with_long_history():
     assert len(sigs) == 1
     assert "threshold_pct" in sigs[0].evidence
     assert sigs[0].evidence["threshold_pct"] != -5.0  # 적응값 사용됨
+
+
+# ── Phase: 상방 VELOCITY (손절 미러, 2026-06-11) ──────────
+
+@pytest.mark.unit
+def test_upside_velocity_fires_on_uptrend_below_high():
+    """상승추세 + 현재가 < 최근고점 → VELOCITY_UP 발화."""
+    closes = [100.0 + i for i in range(20)]  # +1/일, 고점 119
+    sigs = pe.evaluate_upside_velocity([{"symbol": "X", "price": 115.0}], {"X": closes})
+    assert any(s.kind == "VELOCITY_UP" for s in sigs)
+    up = [s for s in sigs if s.kind == "VELOCITY_UP"][0]
+    assert "days_to_target" in up.evidence and up.evidence["target"] == 119.0
+
+
+@pytest.mark.unit
+def test_upside_velocity_skips_when_at_high():
+    """현재가가 이미 최근고점 이상 → 발화 안 함 (별개 상황)."""
+    closes = [100.0 + i for i in range(20)]  # 고점 119
+    sigs = pe.evaluate_upside_velocity([{"symbol": "X", "price": 119.0}], {"X": closes})
+    assert sigs == []
+
+
+@pytest.mark.unit
+def test_upside_velocity_skips_downtrend():
+    """하락추세 → 발화 안 함."""
+    closes = [120.0 - i for i in range(20)]
+    sigs = pe.evaluate_upside_velocity([{"symbol": "X", "price": 101.0}], {"X": closes})
+    assert sigs == []
+
+
+@pytest.mark.unit
+def test_upside_velocity_noise_gated():
+    """변동성 대비 미미한 상승 기울기는 억제 (발화 시 strength≥gate)."""
+    import random
+    rng = random.Random(1)
+    closes = [100.0]
+    for _ in range(20):
+        closes.append(closes[-1] + rng.uniform(-2, 2.1))
+    sigs = pe.evaluate_upside_velocity(
+        [{"symbol": "X", "price": closes[-1] - 1}], {"X": closes})
+    for s in sigs:
+        st = s.evidence["strength"]
+        assert st is None or st >= pe._NOISE_GATE

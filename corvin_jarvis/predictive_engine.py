@@ -36,7 +36,8 @@ _RS_MIN_SAMPLES = 30       # 미만이면 기본 임계 fallback
 _RS_CLAMP = (-20.0, -2.0)  # 적응 임계 안전 클램프
 _EVENT_HORIZON = 14
 
-_DEFAULT_CONFIDENCE = {"VELOCITY": 65.0, "RS_WEAK": 60.0, "EVENT": 90.0}
+_DEFAULT_CONFIDENCE = {"VELOCITY": 65.0, "RS_WEAK": 60.0, "EVENT": 90.0,
+                       "VELOCITY_UP": 60.0}
 _CALIBRATION_PATH = Path(__file__).resolve().parent / "state" / "calibration.json"
 
 
@@ -169,6 +170,53 @@ def evaluate_velocity(
     return out
 
 
+# ── VELOCITY_UP (상방 미러) ────────────────────────────────
+
+def evaluate_upside_velocity(
+    holdings: list[dict[str, Any]],
+    closes_by_sym: dict[str, list[float]],
+    horizon: int = _VELOCITY_HORIZON,
+    confidence: float | None = None,
+) -> list[PredictiveSignal]:
+    """상승 속도 기준 최근고점(저항) 도달 예상일 — VELOCITY 상방 미러.
+
+    상승추세(slope>0) + 현재가 < 최근고점일 때만. 노이즈 게이트 동일 적용.
+    이미 고점 돌파면 별개 상황 → 불개입.
+    """
+    out: list[PredictiveSignal] = []
+    conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE["VELOCITY_UP"]
+    for pos in holdings:
+        sym = str(pos.get("symbol", ""))
+        closes = closes_by_sym.get(sym, [])
+        s = _slope(closes)
+        if s is None or s <= 0:
+            continue  # 하락·횡보
+        price = pos.get("price") or (closes[-1] if closes else None)
+        if price is None or not closes:
+            continue
+        target = max(closes)
+        if price >= target:
+            continue  # 이미 최근고점 이상 — 별개
+        atr = _atr_proxy(closes)
+        strength = (s / atr) if atr else None
+        if strength is not None and strength < _NOISE_GATE:
+            continue  # 변동성 대비 미미한 기울기 — 노이즈 억제
+        days_to = (target - price) / s
+        if days_to > horizon:
+            continue
+        urgency = max(30, min(70, int(30 + (1 - days_to / horizon) * 40)))
+        out.append(PredictiveSignal(
+            symbol=sym, kind="VELOCITY_UP", urgency=urgency, confidence=conf,
+            horizon_days=round(days_to),
+            message=f"상승 속도 기준 최근고점({_fmt(target)}) ~{round(days_to)}일 내 도달 가능",
+            evidence={"slope_per_day": round(s, 4), "days_to_target": round(days_to, 1),
+                      "target": target, "current_price": price,
+                      "atr_proxy": round(atr, 4) if atr else None,
+                      "strength": round(strength, 3) if strength is not None else None},
+        ))
+    return out
+
+
 # ── RS_WEAK ────────────────────────────────────────────────
 
 def _adaptive_rs_threshold(closes: list[float], bench: list[float],
@@ -282,6 +330,8 @@ def evaluate(
     sigs: list[PredictiveSignal] = []
     sigs.extend(evaluate_velocity(holdings, _stops, _closes,
                                   confidence=confidence_for("VELOCITY", _cal)))
+    sigs.extend(evaluate_upside_velocity(holdings, _closes,
+                                         confidence=confidence_for("VELOCITY_UP", _cal)))
     sigs.extend(evaluate_relative_strength(holdings, _closes, _bench,
                                            confidence=confidence_for("RS_WEAK", _cal)))
     sigs.extend(evaluate_events(_date, [str(p.get("symbol", "")) for p in holdings],
