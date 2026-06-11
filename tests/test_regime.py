@@ -181,3 +181,35 @@ def test_detect_regime_builds_transition_alert(tmp_db_path: Path, tmp_path: Path
     assert alert is not None
     assert alert["category"] == "regime"
     assert alert["severity"] in {"high", "critical"}
+
+
+# ── 2축 레짐: 추세 × 스트레스 (2026-06-11) ──────────────
+
+@pytest.mark.unit
+def test_trend_from_returns_thresholds():
+    assert regime.trend_from_returns(-5.0) == "down"
+    assert regime.trend_from_returns(4.0) == "up"
+    assert regime.trend_from_returns(1.0) == "chop"
+    assert regime.trend_from_returns(None) == "chop"
+
+
+@pytest.mark.unit
+def test_entry_posture_down_calm_throttles():
+    assert regime.entry_posture("down", "neutral") == "throttle"
+    assert regime.entry_posture("down", "risk_off") == "throttle"
+
+
+@pytest.mark.unit
+def test_entry_posture_down_panic_buys():
+    assert regime.entry_posture("down", "crisis") == "capitulation_buy"
+
+
+@pytest.mark.unit
+def test_entry_posture_up_accumulates():
+    assert regime.entry_posture("up", "neutral") == "accumulate"
+    assert regime.entry_posture("up", "risk_off") == "normal"
+
+
+@pytest.mark.unit
+def test_entry_posture_chop_normal():
+    assert regime.entry_posture("chop", "neutral") == "normal"
