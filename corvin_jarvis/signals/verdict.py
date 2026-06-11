@@ -13,6 +13,7 @@ _TAKE_PROFIT = 25.0        # peak 미상 시 평면 fallback
 _TP_ACTIVATE = 15.0        # 이 수익% 넘어야 추적 익절 가동 (그 전엔 승자 달리게)
 _TP_GIVEBACK_K = 3.0       # 고점에서 K×ATR% 되돌리면 익절 (이익 잠금)
 _TP_MIN_GIVEBACK = 5.0     # ATR 없을 때 최소 되돌림%
+_TP_PEAK_WINDOW = 15       # peak는 최근 N봉 스윙 고점만 (진입 전 고점 오염 방지)
 _RS_LAGGARD = -4.0
 _RS_LEADER = 4.0
 _DCA_DEEP = 75
@@ -39,6 +40,22 @@ def _atr_stop_threshold(atr_pct: float | None,
         return None
     widest, tightest = _ATR_STOP_CLAMP   # (-25, -4): 음수 공간 floor/ceiling
     return max(widest, min(tightest, -k * atr_pct))
+
+
+def _peak_pnl_pct(closes: list[float], price: float | None,
+                  pnl_pct: float | None, window: int = _TP_PEAK_WINDOW) -> float | None:
+    """최근 window 봉 스윙 고점 기준 peak PnL% — 추적 익절 기준값(무상태).
+
+    avg는 price/pnl에서 유도(진입가 필드 불요). *최근* 고점만 써서 진입 전
+    고점으로 인한 거짓 되돌림(조기 익절)을 방지 — 추적 손절의 정석 의미.
+    """
+    if pnl_pct is None or pnl_pct <= -100 or price is None or not closes:
+        return None
+    avg_implied = price / (1 + pnl_pct / 100)
+    if avg_implied <= 0:
+        return None
+    peak_close = max(closes[-window:] + [price])
+    return (peak_close / avg_implied - 1) * 100
 
 
 def _trailing_take_profit(pnl_pct: float | None, peak_pnl_pct: float | None,
@@ -186,12 +203,7 @@ def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
         atr = _pe._atr_proxy(closes)
         if atr:
             atr_pct = atr / q.price * 100
-        # peak PnL 무상태 유도: avg=price/(1+pnl/100), peak=(최근고점/avg−1)×100
-        if pnl is not None and pnl > -100:
-            avg_implied = q.price / (1 + pnl / 100)
-            if avg_implied > 0:
-                peak_close = max(closes + [q.price])
-                peak_pnl_pct = (peak_close / avg_implied - 1) * 100
+        peak_pnl_pct = _peak_pnl_pct(closes, q.price, pnl)  # 최근 스윙 고점 기준
 
     sector = _sector_of(latest, symbol)
     ctx = {

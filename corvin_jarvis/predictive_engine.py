@@ -202,8 +202,8 @@ def evaluate_upside_velocity(
         if strength is not None and strength < _NOISE_GATE:
             continue  # 변동성 대비 미미한 기울기 — 노이즈 억제
         days_to = (target - price) / s
-        if days_to > horizon:
-            continue
+        if days_to < 1 or days_to > horizon:
+            continue  # <1일은 사실상 도달 — 경보 무의미("~0일" 방지)
         urgency = max(30, min(70, int(30 + (1 - days_to / horizon) * 40)))
         out.append(PredictiveSignal(
             symbol=sym, kind="VELOCITY_UP", urgency=urgency, confidence=conf,

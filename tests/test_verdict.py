@@ -276,3 +276,33 @@ def test_trailing_helper_units():
     assert verdict._trailing_take_profit(18.0, 30.0, 2.0) is True
     assert verdict._trailing_take_profit(26.0, None, None) is True
     assert verdict._trailing_take_profit(10.0, 12.0, 1.0) is False
+
+
+# ── 리뷰 반영: peak는 최근 스윙 고점만 (진입 전 고점 오염 방지) ──
+
+def test_peak_pnl_ignores_old_pre_entry_high():
+    """80봉 전 급등 고점은 무시 — 최근 창만. 거짓 되돌림 익절 방지."""
+    closes = [200.0] + [100.0] * 30   # 옛 고점 200, 최근은 100 부근
+    # 현재가 110, pnl +10% → 진입가 ~100. 최근 고점도 ~110 → peak ~+10%(과대평가 없음)
+    peak = verdict._peak_pnl_pct(closes, 110.0, 10.0)
+    assert peak is not None and peak < 15.0   # 옛 200을 안 씀(쓰면 +100%)
+
+
+def test_peak_pnl_uses_recent_swing_high():
+    """최근 창 내 진짜 고점은 반영 — 정당한 되돌림 익절."""
+    closes = [100.0] * 10 + [130.0] + [120.0] * 5   # 최근 창에 고점 130
+    peak = verdict._peak_pnl_pct(closes, 120.0, 20.0)  # 진입가 ~100
+    assert peak is not None and peak >= 28.0   # 130/100-1 ≈ +30%
+
+
+def test_peak_pnl_none_on_bad_input():
+    assert verdict._peak_pnl_pct([100.0], None, 10.0) is None
+    assert verdict._peak_pnl_pct([], 100.0, 10.0) is None
+    assert verdict._peak_pnl_pct([100.0], 100.0, -100.0) is None
+
+
+def test_peak_pnl_at_high_no_false_giveback():
+    """현재가가 최근 고점 — peak≈pnl, 되돌림 0 → 톱 안 팖."""
+    closes = [100.0] * 14
+    peak = verdict._peak_pnl_pct(closes, 120.0, 20.0)  # 현재가가 곧 최근 최고
+    assert verdict._trailing_take_profit(20.0, peak, 2.0) is False
