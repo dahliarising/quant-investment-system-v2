@@ -26,7 +26,7 @@ _DCA_OK = 50
 @dataclass(frozen=True)
 class Verdict:
     symbol: str
-    action: str       # 매수 | 분할매수 | 홀딩 | 비중축소 | 매도 | 관망
+    action: str       # 매수 | 분할매수 | 비중확대 | 홀딩 | 비중축소 | 매도 | 관망
     confidence: str   # 상 | 중 | 하
     rationale: str
 
@@ -119,8 +119,8 @@ def decide(ctx: dict[str, Any]) -> Verdict:
         if rs is not None and rs <= _RS_LAGGARD and not alive:
             suffix = " — DCA(B) thesis 점검" if bucket == "dca" else ""
             return v("비중축소", "중", "지수 대비 약세 + 테마 식음 — 비중 점검" + suffix)
-        # ③ 불타기 — 강세 지속 승자에 분할 추가 (DCA 약세물타기의 대칭, FOMO 가드)
-        if (pnl is not None and pnl > 0 and alive
+        # ③ 불타기 — 강세 지속 승자에 분할 추가 (trade 전용: 모멘텀 vs DCA 가치 분리)
+        if (bucket != "dca" and pnl is not None and pnl > 0 and alive
                 and rs is not None and rs >= _RS_LEADER
                 and (today is None or today < _ADD_SPIKE_CAP)):
             return v("비중확대", cap,

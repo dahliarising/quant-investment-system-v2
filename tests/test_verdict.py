@@ -348,3 +348,16 @@ def test_scaleout_big_gain_trims_half():
     """추적 익절 — 큰 고점(≥+40%)은 절반 차익실현."""
     v = verdict.decide(_ctx(held=True, pnl_pct=30.0, peak_pnl_pct=45.0, atr_pct=2.0))
     assert v.action == "비중축소" and "절반" in v.rationale
+
+
+def test_no_add_for_dca_bucket():
+    """리뷰 반영: dca(가치) 버킷은 불타기(모멘텀) 제외 — 철학 분리."""
+    v = verdict.decide(_ctx(held=True, pnl_pct=12.0, rs=6.0, theme_alive=True,
+                            pct_today=1.5, bucket="dca"))
+    assert v.action != "비중확대"
+
+
+def test_add_winner_emoji_in_notify_map():
+    """리뷰 반영: 비중확대가 다이제스트 이모지 맵에 존재 (아이콘 누락 방지)."""
+    from corvin_jarvis import notify
+    assert "비중확대" in notify._ACTION_EMOJI

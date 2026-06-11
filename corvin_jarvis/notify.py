@@ -275,7 +275,8 @@ def _interpret_lines(alerts: list[dict[str, Any]]) -> list[str]:
             for kind, ref in plan]
 
 
-_ACTION_EMOJI = {"매수": "🟢", "분할매수": "🔵", "홀딩": "⚪", "비중축소": "🟠", "매도": "🔴", "관망": "⏸"}
+_ACTION_EMOJI = {"매수": "🟢", "분할매수": "🔵", "비중확대": "🔺", "홀딩": "⚪",
+                 "비중축소": "🟠", "매도": "🔴", "관망": "⏸"}
 
 # ── 중재 최종 액션 (Phase 2 arbiter) — digest 전용 블록 ──
 _ACTION_ICONS = {"매도검토": "🛑", "비중축소": "✂️", "보류": "⏸️",
