@@ -217,3 +217,20 @@ def test_run_leaves_open_on_empty_fetch(tmp_path):
     assert result["scored"] == 0
     assert result["pending"] == 1
     assert len(ledger.fetch_due(db_path=db, now=NOW)) == 1
+
+
+def test_rs_revert_hit_when_bounces():
+    """RS_REVERT(역발상) — 반등(rs>0)이면 hit (RS_WEAK의 정반대)."""
+    row = _row(kind="RS_REVERT", horizon_days=10, age_days=10, evidence={})
+    sym = [100, 102, 104, 106, 108, 110, 112, 114, 116, 118]   # 반등
+    bench = [100, 100, 101, 101, 102, 102, 103, 103, 104, 104]
+    status, outcome = scorer.score_row(row, closes_after=sym, bench_after=bench)
+    assert status == "hit" and outcome["rs_pct"] > 0
+
+
+def test_rs_revert_miss_when_keeps_falling():
+    row = _row(kind="RS_REVERT", horizon_days=10, age_days=10, evidence={})
+    sym = [100, 99, 98, 97, 96, 95, 94, 93, 92, 91]   # 약세 지속
+    bench = [100, 100, 101, 101, 102, 102, 103, 103, 104, 104]
+    status, _ = scorer.score_row(row, closes_after=sym, bench_after=bench)
+    assert status == "miss"

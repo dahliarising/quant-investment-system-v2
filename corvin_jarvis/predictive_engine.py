@@ -37,7 +37,7 @@ _RS_CLAMP = (-20.0, -2.0)  # 적응 임계 안전 클램프
 _EVENT_HORIZON = 14
 
 _DEFAULT_CONFIDENCE = {"VELOCITY": 65.0, "RS_WEAK": 60.0, "EVENT": 90.0,
-                       "VELOCITY_UP": 60.0}
+                       "VELOCITY_UP": 60.0, "RS_REVERT": 60.0}
 _CALIBRATION_PATH = Path(__file__).resolve().parent / "state" / "calibration.json"
 
 
@@ -266,14 +266,18 @@ def evaluate_relative_strength(
     n_days: int = _RS_N_DAYS,
     threshold: float | None = None,
     confidence: float | None = None,
+    regime_trend: str | None = None,
 ) -> list[PredictiveSignal]:
-    """보유종목 n일 수익률 - 벤치마크 수익률 < threshold%p → RS_WEAK.
+    """보유종목 n일 수익률 - 벤치마크 수익률 < threshold%p → 상대 약세 신호.
 
-    threshold=None이면 종목별 적응 임계(_adaptive_rs_threshold) 사용 —
-    이력 부족 시 기본 _RS_THRESHOLD(-5.0)로 fallback해 기존 동작 보존.
+    threshold=None이면 종목별 적응 임계(_adaptive_rs_threshold) 사용.
+    regime_trend(백테스트 2026-06-11): 비하락장에선 상대약세가 *반등*으로 이어짐
+    (역발상 엣지 +7%) → kind=RS_REVERT(반등 후보). down/None은 RS_WEAK(약세 경고) 보존.
     """
     out: list[PredictiveSignal] = []
-    conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE["RS_WEAK"]
+    contrarian = regime_trend is not None and regime_trend != "down"
+    kind = "RS_REVERT" if contrarian else "RS_WEAK"
+    conf = confidence if confidence is not None else _DEFAULT_CONFIDENCE.get(kind, 60.0)
     for pos in holdings:
         sym = str(pos.get("symbol", ""))
         market = str(pos.get("market", "US"))
@@ -289,10 +293,11 @@ def evaluate_relative_strength(
             continue
         urgency = max(30, min(75, int(30 + (thr - rs) * 4)))
         bench_label = "KOSPI" if market == "KR" else "S&P500"
+        tail = ("과매도 — 반등 후보 관찰" if contrarian else "약세 심화 추세")
         out.append(PredictiveSignal(
-            symbol=sym, kind="RS_WEAK", urgency=urgency, confidence=conf,
+            symbol=sym, kind=kind, urgency=urgency, confidence=conf,
             horizon_days=None,
-            message=f"{n_days}일 {bench_label} 대비 상대강도 {rs:+.1f}%p — 약세 심화 추세",
+            message=f"{n_days}일 {bench_label} 대비 상대강도 {rs:+.1f}%p — {tail}",
             evidence={"holding_ret_pct": round(h_ret, 2), "bench_ret_pct": round(b_ret, 2),
                       "rs_pct": round(rs, 2), "n_days": n_days,
                       "threshold_pct": round(thr, 2)},
@@ -354,8 +359,10 @@ def evaluate(
                                   regime_trend=_trend))
     sigs.extend(evaluate_upside_velocity(holdings, _closes,
                                          confidence=confidence_for("VELOCITY_UP", _cal)))
+    _rs_kind = "RS_REVERT" if (_trend is not None and _trend != "down") else "RS_WEAK"
     sigs.extend(evaluate_relative_strength(holdings, _closes, _bench,
-                                           confidence=confidence_for("RS_WEAK", _cal)))
+                                           confidence=confidence_for(_rs_kind, _cal),
+                                           regime_trend=_trend))
     sigs.extend(evaluate_events(_date, [str(p.get("symbol", "")) for p in holdings],
                                 confidence=confidence_for("EVENT", _cal)))
     return sorted(sigs, key=lambda s: s.urgency, reverse=True)

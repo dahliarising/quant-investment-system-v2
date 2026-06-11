@@ -151,3 +151,14 @@ def test_build_final_actions_persists_predictive_summary():
     assert "predictive" in out
     assert out["predictive"][0]["kind"] == "EVENT"   # EVENT 우선
     assert len(out["predictive"]) == 2
+
+
+def test_rs_revert_normalizes_to_buy():
+    """RS_REVERT(역발상 반등) → buy intent, RS_WEAK → warn."""
+    from corvin_jarvis.signals import arbiter_inputs as ai
+    rev = ai.normalize_predictive_signals([{"symbol": "X", "kind": "RS_REVERT",
+                                            "urgency": 50, "confidence": 60, "message": "반등"}])
+    weak = ai.normalize_predictive_signals([{"symbol": "Y", "kind": "RS_WEAK",
+                                             "urgency": 50, "confidence": 60, "message": "약세"}])
+    assert rev[0]["intent"] == "buy"
+    assert weak[0]["intent"] == "warn"
