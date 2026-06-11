@@ -136,3 +136,18 @@ def test_normalize_ledger_excludes_dca_defensive():
     syms = {r["symbol"] for r in out}
     assert "012450" not in syms   # dca → 제외
     assert "TSLA" in syms          # trade → 유지
+
+
+def test_build_final_actions_persists_predictive_summary():
+    """build_final_actions 결과에 predictive 요약 — EVENT 우선, cap 5."""
+    from corvin_jarvis.signals import arbiter_inputs as ai
+    import tempfile, os
+    pred = [{"kind": "RS_WEAK", "symbol": "NVDA", "message": "약세", "urgency": 44},
+            {"kind": "EVENT", "symbol": "", "message": "FOMC D-6", "urgency": 50}]
+    with tempfile.TemporaryDirectory() as d:
+        out = ai.build_final_actions(engine_sigs=[], pred_sigs=pred, playbook_sigs=[],
+                                     ledger_open=[], calibration={},
+                                     out_path=__import__("pathlib").Path(d) / "fa.json")
+    assert "predictive" in out
+    assert out["predictive"][0]["kind"] == "EVENT"   # EVENT 우선
+    assert len(out["predictive"]) == 2
