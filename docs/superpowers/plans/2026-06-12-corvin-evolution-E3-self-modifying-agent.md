@@ -1,5 +1,8 @@
 # Corvin Evolution Loop — Phase E3: 자가수정 에이전트 (드라이런) Implementation Plan
 
+> ⚠️ **SUPERSEDED (2026-06-12)**: 이 LLM-에이전트(`claude -p`) 방식은 API 비용 때문에 폐하가 보류.
+> 무료 대체안 → [E3 auto-tuner](./2026-06-12-corvin-evolution-E3-auto-tuner.md) 채택. 이 문서는 기록용.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 격리된 git worktree에서 `claude -p` 헤드리스 에이전트가 subject의 시그널 코드를 자율 수정→테스트→실험하고, E2의 외부 결정론 심판이 그 후보를 **드라이런으로 평가**해 "통과할 뻔한 후보"를 폐하 리뷰용으로 모은다. **여전히 머지는 안 한다** (실머지는 E4).
