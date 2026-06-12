@@ -9,8 +9,13 @@ _BEAR = {"매도검토", "비중축소"}
 _BULL = {"매수후보", "유지", "추가존"}
 
 
+def _urgency(a: dict[str, Any]) -> int:
+    # 실 final_actions.json의 urgency가 null일 수 있어 None 안전 처리 (정렬 TypeError 방지)
+    return int(a.get("urgency") or 0)
+
+
 def _rep_rationale(actions: list[dict[str, Any]], kinds: set[str]) -> str:
-    for a in sorted(actions, key=lambda x: x.get("urgency", 0), reverse=True):
+    for a in sorted(actions, key=_urgency, reverse=True):
         if a.get("action") in kinds and a.get("rationale"):
             return str(a["rationale"])
     return ""
@@ -27,9 +32,9 @@ def build_framing(actions: list[dict[str, Any]]) -> Framing:
     base = f"base: 방어 {bear_n} · 매수후보/유지 {bull_n}"
 
     if actions:
-        top = max(actions, key=lambda x: x.get("urgency", 0))
+        top = max(actions, key=_urgency)
         cf = (f"지금 {top.get('symbol')} {top.get('action')} 미실행 시: "
-              f"urgency {top.get('urgency', 0)} 신호 방치 — {top.get('rationale', '')}")
+              f"urgency {_urgency(top)} 신호 방치 — {top.get('rationale', '')}")
     else:
         cf = "활성 액션 없음 — 관망이 base."
     return Framing(bull=bull, bear=bear, base=base, counterfactual=cf)

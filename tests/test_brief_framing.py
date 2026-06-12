@@ -19,3 +19,14 @@ def test_framing_empty_is_safe():
     f = build_framing([])
     assert f.base
     assert f.counterfactual
+
+
+def test_framing_handles_null_urgency():
+    # 실 final_actions.json에 urgency=null 가능 — sorted/max에서 TypeError 안 나야 함
+    actions = [
+        {"symbol": "TSLA", "action": "매도검토", "urgency": None, "rationale": "추세이탈"},
+        {"symbol": "BWXT", "action": "매수후보", "urgency": 55, "rationale": "원자력테제"},
+    ]
+    f = build_framing(actions)  # 크래시 없이 통과해야 함
+    assert "BWXT" in f.counterfactual  # urgency 55 > None(→0)
+    assert "원자력테제" in f.bull
