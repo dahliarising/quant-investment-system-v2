@@ -26,7 +26,8 @@ def build_brief(*, positions: list[dict[str, Any]], actions: list[dict[str, Any]
 
     framing = build_framing(actions)
 
-    has_new_buy = any(a.get("action") == "매수후보"
+    # symbol 없는 액션은 제외 — str(None)='None'이 held 미포함이라 거짓 FOMO 트리거 방지
+    has_new_buy = any(a.get("action") == "매수후보" and a.get("symbol")
                       and str(a.get("symbol")) not in held for a in actions)
     psych = build_psych_guard(positions, has_new_buy_candidate=has_new_buy)
 

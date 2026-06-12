@@ -1,12 +1,12 @@
 """Brief → 스캔 가능한 단일 메시지 텍스트 (구분선·신선도 라벨)."""
 from __future__ import annotations
 
-from corvin_jarvis.brief.types import Brief
+from corvin_jarvis.brief.types import Brief, PositionLine
 
 _DIV = "━━━━━━━━━━━━━━"
 
 
-def _pnl(pl) -> str:
+def _pnl(pl: PositionLine) -> str:
     return f"{pl.pnl_pct:+.1f}%" if pl.pnl_pct is not None else "n/a"
 
 
