@@ -11,5 +11,6 @@ if command -v /opt/homebrew/bin/python3 >/dev/null 2>&1; then PY=/opt/homebrew/b
 if [ -f "$SCRIPT_DIR/.env" ]; then set -a; . "$SCRIPT_DIR/.env"; set +a; fi
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Digest 시작" >> "$LOG"
 "$PY" "$SCRIPT_DIR/jarvis.py" >> "$LOG" 2>&1 || echo "[ERROR] jarvis.py 실패" >> "$LOG"
+"$PY" -m corvin_jarvis.signals.arbiter_inputs >> "$LOG" 2>&1 || echo "[ERROR] arbiter 실패" >> "$LOG"
 "$PY" "$SCRIPT_DIR/notify.py" digest >> "$LOG" 2>&1 || echo "[ERROR] digest 실패" >> "$LOG"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Digest 완료" >> "$LOG"

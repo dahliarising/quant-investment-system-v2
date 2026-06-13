@@ -410,6 +410,114 @@ def merge_signal_alerts() -> int:
     return len(s_alerts)
 
 
+def merge_early_warning_alerts() -> int:
+    """선행 경보 — 5지표 라이브 readings → 상태 악화 전환·게이지·−8% 하드스톱 alert merge.
+
+    네트워크 실패는 격리(빈 결과). 보유 pnl은 portfolio, universe는 latest에서 가져온다.
+    """
+    from corvin_jarvis import ew_providers as ewp
+    from corvin_jarvis import ew_runner
+
+    cfg = (_load(BASE_DIR / "config.json") or {}).get("early_warning", {})
+    if not cfg.get("enabled"):
+        return 0
+
+    latest = _load(LATEST_FILE) or {}
+    universe_syms = [e["symbol"] for e in latest.get("universe", []) if e.get("symbol")]
+    positions = [
+        {"sym": p["symbol"], "pnl_pct": p.get("pnl_pct")}
+        for p in latest.get("portfolio", [])
+        if p.get("symbol")
+    ]
+
+    try:
+        spy_closes = ewp.live_closes_fetcher("SPY", 252)
+        spx_high = max(spy_closes) if spy_closes else None
+        readings = ew_runner.build_live_readings(universe_syms, spx_high)
+        out = ew_runner.run(
+            readings=readings,
+            positions=positions,
+            cfg=cfg,
+            state_path=STATE_DIR / "ew_state.json",
+        )
+    except Exception as e:  # noqa: BLE001 — 라이브 fetch 격리
+        log.warning("early_warning 실패(격리): %s", e)
+        return 0
+
+    # ew_runner는 key를 쓰지만 briefing 포매터는 metric을 읽음 → 경계에서 매핑.
+    ew_alerts = [{**a, "metric": a["key"]} for a in out["alerts"]]
+    if not ew_alerts:
+        log.info("No early-warning alerts (gauge=%s)", out.get("gauge"))
+        return 0
+
+    now = datetime.now(KST)
+    if ALERTS_FILE.exists():
+        data = _load(ALERTS_FILE) or {}
+        data.setdefault("alerts", []).extend(ew_alerts)
+        data["count"] = len(data["alerts"])
+    else:
+        data = {"alerts": ew_alerts, "count": len(ew_alerts),
+                "generated_at": now.isoformat(timespec="seconds")}
+    ALERTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    log.info("Early-warning alerts merged: %d (gauge=%s)", len(ew_alerts), out.get("gauge"))
+    return len(ew_alerts)
+
+
+def merge_cause_attribution() -> None:
+    """급락 촉발원인 규명 → state/cause.json (브리핑/대시보드 참조용, 알림 X).
+
+    이미 수집한 latest 스냅샷의 섹터별 등락·VIX로 "왜 빠졌나"를 추정. 새 네트워크 0.
+    """
+    from corvin_jarvis import cause_runner
+
+    latest = _load(LATEST_FILE) or {}
+    if not latest:
+        return
+    out = cause_runner.run(latest, STATE_DIR / "cause.json")
+    log.info("Cause attribution: %s", out["message"])
+
+
+def _run_agent_layer() -> None:
+    """Phase 4: LangGraph 멀티에이전트 분석 (ANTHROPIC_API_KEY 없으면 skip)."""
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        log.debug("ANTHROPIC_API_KEY 없음 — agents layer skip")
+        return
+    try:
+        from corvin_jarvis.agents import run_agent_analysis
+    except ImportError:
+        log.debug("langgraph 미설치 — agents layer skip")
+        return
+
+    latest = _load(LATEST_FILE) or {}
+    alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+    if not latest:
+        return
+
+    symbols = list({a.get("symbol") for a in alerts if a.get("symbol")})[:5]
+    if not symbols:
+        log.debug("agents layer: 분석할 종목 없음")
+        return
+
+    agent_results: list[dict] = []
+    for sym in symbols:
+        try:
+            result = run_agent_analysis(sym, latest, alerts)
+            agent_results.append({
+                "symbol": sym,
+                "action": result["action"],
+                "confidence": result["confidence"],
+                "rationale": result["rationale"],
+            })
+        except Exception as e:
+            log.warning("agents layer error for %s: %s", sym, e)
+
+    if agent_results:
+        agent_file = STATE_DIR / "agent_verdicts.json"
+        agent_file.write_text(json.dumps(agent_results, indent=2, ensure_ascii=False))
+        log.info("Agent verdicts: %d symbols → %s", len(agent_results), agent_file)
+
+
 def compute_and_write_verdicts() -> int:
     """보유 + 알림 종목에 대한 행동 판정을 state/verdicts.json에 기록."""
     from corvin_jarvis.signals import verdict
@@ -451,6 +559,27 @@ def detect_and_merge_regime_alert() -> dict[str, Any]:
     return out
 
 
+_NON_SYMBOL_TOKENS = {"KR", "US"}  # 지역 태그 — 심볼 아님
+
+
+def _alert_kind_symbol(metric: str, category: str) -> tuple[str, str]:
+    """metric에서 심볼 토큰 분리 → (kind, symbol). 카디널리티 폭발 방지.
+
+    예: rs_NVDA_confirmed → (rs_confirmed, NVDA) · stop_loss_012450 → (stop_loss, 012450)
+        kospi → (kospi, "") · META → (portfolio, META)
+    """
+    import re
+    sym = ""
+    kept = []
+    for p in metric.split("_"):
+        if not sym and p not in _NON_SYMBOL_TOKENS and (
+                re.fullmatch(r"\d{6}", p) or re.fullmatch(r"[A-Z]{2,5}", p)):
+            sym = p
+        else:
+            kept.append(p)
+    return ("_".join(kept) or category or "ALERT", sym)
+
+
 def run_jarvis() -> Path:
     BRIEFING_HISTORY.mkdir(parents=True, exist_ok=True)
     log.info("=== Jarvis Orchestrator 시작 ===")
@@ -461,8 +590,26 @@ def run_jarvis() -> Path:
     merge_narrative_alerts()
     merge_predictive_alerts()
     merge_signal_alerts()
+    merge_early_warning_alerts()
+    merge_cause_attribution()
     detect_and_merge_regime_alert()
+    try:
+        from corvin_jarvis.signals import ledger
+        alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
+        # 주의: alerts.json 장기 잔존 알림은 dedup이 흡수 (Phase 2 방향태깅 전 max-age 가드 필요)
+        records = []
+        for a in alerts:
+            kind, sym = _alert_kind_symbol(a.get("metric", ""), a.get("category", ""))
+            records.append({
+                "symbol": sym, "kind": kind,
+                "urgency": {"critical": 90, "high": 70, "medium": 55, "low": 30}.get(a.get("severity"), 40),
+                "message": a.get("message", ""), "metric": a.get("metric", ""),
+            })
+        ledger.record_batch("jarvis", records)
+    except Exception as e:  # noqa: BLE001 — 원장 실패는 신호 흐름 무영향
+        log.warning("ledger record failed: %s", e)
     compute_and_write_verdicts()
+    _run_agent_layer()
     run_weekly_attribution()
     build_geo_signal()
     build_context()

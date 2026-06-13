@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8"><title>CORVIN COMMAND</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/dashboard.css">
+</head><body>
+<div class="scan"></div>
+<div class="top"><div class="l">🐦‍⬛ CORVIN COMMAND // PORTFOLIO OPS</div>
+  <div class="r" id="topmeta">connecting…</div></div>
+<div class="wrap">
+  <div class="col">
+    <div class="panel log" style="flex:1"><h3>ACTION LOG</h3><div id="p-log"></div></div>
+    <div class="panel bars" style="flex:1"><h3>ALLOCATION</h3><div id="p-alloc"></div></div>
+  </div>
+  <div class="col">
+    <div class="midrow">
+      <div class="panel" style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div class="hero" id="p-hero"></div>
+        <div class="dim" style="font-size:11px;margin-top:6px">EQUITY CURVE</div>
+        <div class="curve" id="p-curve"></div>
+      </div>
+      <div class="panel" style="flex:1;min-width:0"><h3>POSITIONS — LIVE</h3><div id="p-positions"></div></div>
+    </div>
+    <div class="panel poly" style="flex:1"><h3>PREDICTION MARKETS</h3>
+      <div id="p-poly-tabs" class="poly-tabs"></div>
+      <div id="p-poly"></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="panel" style="flex:1"><h3>MARKETS / MACRO</h3><div id="p-indices"></div></div>
+    <div class="panel sig" style="flex:1.2"><h3>PLAYBOOK SIGNALS</h3><div id="p-signals"></div></div>
+  </div>
+  <div class="btm">
+    <div class="panel tape" id="p-matrix" style="padding:6px"></div>
+    <div class="panel ticker" id="p-ticker"></div>
+  </div>
+</div>
+<script src="/static/dashboard.js"></script>
+</body></html>

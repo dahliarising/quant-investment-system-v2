@@ -135,3 +135,46 @@ def test_build_narrative_alerts_triggers_on_extreme(tmp_path: Path) -> None:
 def test_build_narrative_alerts_handles_missing_db(tmp_path: Path) -> None:
     alerts = narrative.build_narrative_alerts(tmp_path / "nope.db", threshold=2.0)
     assert alerts == []
+
+
+# ── 진입 게이트: 외국인 순매도·감성 Z (2026-06-11) ──────
+
+def test_entry_caution_from_z_foreign_dump():
+    """외국인 강한 순매도(Z 음수) → caution + throttle factor."""
+    out = narrative.entry_caution_from_z(fnb_z=-2.0, tone_z=0.1)
+    assert out["caution"] is True
+    assert out["factor"] == 0.7
+    assert "외국인" in out["reason"]
+
+
+def test_entry_caution_from_z_sentiment_negative():
+    out = narrative.entry_caution_from_z(fnb_z=0.0, tone_z=-1.8)
+    assert out["caution"] is True
+    assert "감성" in out["reason"]
+
+
+def test_entry_caution_from_z_calm_is_neutral():
+    out = narrative.entry_caution_from_z(fnb_z=0.3, tone_z=-0.5)
+    assert out["caution"] is False
+    assert out["factor"] == 1.0
+
+
+def test_entry_caution_from_z_none_safe():
+    out = narrative.entry_caution_from_z(fnb_z=None, tone_z=None)
+    assert out["caution"] is False and out["factor"] == 1.0
+
+
+def test_entry_caution_db_wrapper(tmp_path):
+    """DB 래퍼 — 외국인 순매도 추세를 z로 잡아 caution."""
+    db = tmp_path / "signals.db"
+    with sqlite3.connect(db) as c:
+        c.execute("CREATE TABLE signals (date TEXT, session TEXT, vix REAL, "
+                  "foreign_net_buy REAL, sentiment_tone REAL, market TEXT)")
+        # 평소 +50, 최근 급락 -300 (강한 순매도 Z)
+        for d in range(2, 15):
+            c.execute("INSERT INTO signals VALUES (?,?,?,?,?,?)",
+                      (f"2026-06-{d:02d}", "close", 18.0, 50.0, 0.1, "KR"))
+        c.execute("INSERT INTO signals VALUES (?,?,?,?,?,?)",
+                  ("2026-06-15", "close", 22.0, -300.0, 0.1, "KR"))
+    out = narrative.entry_caution(db_path=db, market="KR")
+    assert out["caution"] is True

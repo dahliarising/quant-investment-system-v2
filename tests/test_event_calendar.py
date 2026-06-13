@@ -101,3 +101,24 @@ def test_build_dart_signals():
 @pytest.mark.unit
 def test_build_dart_signals_empty():
     assert event_calendar.build_dart_signals("012450", []) == []
+
+
+@pytest.mark.unit
+def test_bok_calendar_entries_in_valid_decision_months():
+    """재발 방지: BOK 항목은 실제 금리결정 달(1·2·4·5·7·8·10·11)에만.
+
+    2026-06-11 오발주 버그 회귀 가드 — 6·9·12월은 금융안정회의(금리 무관).
+    """
+    from datetime import date as _date
+    for name, iso in event_calendar.MACRO_CALENDAR:
+        if "BOK" in name:
+            m = _date.fromisoformat(iso).month
+            assert m in event_calendar._BOK_DECISION_MONTHS, \
+                f"BOK {iso}: 월 {m}은 금리결정 달이 아님"
+
+
+@pytest.mark.unit
+def test_no_bok_event_in_june_2026():
+    """6/11 가짜 BOK 경보 회귀 가드 — 6월엔 BOK 금리 이벤트 없음."""
+    events = event_calendar.macro_events_within(as_of=date(2026, 6, 1), horizon_days=20)
+    assert not any("BOK" in e["name"] for e in events)

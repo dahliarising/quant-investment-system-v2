@@ -131,3 +131,39 @@ def latest_signal(db_path: Path, market: str = "KR") -> dict[str, Any] | None:
         return dict(row) if row else None
     finally:
         conn.close()
+
+
+# ── 진입 게이트: 외국인 순매도·감성 악화 → 신규 진입 throttle (KR) ──
+
+_NARR_Z_THRESHOLD = 1.5     # |Z| 이 임계 넘으면 caution
+_NARR_THROTTLE_FACTOR = 0.7  # caution 시 DCA 점수 배율
+
+
+def entry_caution_from_z(fnb_z: float | None, tone_z: float | None,
+                         threshold: float = _NARR_Z_THRESHOLD) -> dict[str, Any]:
+    """순수 판정: 외국인 순매도 Z·감성 Z → 진입 주의 (KR narrative).
+
+    fnb_z ≤ -threshold (외국인 평소보다 강한 순매도) 또는
+    tone_z ≤ -threshold (감성 악화) → caution(factor<1).
+    """
+    reasons: list[str] = []
+    if fnb_z is not None and fnb_z <= -threshold:
+        reasons.append(f"외국인 순매도 Z{fnb_z:+.1f}")
+    if tone_z is not None and tone_z <= -threshold:
+        reasons.append(f"감성 악화 Z{tone_z:+.1f}")
+    return {"caution": bool(reasons),
+            "factor": _NARR_THROTTLE_FACTOR if reasons else 1.0,
+            "reason": " · ".join(reasons)}
+
+
+def entry_caution(db_path: Path | None = None, market: str = "KR",
+                  lookback_days: int = 30) -> dict[str, Any]:
+    """DB 래퍼 — 최근 narrative z-score로 진입 주의 판정. DB 없으면 factor 1.0."""
+    p = db_path or DEFAULT_SIGNALS_DB
+    try:
+        fnb = compute_zscore(p, "foreign_net_buy", lookback_days, market)
+        tone = compute_zscore(p, "sentiment_tone", lookback_days, market)
+    except (ValueError, sqlite3.Error, OSError):
+        return {"caution": False, "factor": 1.0, "reason": ""}
+    return entry_caution_from_z(fnb["zscore"] if fnb else None,
+                                tone["zscore"] if tone else None)

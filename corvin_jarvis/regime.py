@@ -18,6 +18,39 @@ from typing import Any
 log = logging.getLogger("corvin.regime")
 
 LABELS = ("crisis", "risk_off", "neutral", "risk_on", "euphoria")
+TRENDS = ("down", "chop", "up")
+POSTURES = ("capitulation_buy", "accumulate", "normal", "throttle")
+_TREND_DOWN_PCT = -3.0   # 광범위 N일 수익률 하락 임계
+_TREND_UP_PCT = 3.0
+
+
+def trend_from_returns(broad_returns_pct: float | None) -> str:
+    """광범위 지수 N일 수익률 → 추세 축. None→chop (2축 레짐의 가격축)."""
+    if broad_returns_pct is None:
+        return "chop"
+    if broad_returns_pct <= _TREND_DOWN_PCT:
+        return "down"
+    if broad_returns_pct >= _TREND_UP_PCT:
+        return "up"
+    return "chop"
+
+
+def entry_posture(trend: str, stress_label: str) -> str:
+    """추세 × 스트레스 → 진입 자세 (2축 레짐 핵심).
+
+    down+crisis(패닉)  → capitulation_buy (역발상 가속 OK)
+    down+그외(정돈하락) → throttle (신규 억제 — 슬로우블리드 칼 방지)
+    up+비스트레스      → accumulate
+    그 외(chop 등)     → normal
+    """
+    if trend == "down":
+        return "capitulation_buy" if stress_label == "crisis" else "throttle"
+    # 비하락(up/chop): crisis 스트레스면 가속 금지(데드캣 반등·불안정) → throttle
+    if stress_label == "crisis":
+        return "throttle"
+    if trend == "up" and stress_label != "risk_off":
+        return "accumulate"
+    return "normal"
 
 
 def label_from_signals(
@@ -198,6 +231,30 @@ def detect_regime(
     correl = compute_correlation(timeseries_db, "kospi", "sp500", days=lookback_days)
     out = label_from_signals(vix=vix, vix_zscore=vix_z, usd_krw_pct=fx_pct, correlation=correl)
 
+    # 2축 trend — sp500 ~10세션 모멘텀 (가격축, 정돈된 하락 식별)
+    # quote_history는 시간당 기록 → 일별 종가(하루 마지막 ts)로 그룹핑해야
+    # ~10'세션'을 봄 (LIMIT만 쓰면 ~10'시간'을 봐 신호가 무력화됨).
+    broad_pct: float | None = None
+    if timeseries_db.exists():
+        try:
+            with sqlite3.connect(timeseries_db) as conn:
+                rows = conn.execute(
+                    "SELECT price FROM quote_history WHERE symbol='sp500' "
+                    "AND price IS NOT NULL AND ts_utc IN ("
+                    "  SELECT MAX(ts_utc) FROM quote_history "
+                    "  WHERE symbol='sp500' AND price IS NOT NULL "
+                    "  GROUP BY date(ts_utc)) "
+                    "ORDER BY ts_utc DESC LIMIT 11"
+                ).fetchall()
+            vals = [float(r[0]) for r in rows if r[0] is not None]
+            if len(vals) >= 2 and vals[-1] > 0:
+                broad_pct = (vals[0] / vals[-1] - 1) * 100   # 최신일/약10세션전
+        except sqlite3.Error:
+            pass
+    out["trend"] = trend_from_returns(broad_pct)
+    out["broad_returns_pct"] = round(broad_pct, 2) if broad_pct is not None else None
+    out["posture"] = entry_posture(out["trend"], out["label"])
+
     prev_label: str | None = None
     if state_file.exists():
         try:
@@ -216,6 +273,9 @@ def detect_regime(
         "label": out["label"],
         "score": out["score"],
         "drivers": out["drivers"],
+        "trend": out["trend"],
+        "broad_returns_pct": out["broad_returns_pct"],
+        "posture": out["posture"],
         "timestamp": datetime.now().isoformat(timespec="seconds"),
     }, ensure_ascii=False, indent=2))
 

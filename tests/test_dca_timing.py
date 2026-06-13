@@ -10,6 +10,19 @@ import pytest
 from corvin_jarvis import dca_timing
 
 
+@pytest.fixture(autouse=True)
+def _isolate_regime_narrative(monkeypatch, tmp_path):
+    """라이브 last_regime.json(posture)·signals.db 의존 제거 — 결정적 배율.
+
+    STATE_DIR을 빈 tmp로 → last_regime.json 부재 → _load_posture None(자연).
+    개별 테스트가 STATE_DIR/narrative를 명시 설정하면 그 값이 우선(override).
+    """
+    monkeypatch.setattr(dca_timing, "STATE_DIR", tmp_path / "_isolated_state")
+    from corvin_jarvis import narrative
+    monkeypatch.setattr(narrative, "entry_caution",
+                        lambda *a, **k: {"caution": False, "factor": 1.0, "reason": ""})
+
+
 # ---------- 가격 시계열 helper ----------
 
 
@@ -439,3 +452,51 @@ def test_empty_message_flags_real_data_error() -> None:
     )
     msg = dca_timing.format_discord_message(report)
     assert "데이터오류" in msg
+
+
+# ── 2축 레짐: posture 기반 multiplier (2026-06-11) ──────
+
+@pytest.mark.unit
+def test_posture_multiplier_throttles_down_calm():
+    assert dca_timing._posture_multiplier("throttle") == 0.5
+    assert dca_timing._posture_multiplier("capitulation_buy") == 1.3
+    assert dca_timing._posture_multiplier("normal") == 1.0
+    assert dca_timing._posture_multiplier("accumulate") == 1.0
+
+
+@pytest.mark.unit
+def test_posture_multiplier_unknown_falls_back():
+    assert dca_timing._posture_multiplier(None) is None
+    assert dca_timing._posture_multiplier("weird") is None
+
+
+@pytest.mark.unit
+def test_load_posture_and_throttle_halves(monkeypatch, tmp_path):
+    """throttle posture → DCA 점수 반감 경로 (정돈된 하락 신규 억제)."""
+    import json as _json
+    (tmp_path / "last_regime.json").write_text(
+        _json.dumps({"label": "neutral", "posture": "throttle"}))
+    monkeypatch.setattr(dca_timing, "STATE_DIR", tmp_path)
+    assert dca_timing._load_posture() == "throttle"
+    assert dca_timing._posture_multiplier(dca_timing._load_posture()) == 0.5
+
+
+@pytest.mark.unit
+def test_kr_narrative_gate_throttles_kr_only(monkeypatch):
+    """KR narrative caution → KR 심볼만 eff_mult 축소, US는 무영향."""
+    from corvin_jarvis import narrative
+    # narrative caution 강제 (factor 0.7)
+    monkeypatch.setattr(narrative, "entry_caution",
+                        lambda *a, **k: {"caution": True, "factor": 0.7, "reason": "외국인 순매도"})
+    monkeypatch.setattr(dca_timing, "_load_posture", lambda: None)
+    monkeypatch.setattr(dca_timing, "_regime_multiplier", lambda r: 1.0)
+    captured = {}
+    def fake_score_one(symbol, regime_mult, **kw):
+        captured[symbol] = regime_mult
+        return None, "skip"
+    monkeypatch.setattr(dca_timing, "_score_one", fake_score_one)
+    universe = [{"symbol": "012450", "tier": 1}, {"symbol": "NVDA", "tier": 1}]
+    dca_timing.build_dca_report(universe, market_window="ALL",
+                                fetcher=lambda s, d=252: [100.0] * 60)
+    assert captured["012450"] == 0.7   # KR → narrative throttle
+    assert captured["NVDA"] == 1.0     # US → 무영향

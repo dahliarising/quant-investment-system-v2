@@ -56,8 +56,11 @@
     "geopolitical_check_every_n_pulses": 4
   },
   "notification": {
-    "channels": ["imessage", "log_only"],
-    "_channels_note": "크론잡 alert은 iMessage로만 (2026-05-28 폐하 지시). Discord 송출하려면 'discord' 추가.",
+    "channels": ["telegram", "log_only"],
+    "_channels_note": "크론잡 alert은 Telegram Dahlia봇으로만 (2026-06-01 폐하 지시: iMessage → Telegram 이전). token/chat_id는 .env TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID.",
+    "telegram": {
+      "chat_id": "8479910478"
+    },
     "discord_channel_id": null,
     "imessage_recipient": "+821092824761",
     "minimum_alert_severity": "medium",
@@ -69,6 +72,16 @@
   "trade_execution": {
     "mode": "advisory_only",
     "_note": "CLAUDE.md: 실제 매매 주문 금지 (모의만)"
+  },
+  "early_warning": {
+    "_comment": "선행 경보 — 지표별 상태 임계 (튜너블). 2026-06-06 초기값.",
+    "semis": {"divergence_high_dist_pct": 3.0},
+    "vix_term": {"green_max": 0.90, "amber_max": 1.00},
+    "breadth": {"green_min": 60.0, "amber_min": 40.0},
+    "hy": {"green_max": 3.5, "amber_max": 5.0, "rise_amber_5d": 0.3, "rise_red_5d": 0.5},
+    "curve": {"green_min": 0.5, "amber_min": 0.0, "fast_move_5d": 0.15},
+    "hard_stop_pct": -8.0,
+    "enabled": true
   },
   "dca": {
     "_comment": "Daily DCA Timing (Tier 2.4) — Value-tilted, Tier-weighted, score≥50",

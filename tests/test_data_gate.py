@@ -1,0 +1,167 @@
+"""Phase 4 — data_gate 순수 게이트 코어 테스트."""
+import pytest
+
+from corvin_jarvis.signals import data_gate as dg
+
+
+def _sig(symbol="TSLA", kind="STOP", **kw):
+    base = {"symbol": symbol, "kind": kind, "urgency": 70, "confidence": 65.0,
+            "message": "현재가 $310 — 손절 임박"}
+    base.update(kw)
+    return base
+
+
+@pytest.mark.unit
+def test_gate_passes_clean_signals_unchanged():
+    """검증 통과 — 신호 내용 그대로 (장중이므로 라벨 미교정)."""
+    sigs = [_sig()]
+    res = dg.gate_signals(sigs, market_open=True)
+    assert res["passed"] == sigs
+    assert res["blocked"] == []
+    assert res["warnings"] == []
+
+
+@pytest.mark.unit
+def test_gate_drops_nan_inf_signals():
+    """NaN/inf 수치 신호만 drop — 나머지는 통과 (스펙 §7 row 4)."""
+    bad_nan = _sig(symbol="AAA", confidence=float("nan"))
+    bad_inf = _sig(symbol="BBB", urgency=float("inf"))
+    good = _sig(symbol="CCC")
+    res = dg.gate_signals([bad_nan, bad_inf, good], market_open=True)
+    assert [s["symbol"] for s in res["passed"]] == ["CCC"]
+    assert {b["reason"] for b in res["blocked"]} == {"invalid_numeric"}
+
+
+@pytest.mark.unit
+def test_gate_holds_signal_on_price_discrepancy():
+    """가격 소스 불일치 → 해당 종목 신호 보류 + 경고 (스펙 §7 row 1)."""
+    checks = {"TSLA": {"value": 310.0, "flag": "discrepancy", "spread_pct": 2.4},
+              "NVDA": {"value": 180.0, "flag": None, "spread_pct": 0.1}}
+    res = dg.gate_signals([_sig("TSLA"), _sig("NVDA")],
+                          price_checks=checks, market_open=True)
+    assert [s["symbol"] for s in res["passed"]] == ["NVDA"]
+    assert res["blocked"][0]["reason"] == "price_discrepancy"
+    assert any("TSLA" in w for w in res["warnings"])
+
+
+@pytest.mark.unit
+def test_gate_corrects_price_label_when_market_closed():
+    """장마감 — '현재가' → '전일종가' 자동 교정, 원본 dict 비변이 (스펙 §7 row 2)."""
+    orig = _sig()
+    res = dg.gate_signals([orig], market_open=False)
+    assert res["passed"][0]["message"] == "전일종가 $310 — 손절 임박"
+    assert orig["message"] == "현재가 $310 — 손절 임박"  # 불변성
+
+
+@pytest.mark.unit
+def test_gate_keeps_label_when_market_open():
+    res = dg.gate_signals([_sig()], market_open=True)
+    assert "현재가" in res["passed"][0]["message"]
+
+
+@pytest.mark.unit
+def test_gate_blocks_all_on_stale_data():
+    """데이터 한도 초과 — 전체 차단 + 갱신 요청 경고 (스펙 §7 row 3)."""
+    res = dg.gate_signals([_sig("TSLA"), _sig("NVDA")],
+                          market_open=True, data_age_days=8)
+    assert res["passed"] == []
+    assert all(b["reason"] == "stale_data" for b in res["blocked"])
+    assert any("갱신" in w for w in res["warnings"])
+
+
+@pytest.mark.unit
+def test_gate_allows_within_stale_limit():
+    """기본 한도(3일) 이내 — 통과."""
+    res = dg.gate_signals([_sig()], market_open=True, data_age_days=2)
+    assert len(res["passed"]) == 1
+
+
+@pytest.mark.unit
+def test_gate_custom_stale_limit():
+    """max_age_days 커스텀 — 통합부의 7일 정책 지원."""
+    res = dg.gate_signals([_sig()], market_open=True,
+                          data_age_days=5, max_age_days=6)
+    assert len(res["passed"]) == 1
+    res2 = dg.gate_signals([_sig()], market_open=True,
+                           data_age_days=7, max_age_days=6)
+    assert res2["passed"] == []
+
+
+# ── collect_price_checks — DI fetcher 바인딩 ─────────────────
+
+@pytest.mark.unit
+def test_collect_price_checks_uses_injected_fetchers():
+    """주입된 fetcher 페어로 cross_check — 일치 시 flag None."""
+    def fetchers_for(sym):
+        return {"kis": lambda: 100.0, "alt": lambda: 100.5}
+    out = dg.collect_price_checks(["TSLA"], fetchers_for=fetchers_for)
+    assert out["TSLA"]["flag"] is None
+    assert out["TSLA"]["confidence"] == "high"
+
+
+@pytest.mark.unit
+def test_collect_price_checks_flags_discrepancy():
+    """±1% 초과 괴리 — discrepancy flag (스펙 §7 row 1)."""
+    def fetchers_for(sym):
+        return {"kis": lambda: 100.0, "alt": lambda: 103.0}
+    out = dg.collect_price_checks(["TSLA"], fetchers_for=fetchers_for)
+    assert out["TSLA"]["flag"] == "discrepancy"
+
+
+@pytest.mark.unit
+def test_collect_price_checks_single_source_passes():
+    """한 소스 죽음 — single_source, 게이트는 차단하지 않음 (소스 격리)."""
+    def fetchers_for(sym):
+        return {"kis": lambda: (_ for _ in ()).throw(RuntimeError("down")),
+                "alt": lambda: 100.0}
+    out = dg.collect_price_checks(["TSLA"], fetchers_for=fetchers_for)
+    assert out["TSLA"]["flag"] == "single_source"
+    # single_source는 gate_signals에서 discrepancy가 아니므로 통과되어야 함
+    res = dg.gate_signals([{"symbol": "TSLA", "kind": "STOP",
+                            "urgency": 50, "confidence": 60.0, "message": "x"}],
+                          price_checks=out, market_open=True)
+    assert len(res["passed"]) == 1
+
+
+@pytest.mark.unit
+def test_collect_price_checks_dedups_symbols():
+    calls = []
+    def fetchers_for(sym):
+        calls.append(sym)
+        return {"kis": lambda: 100.0, "alt": lambda: 100.0}
+    dg.collect_price_checks(["TSLA", "TSLA", "NVDA"], fetchers_for=fetchers_for)
+    assert calls == ["TSLA", "NVDA"]
+
+
+# ── 리뷰 반영: 별칭 변이·빈 심볼·캐시 ─────────────────────
+
+@pytest.mark.unit
+def test_gate_passed_signals_are_copies():
+    """passed 항목은 원본과 독립 — downstream 변이가 원본 오염 금지."""
+    orig = _sig()
+    res = dg.gate_signals([orig], market_open=True)
+    res["passed"][0]["message"] = "MUTATED"
+    assert orig["message"] == "현재가 $310 — 손절 임박"
+
+
+@pytest.mark.unit
+def test_gate_symbolless_signal_skips_price_check():
+    """symbol 없는 신호(EVENT 등)는 ''키 price_check에 오매칭되지 않음."""
+    checks = {"": {"value": 1.0, "flag": "discrepancy", "spread_pct": 9.9}}
+    ev = {"symbol": "", "kind": "EVENT", "urgency": 50, "confidence": 90.0,
+          "message": "FOMC D-3"}
+    res = dg.gate_signals([ev], price_checks=checks, market_open=True)
+    assert len(res["passed"]) == 1
+
+
+@pytest.mark.unit
+def test_collect_price_checks_caches_default_path(monkeypatch):
+    """기본(라이브) 경로는 TTL 캐시 — 같은 심볼 반복 호출 시 네트워크 1회."""
+    calls = []
+    monkeypatch.setattr(dg, "_kis_price", lambda s: calls.append(s) or 100.0)
+    monkeypatch.setattr(dg, "_alt_price", lambda s: 100.0)
+    dg._CHECK_CACHE.clear()
+    dg.collect_price_checks(["TSLA"])
+    dg.collect_price_checks(["TSLA"])
+    assert calls == ["TSLA"]
+    dg._CHECK_CACHE.clear()

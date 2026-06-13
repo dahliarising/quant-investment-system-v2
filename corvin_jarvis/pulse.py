@@ -59,6 +59,7 @@ class PositionQuote:
     market_value: float | None
     source: str = ""
     error: str | None = None
+    bucket: str = "trade"   # A(trade)=ATR 손절 / B(dca)=가격손절 면제 (verdict 2-버킷)
 
 
 @dataclass
@@ -157,13 +158,14 @@ def _fetch_position_quote(holding: dict[str, Any]) -> PositionQuote:
     cur = holding.get("currency", "USD")
     avg_key = "avgPriceKRW" if cur == "KRW" else "avgPriceUSD"
     avg = float(holding.get("avgPrice") or holding[avg_key])
+    bucket = str(holding.get("bucket") or "trade")   # 손절 버킷 — compare로 전달
 
     q = quote_provider.get_stock_quote(sym)
     if q.error or q.price is None:
         return PositionQuote(
             symbol=sym, shares=shares, avg_price=avg, currency=cur,
             current_price=None, pnl_pct=None, market_value=None,
-            source=q.source, error=q.error,
+            source=q.source, error=q.error, bucket=bucket,
         )
 
     price = q.price
@@ -172,7 +174,7 @@ def _fetch_position_quote(holding: dict[str, Any]) -> PositionQuote:
         symbol=sym, shares=shares, avg_price=avg, currency=cur,
         current_price=round(price, 4), pnl_pct=round(pnl, 2),
         market_value=round(price * shares, 2),
-        source=q.source,
+        source=q.source, bucket=bucket,
     )
 
 
