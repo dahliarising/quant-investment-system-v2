@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.corvin.prediction-digest</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>__HOME__/Claude/quant_investment_system_v2/corvin_jarvis/run_prediction_digest.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>9</integer>
+        <key>Minute</key><integer>36</integer>
+    </dict>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Claude/quant_investment_system_v2/corvin_jarvis/state/prediction_digest.err</string>
+</dict>
+</plist>
