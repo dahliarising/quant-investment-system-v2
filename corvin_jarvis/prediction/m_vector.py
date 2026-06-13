@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from corvin_jarvis.prediction.contract import PredictionResult, insufficient
+
 
 def zscore_columns(matrix: np.ndarray) -> np.ndarray:
     """열(feature)별 z-score 정규화. std=0 열은 0으로."""
@@ -22,7 +24,7 @@ def top_k_analogs(today: np.ndarray, matrix: np.ndarray, k: int):
     eps = 1e-12
     tn = today / (np.linalg.norm(today) + eps)
     mn = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + eps)
-    sims = mn @ tn
+    sims = np.dot(mn, tn)  # @ triggers spurious Accelerate BLAS RuntimeWarning on macOS
     order = np.argsort(-sims)[:k]
     return order, sims[order]
 
@@ -33,9 +35,6 @@ def forward_distribution(forward_returns: list[float]) -> dict:
     wins = int((arr > 0).sum())
     return {"mean": float(arr.mean()), "median": float(np.median(arr)),
             "win_rate": wins / len(arr) if len(arr) else 0.0, "n": len(arr)}
-
-
-from corvin_jarvis.prediction.contract import PredictionResult, insufficient
 
 
 def _returns(closes: list[dict]) -> list[float]:

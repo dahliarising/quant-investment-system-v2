@@ -6,8 +6,9 @@ yfinance는 한국 데이터 stale → KR에 절대 사용 금지.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS daily_history (
@@ -52,9 +53,6 @@ def last_date(db_path: Path, symbol: str) -> str | None:
                         (symbol,)).fetchone()
         return row[0] if row and row[0] else None
 
-
-from datetime import datetime, timedelta
-from typing import Callable
 
 Fetcher = Callable[[str, str, str], list[dict[str, Any]]]
 
