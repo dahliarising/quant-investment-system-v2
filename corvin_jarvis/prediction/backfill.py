@@ -51,3 +51,42 @@ def last_date(db_path: Path, symbol: str) -> str | None:
         row = c.execute("SELECT MAX(date) FROM daily_history WHERE symbol=?",
                         (symbol,)).fetchone()
         return row[0] if row and row[0] else None
+
+
+from datetime import datetime, timedelta
+from typing import Callable
+
+Fetcher = Callable[[str, str, str], list[dict[str, Any]]]
+
+
+def _default_fetch(symbol: str, market: str, start: str) -> list[dict[str, Any]]:
+    """FinanceDataReader 일봉 → daily_history row. KR/US 동일 API."""
+    import FinanceDataReader as fdr
+    df = fdr.DataReader(symbol, start)
+    out: list[dict[str, Any]] = []
+    for idx, row in df.iterrows():
+        out.append({"symbol": symbol, "date": idx.strftime("%Y-%m-%d"),
+                    "open": float(row.get("Open", 0)), "high": float(row.get("High", 0)),
+                    "low": float(row.get("Low", 0)), "close": float(row.get("Close", 0)),
+                    "volume": int(row.get("Volume", 0) or 0), "source": "fdr"})
+    return out
+
+
+def incremental_update(db_path: Path, symbols: list[tuple[str, str]],
+                       fetcher: Fetcher | None = None) -> int:
+    """symbols = [(symbol, market)]. last_date 다음날부터 fetch 후 upsert."""
+    fetch = fetcher or _default_fetch
+    total = 0
+    for symbol, market in symbols:
+        last = last_date(db_path, symbol)
+        if last:
+            start = (datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        else:
+            start = "2016-01-01"  # 초기 backfill ~10년
+        try:
+            rows = fetch(symbol, market, start)
+        except Exception:
+            continue  # 네트워크 실패 → 기존 캐시로 진행
+        if rows:
+            total += upsert_rows(db_path, rows)
+    return total
