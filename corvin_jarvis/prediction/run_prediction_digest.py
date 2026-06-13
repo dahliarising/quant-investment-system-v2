@@ -56,6 +56,39 @@ def _send(body: str) -> None:
     channels.send_telegram(body)
 
 
+def gather_inputs(*, portfolio_path: Path, universe_path: Path, db_path: Path,
+                  geo_fetch) -> dict:
+    """portfolio.json + monitored_universe.json + daily_history → build_digest 입력."""
+    holdings = []
+    if portfolio_path.exists():
+        pf = json.loads(portfolio_path.read_text())
+        holdings = pf.get("holdings", [])
+    universe = []
+    if universe_path.exists():
+        uni = json.loads(universe_path.read_text())
+        universe = [t["symbol"] for t in uni.get("tickers", [])]
+
+    backfill.init_db(db_path)
+    syms = [h["symbol"] for h in holdings] + universe
+    closes_by_sym = {s: [r["close"] for r in backfill.read_daily(db_path, s, 250)]
+                     for s in syms}
+    daily_by_feature = {f: backfill.read_daily(db_path, f, 500) for f in _FEATURES}
+    stops = {}
+    try:
+        from corvin_jarvis.signal_engine import load_stops
+        stops = load_stops()
+    except Exception:
+        stops = {}
+    geo_payload = None
+    try:
+        geo_payload = geo_fetch()
+    except Exception:
+        geo_payload = None
+    return {"holdings": holdings, "universe": universe, "stops": stops,
+            "closes_by_sym": closes_by_sym, "daily_by_feature": daily_by_feature,
+            "geo_payload": geo_payload}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -63,11 +96,15 @@ def main(argv: list[str] | None = None) -> int:
 
     date_str = datetime.now(KST).strftime("%Y-%m-%d")
     backfill.init_db(_DB)
-    # 실제 데이터 수집은 운영에서 portfolio/universe/MCP로 채운다.
-    # (여기서는 골격 — 세부 수집 로직은 운영 진입점에서 주입)
-    text = build_digest(date_str=date_str, holdings=[], universe=[], db_path=_DB,
-                        geo_payload=None, stops={}, closes_by_sym={},
-                        daily_by_feature={})
+    _PF = Path(__file__).resolve().parent.parent.parent / "portfolio.json"
+    _UNI = Path(__file__).resolve().parent.parent / "monitored_universe.json"
+    inp = gather_inputs(portfolio_path=_PF, universe_path=_UNI, db_path=_DB,
+                        geo_fetch=lambda: None)
+    text = build_digest(date_str=date_str, holdings=inp["holdings"],
+                        universe=inp["universe"], db_path=_DB,
+                        geo_payload=inp["geo_payload"], stops=inp["stops"],
+                        closes_by_sym=inp["closes_by_sym"],
+                        daily_by_feature=inp["daily_by_feature"])
     if args.dry_run:
         print(text)
     else:
