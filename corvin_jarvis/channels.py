@@ -35,8 +35,15 @@ def _notification_cfg() -> dict:
 def enabled_channels() -> set[str]:
     chans = _notification_cfg().get("channels")
     if not isinstance(chans, list) or not chans:
-        return set(DEFAULT_CHANNELS)
-    return {str(c) for c in chans}
+        result = set(DEFAULT_CHANNELS)
+    else:
+        result = {str(c) for c in chans}
+    # 무음 모드: CORVIN_SILENT 설정 시 push 채널 제거(계산은 수행, 알림만 차단).
+    # 노이즈 감축용 — playbook 등 compute-only 크론이 wrapper에서 export.
+    if os.environ.get("CORVIN_SILENT"):
+        result -= {"telegram", "discord", "imessage"}
+        result.add("log_only")
+    return result
 
 
 def is_enabled(channel: str) -> bool:

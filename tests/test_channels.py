@@ -34,6 +34,22 @@ def test_defaults_when_config_unreadable(tmp_path, monkeypatch):
     assert channels.enabled_channels() == set(channels.DEFAULT_CHANNELS)
 
 
+def test_corvin_silent_drops_push_channels(tmp_path, monkeypatch):
+    """CORVIN_SILENT=1 → compute-only run: push 채널 제거, log_only 유지."""
+    _write_config(tmp_path, monkeypatch, {"channels": ["telegram", "log_only"]})
+    monkeypatch.setenv("CORVIN_SILENT", "1")
+    chans = channels.enabled_channels()
+    assert "telegram" not in chans
+    assert channels.is_enabled("telegram") is False
+    assert "log_only" in chans
+
+
+def test_corvin_silent_unset_keeps_telegram(tmp_path, monkeypatch):
+    _write_config(tmp_path, monkeypatch, {"channels": ["telegram", "log_only"]})
+    monkeypatch.delenv("CORVIN_SILENT", raising=False)
+    assert channels.is_enabled("telegram") is True
+
+
 def test_send_imessage_noop_when_channel_disabled(tmp_path, monkeypatch):
     _write_config(tmp_path, monkeypatch, {"channels": ["discord"], "imessage_recipient": "+10000000000"})
 
