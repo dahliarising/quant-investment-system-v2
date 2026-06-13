@@ -5,6 +5,7 @@ yfinance는 한국 데이터 stale → KR에 절대 사용 금지.
 """
 from __future__ import annotations
 
+import math
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -57,16 +58,38 @@ def last_date(db_path: Path, symbol: str) -> str | None:
 Fetcher = Callable[[str, str, str], list[dict[str, Any]]]
 
 
+def _num(v: Any, cast: Callable[[float], Any] = float) -> Any:
+    """NaN/None-safe 숫자 변환. 지수·FX·선물은 Volume이 NaN인 행이 있어
+    int(NaN) ValueError 폭발 → incremental_update가 swallow → 일봉 누락 방지."""
+    try:
+        if v is None:
+            return cast(0)
+        f = float(v)
+        if math.isnan(f):
+            return cast(0)
+        return cast(f)
+    except (TypeError, ValueError):
+        return cast(0)
+
+
+def _row_from(symbol: str, date: str, open: Any, high: Any, low: Any,
+              close: Any, volume: Any, source: str) -> dict[str, Any]:
+    """순수 row 빌더 — 모든 숫자 컬럼에 _num 적용 (NaN-safe). 단위 테스트 가능."""
+    return {"symbol": symbol, "date": date,
+            "open": _num(open, float), "high": _num(high, float),
+            "low": _num(low, float), "close": _num(close, float),
+            "volume": _num(volume, int), "source": source}
+
+
 def _default_fetch(symbol: str, market: str, start: str) -> list[dict[str, Any]]:
     """FinanceDataReader 일봉 → daily_history row. KR/US 동일 API."""
     import FinanceDataReader as fdr
     df = fdr.DataReader(symbol, start)
     out: list[dict[str, Any]] = []
     for idx, row in df.iterrows():
-        out.append({"symbol": symbol, "date": idx.strftime("%Y-%m-%d"),
-                    "open": float(row.get("Open", 0)), "high": float(row.get("High", 0)),
-                    "low": float(row.get("Low", 0)), "close": float(row.get("Close", 0)),
-                    "volume": int(row.get("Volume", 0) or 0), "source": "fdr"})
+        out.append(_row_from(symbol, idx.strftime("%Y-%m-%d"),
+                             row.get("Open"), row.get("High"), row.get("Low"),
+                             row.get("Close"), row.get("Volume"), "fdr"))
     return out
 
 

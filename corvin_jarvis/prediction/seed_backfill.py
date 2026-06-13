@@ -38,10 +38,33 @@ def _fetch(symbol, market, start):
     return rows
 
 
+def _holding_syms():
+    """portfolio.json 보유종목 → (symbol, market). 6자리=KR, 그 외=US.
+    raw symbol을 FDR 심볼로 그대로 사용 (US 티커·6자리 KR코드 모두 FDR 직통)."""
+    pf_path = Path(__file__).resolve().parent.parent.parent / "portfolio.json"
+    if not pf_path.exists():
+        return []
+    pf = json.loads(pf_path.read_text())
+    out = []
+    for h in pf.get("holdings", []):
+        sym = h.get("symbol")
+        if not sym:
+            continue
+        market = "KR" if (len(sym) == 6 and sym.isdigit()) else "US"
+        out.append((sym, market))
+    return out
+
+
 def main():
     backfill.init_db(_DB)
     uni = json.loads((Path(__file__).resolve().parent.parent / "monitored_universe.json").read_text())
     syms = list(_FEATURES) + [(t["symbol"], t.get("market", "KR")) for t in uni.get("tickers", [])]
+    # 보유종목 = "holdings + monitored universe" 스코프 → universe 밖 보유분도 적재.
+    seen = {s for s, _ in syms}
+    for sym, market in _holding_syms():
+        if sym not in seen:
+            syms.append((sym, market))
+            seen.add(sym)
     n = backfill.incremental_update(_DB, syms, fetcher=_fetch)
     print(f"backfill 완료: {n} rows, db={_DB}")
 
