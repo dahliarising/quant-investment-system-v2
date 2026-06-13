@@ -249,7 +249,8 @@ def test_evaluate_injects_calibrated_confidence():
     cal = {"predictive": {"VELOCITY": {"n": 20, "hit_rate": 0.4,
                                        "calibrated_confidence": 47.5}}}
     sigs = pe.evaluate(_mk_holding(price=104.0), stops={"TSLA": 98.0},
-                       closes_by_sym={"TSLA": closes}, calibration=cal)
+                       closes_by_sym={"TSLA": closes}, calibration=cal,
+                       regime_trend="down")  # 디스크 last_regime.json 의존 제거(hermetic)
     vel = [s for s in sigs if s.kind == "VELOCITY"]
     assert vel and vel[0].confidence == 47.5
 

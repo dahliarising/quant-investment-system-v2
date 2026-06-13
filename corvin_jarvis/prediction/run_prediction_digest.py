@@ -38,17 +38,20 @@ def build_digest(*, date_str, holdings, universe, db_path, geo_payload,
                  stops, closes_by_sym, daily_by_feature) -> str:
     results: list[PredictionResult] = []
     results += _safe("velocity", _run_velocity, holdings, stops, closes_by_sym)
-    for pos in holdings:
-        sym = str(pos.get("symbol", ""))
+    holding_syms = [str(pos.get("symbol", "")) for pos in holdings if pos.get("symbol")]
+    for sym in holding_syms:
         results += _safe("probability", m_probability.run_symbol, sym,
-                         [c for c in closes_by_sym.get(sym, [])], stops.get(sym, 0.0))
-    for sym in universe:
+                         list(closes_by_sym.get(sym, [])), stops.get(sym, 0.0))
+    # momentum = 보유 우선 → 유니버스 (dedup, 보유분은 종목 라인에 인라인됨)
+    mom_syms = list(dict.fromkeys(holding_syms + list(universe)))
+    for sym in mom_syms:
         results += _safe("momentum", m_momentum.run_symbol, sym,
                          closes_by_sym.get(sym, []))
     results += _safe("geopolitical", m_geopolitical.run, geo_payload)
     results += _safe("vector_analog", m_vector.predict, daily_by_feature,
                      features=_FEATURES)
-    return digest_assembler.assemble(results, date_str)
+    return digest_assembler.assemble(results, date_str,
+                                     holding_symbols=set(holding_syms))
 
 
 def _send(body: str) -> None:
