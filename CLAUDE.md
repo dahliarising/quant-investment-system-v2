@@ -95,6 +95,13 @@ python3 -m corvin_jarvis.prediction.run_prediction_digest --dry-run
 - 백테스트 게이트 갱신이 필요하면 `python3 -m corvin_jarvis.prediction.seed_phase2_backtest`.
 - 자세한 구조: `corvin_jarvis/prediction/README.md`.
 
+**"각 모델 / 모델별 / 각각 예측 결과"** 로 물으면 압축 다이제스트 대신 **모델별 상세 뷰**:
+```bash
+python3 -m corvin_jarvis.prediction.run_prediction_digest --by-model
+```
+- 시스템 ①~⑩ 각각의 raw 출력을 그룹별로 표시. 게이트 탈락 모델은 `❌백테스트탈락` 태그와 함께 출력값도 보여줌(게이트 작동 가시화).
+- 출력이 길면 Discord 2000자 한계 → 시장/보유/모멘텀 섹션 경계에서 분할 전송.
+
 
 ## 📡 Discord 응답 UX 규칙 (#10)
 

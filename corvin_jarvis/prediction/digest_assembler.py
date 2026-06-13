@@ -120,3 +120,60 @@ def assemble(results: list[PredictionResult], date_str: str,
     parts.append(_DIV)
     parts.append("_⚠️ 데이터 기반 advisory · 실매매 판단은 본인 책임_")
     return "\n".join(parts)
+
+
+# ── 모델별 상세 뷰 (--by-model) ────────────────────────
+
+_SYS_LABEL = {
+    "ensemble": "⑩ 앙상블 합의", "vector_analog": "① 벡터 analog",
+    "logistic": "⑥ ML 로지스틱", "sentiment": "⑧ 센티먼트",
+    "geopolitical": "④ 지정학", "velocity": "② 하락속도",
+    "probability": "③ 확률 log-normal", "montecarlo": "⑨ 몬테카를로",
+    "momentum": "⑤ 모멘텀", "band": "⑦ 가격밴드",
+}
+_SYS_VIEW_ORDER = ["ensemble", "vector_analog", "logistic", "sentiment",
+                   "geopolitical", "velocity", "probability", "montecarlo",
+                   "band", "momentum"]
+_GATED = {"logistic", "montecarlo", "band"}
+
+
+def _gate_tag(name: str, gate: dict) -> str:
+    if name not in _GATED or name not in gate:
+        return ""
+    return " ✅통과" if gate[name].get("passed") else " ❌백테스트탈락"
+
+
+def by_model(results: list[PredictionResult], date_str: str,
+             gate: dict | None = None) -> str:
+    """모델별 그룹 상세 뷰 — 각 시스템이 무엇을 냈는지 개별 표시."""
+    gate = gate or {}
+    grouped: "OrderedDict[str, list[PredictionResult]]" = OrderedDict()
+    for r in results:
+        grouped.setdefault(r.system, []).append(r)
+    parts = [f"🔬 *모델별 예측* ({date_str})", _DIV]
+    for name in _SYS_VIEW_ORDER:
+        rs = grouped.get(name)
+        head = f"*{_SYS_LABEL.get(name, name)}*{_gate_tag(name, gate)}"
+        if not rs:
+            parts.append(f"{head} — (결과 없음)")
+            continue
+        parts.append(head)
+        if name == "momentum":
+            ok = [r for r in rs if r.data_ok]
+            up = sum(1 for r in ok if r.evidence.get("signal") == "bullish")
+            down = sum(1 for r in ok if r.evidence.get("signal") == "bearish")
+            parts.append(f"  {len(ok)}종목: ↑{up} ↓{down} →{len(ok)-up-down}")
+            top = sorted(ok, key=lambda r: abs(r.evidence.get("gap_pct", 0) or 0),
+                         reverse=True)[:5]
+            parts += [f"  • {r.scope}: {_short(r)}" for r in top]
+        else:
+            for r in rs:
+                scope = "" if r.scope == "market" else f"{r.scope}: "
+                if r.data_ok:
+                    parts.append(f"  • {scope}{r.verdict} _(신뢰 {r.confidence:.0f})_")
+                else:
+                    parts.append(f"  ⏸ {scope}{r.verdict}")
+        parts.append("")
+    parts.append(_DIV)
+    parts.append("_⚠️ 게이트 탈락(❌)·미배선 모델은 다이제스트 미반영_")
+    return "\n".join(parts)

@@ -46,6 +46,27 @@ def test_run_insufficient_when_no_votes():
     assert r.data_ok is False
 
 
+def test_neutral_sentiment_abstains():
+    """중립 sentiment(|tone|<0.5)는 합의에서 기권 — 가짜 합의 방지."""
+    results = [
+        PredictionResult("vector_analog", "market", "상승", 70, {"mean": 0.02}, True),
+        PredictionResult("sentiment", "market", "심리 중립", 53, {"tone": 0.2}, True),
+    ]
+    r = m_ensemble.run(results, gate={})
+    assert r.data_ok is False   # vector 1표만 남아 합의 불가
+
+
+def test_strong_sentiment_votes():
+    """뚜렷한 sentiment(|tone|>=0.5)는 정상 투표."""
+    results = [
+        PredictionResult("vector_analog", "market", "상승", 70, {"mean": 0.02}, True),
+        PredictionResult("sentiment", "market", "심리 상방", 60, {"tone": 0.9}, True),
+    ]
+    r = m_ensemble.run(results, gate={})
+    assert r.data_ok is True
+    assert r.evidence["direction"] == "up"
+
+
 def test_single_vote_is_not_consensus():
     """1표는 합의 아님 — 과신 방지."""
     results = [PredictionResult("vector_analog", "market", "상승", 70,
