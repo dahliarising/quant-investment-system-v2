@@ -30,6 +30,8 @@ def directional_score(predictions: list[tuple[float, int]],
     hits = sum(1 for p, y in predictions if (1 if p >= 0.5 else 0) == y)
     hit_rate = hits / n
     up = sum(y for _, y in predictions) / n
+    # baseline = 다수클래스 적중률(항상 ≥0.5). hit이 이를 margin만큼 넘어야 통과 —
+    # 강세장 'always-up' 더미는 baseline=up이라 자동 탈락(0.5 별도조건 불필요).
     baseline = max(up, 1 - up)
     return {"hit_rate": hit_rate, "baseline": baseline, "n": n,
             "passed": hit_rate > baseline + margin}
@@ -72,11 +74,11 @@ def walk_forward_logistic(closes_by_feature: dict[str, list[dict]], *,
     return directional_score(preds)
 
 
-def walk_forward_coverage(closes: list[float], *, kind: str, horizon: int = 21,
-                          min_train: int = 150, step: int = 20) -> dict[str, Any]:
-    """band/montecarlo의 [p_low,p_high] 구간이 실현 H일 수익률을 포함하는 비율."""
+def _coverage_flags(closes: list[float], *, kind: str, horizon: int,
+                    min_train: int, step: int,
+                    rng: np.random.Generator) -> list[bool]:
+    """한 종목의 예측구간이 실현 H일 수익률을 포함하는지 플래그 리스트."""
     flags: list[bool] = []
-    rng = np.random.default_rng(12345)
     for t in range(min_train, len(closes) - horizon, step):
         hist = closes[:t + 1]
         price = closes[t]
@@ -96,21 +98,42 @@ def walk_forward_coverage(closes: list[float], *, kind: str, horizon: int = 21,
                 continue
             lo, hi = r.evidence["p5"] / 100.0, r.evidence["p95"] / 100.0
         flags.append(lo <= realized <= hi)
-    # band low_q/high_q=10/90 → 목표 coverage 0.8, montecarlo p5~p95 → 0.9
+    return flags
+
+
+def walk_forward_coverage(closes_list: list[list[float]], *, kind: str,
+                          horizon: int = 21, min_train: int = 150,
+                          step: int = 20) -> dict[str, Any]:
+    """여러 종목의 예측구간 coverage를 합산 검증.
+
+    게이트는 실제 적용 대상(montecarlo=보유종목)으로 검증해야 정직 — 지수만으로
+    검증 후 개별주에 적용하면 두꺼운 꼬리 때문에 coverage 과장(리뷰 반영)."""
+    rng = np.random.default_rng(12345)
+    flags: list[bool] = []
+    for closes in closes_list:
+        flags += _coverage_flags(closes, kind=kind, horizon=horizon,
+                                 min_train=min_train, step=step, rng=rng)
+    # band low_q/high_q=10/90 → 목표 0.8, montecarlo p5~p95 → 0.9
     target = 0.8 if kind == "band" else 0.9
     return coverage_score(flags, target=target, tol=0.12)
 
 
 def run_all(db_path: Path, *, features: list[str], holdings: list[str]
             ) -> dict[str, Any]:
-    """실 daily_history로 Phase 2 방법론 백테스트 → 게이트 dict."""
+    """실 daily_history로 Phase 2 방법론 백테스트 → 게이트 dict.
+
+    montecarlo는 보유종목에 적용되므로 보유종목 closes로 검증(없으면 지수).
+    band는 미표시(방향섹션 부적합)지만 지수로 게이트 유지.
+    """
     feat_closes = {f: backfill.read_daily(db_path, f, 2000) for f in features}
+    base_closes = [d["close"] for d in feat_closes.get(features[0], [])]
+    hold_closes = [[d["close"] for d in backfill.read_daily(db_path, s, 2000)]
+                   for s in holdings]
+    hold_closes = [c for c in hold_closes if len(c) >= 180] or [base_closes]
     gate: dict[str, Any] = {}
     gate["logistic"] = walk_forward_logistic(feat_closes, features=features)
-    base = features[0]
-    base_closes = [d["close"] for d in feat_closes.get(base, [])]
-    gate["band"] = walk_forward_coverage(base_closes, kind="band")
-    gate["montecarlo"] = walk_forward_coverage(base_closes, kind="montecarlo")
+    gate["band"] = walk_forward_coverage([base_closes], kind="band")
+    gate["montecarlo"] = walk_forward_coverage(hold_closes, kind="montecarlo")
     return gate
 
 
