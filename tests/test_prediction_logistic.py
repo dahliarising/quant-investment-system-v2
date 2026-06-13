@@ -26,6 +26,18 @@ def test_fit_learns_separable_pattern():
     assert acc > 0.9
 
 
+def test_fit_stable_on_heavy_tailed_features():
+    """두꺼운 꼬리 아웃라이어에도 발산하지 않고 유한 w (matmul inf/NaN 방지)."""
+    import warnings
+    rng = np.random.default_rng(0)
+    X = rng.standard_t(2, (500, 3)) * 4  # 극단 아웃라이어 포함
+    y = (X[:, 0] > 0).astype(float)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # 어떤 RuntimeWarning도 실패로
+        w = m_logistic.fit_logistic(X, y)
+    assert np.isfinite(w).all()
+
+
 def test_predict_market_insufficient_when_short():
     closes = {f: [{"date": "2026-01-01", "close": 1.0}] for f in FEATURES}
     r = m_logistic.predict_market(closes, features=FEATURES, min_days=250)

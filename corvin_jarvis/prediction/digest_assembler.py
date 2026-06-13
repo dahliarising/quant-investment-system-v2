@@ -16,7 +16,8 @@ from corvin_jarvis.prediction.contract import PredictionResult
 
 _DIV = "━━━━━━━━━━━━"
 # 시스템 우선순위 — 긴급/액션 신호가 줄 앞에 오도록
-_ORDER = {"velocity": 0, "probability": 1, "momentum": 2, "vector_analog": 3}
+_ORDER = {"velocity": 0, "probability": 1, "montecarlo": 2, "momentum": 3,
+          "band": 4, "vector_analog": 5}
 
 
 def _line(r: PredictionResult) -> str:
@@ -40,6 +41,13 @@ def _short(r: PredictionResult) -> str:
         p = r.evidence.get("prob_below_stop")
         if isinstance(p, (int, float)):
             return f"손절이탈 {p * 100:.0f}%"
+    if r.system == "montecarlo":
+        p50 = r.evidence.get("p50")
+        s = f"MC {p50:+.0f}%" if isinstance(p50, (int, float)) else "MC"
+        pb = r.evidence.get("prob_below_stop")
+        if isinstance(pb, (int, float)):
+            s += f"·이탈 {pb * 100:.0f}%"
+        return s
     return r.verdict
 
 
@@ -79,7 +87,8 @@ def assemble(results: list[PredictionResult], date_str: str,
     if not results:
         return f"📅 {date_str} 장초반 스냅샷\n\n예측 결과 없음 (데이터/모듈 점검 필요)"
 
-    market = [r for r in results if r.scope == "market"]
+    # 시장 섹션은 실신호만 — 모듈 미가용(보류) 노이즈 제거
+    market = [r for r in results if r.scope == "market" and r.data_ok]
     nonmarket = [r for r in results if r.scope != "market"]
 
     if holding_symbols is None:

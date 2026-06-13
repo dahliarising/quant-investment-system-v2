@@ -17,13 +17,15 @@ def sigmoid(z: np.ndarray) -> np.ndarray:
 
 def fit_logistic(X: np.ndarray, y: np.ndarray, lr: float = 0.3,
                  epochs: int = 600, l2: float = 1e-3) -> np.ndarray:
-    """절편 포함 경사하강 로지스틱 회귀. w[0]=bias."""
+    """절편 포함 경사하강 로지스틱 회귀. w[0]=bias.
+
+    np.dot 사용 — NumPy 2.0 `@`가 finite 입력에도 허위 FP 경고를 내는 quirk
+    회피(m_vector b2172ab 선례)."""
     n, d = X.shape
     Xb = np.hstack([np.ones((n, 1)), X])
     w = np.zeros(d + 1)
     for _ in range(epochs):
-        p = sigmoid(Xb @ w)
-        grad = Xb.T @ (p - y) / n
+        grad = np.dot(Xb.T, sigmoid(np.dot(Xb, w)) - y) / n
         grad[1:] += l2 * w[1:]          # 절편 미규제
         w -= lr * grad
     return w
@@ -31,7 +33,7 @@ def fit_logistic(X: np.ndarray, y: np.ndarray, lr: float = 0.3,
 
 def predict_proba(X: np.ndarray, w: np.ndarray) -> np.ndarray:
     Xb = np.hstack([np.ones((X.shape[0], 1)), X])
-    return sigmoid(Xb @ w)
+    return sigmoid(np.dot(Xb, w))
 
 
 def _returns(closes: list[dict]) -> list[float]:
