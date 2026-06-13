@@ -12,6 +12,7 @@ from corvin_jarvis.prediction import backtest
 from corvin_jarvis.prediction.contract import PredictionResult, insufficient
 
 _NEUTRAL_BAND = 0.15
+_SENTIMENT_NEUTRAL = 0.5   # m_sentiment._THRESH와 일치 — 중립 tone은 합의에서 기권
 
 
 def consensus(votes: list[tuple[str, int, float]]) -> dict[str, Any]:
@@ -48,8 +49,9 @@ def _vote(r: PredictionResult, gate: dict | None) -> tuple[str, int, float] | No
         return ("montecarlo", 1 if p50 > 0 else -1, min(abs(p50) / 5.0, 1.0))
     if s == "sentiment":
         t = r.evidence.get("tone", 0.0)
-        return ("sentiment", 1 if t > 0 else (-1 if t < 0 else 0),
-                min(abs(t) / 3.0, 1.0))
+        if abs(t) < _SENTIMENT_NEUTRAL:   # 중립은 기권 (모델 판정과 일치)
+            return None
+        return ("sentiment", 1 if t > 0 else -1, min(abs(t) / 3.0, 1.0))
     if s == "geopolitical":
         sc = r.evidence.get("risk_score", 50)
         return ("geo", -1 if sc >= 65 else (1 if sc < 40 else 0), 0.5)

@@ -13,7 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from corvin_jarvis.prediction import (backfill, backtest, digest_assembler,
-                                      m_band, m_ensemble, m_geopolitical,
+                                      feeds, m_band, m_ensemble, m_geopolitical,
                                       m_logistic, m_momentum, m_montecarlo,
                                       m_probability, m_sentiment, m_velocity,
                                       m_vector)
@@ -150,8 +150,11 @@ def main(argv: list[str] | None = None) -> int:
     backfill.init_db(_DB)
     _PF = Path(__file__).resolve().parent.parent.parent / "portfolio.json"
     _UNI = Path(__file__).resolve().parent.parent / "monitored_universe.json"
+    # sentiment = narrative-shift-detector signals.db 직결(헤드리스 배선).
+    # geo는 risk_score 데이터원 부재로 미배선(보류 유지).
     inp = gather_inputs(portfolio_path=_PF, universe_path=_UNI, db_path=_DB,
-                        geo_fetch=lambda: None)
+                        geo_fetch=lambda: None,
+                        sentiment_fetch=feeds.fetch_sentiment)
     if args.by_model:
         gate = backtest.load_gate()
         results, _ = build_results(
