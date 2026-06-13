@@ -13,7 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from corvin_jarvis.prediction import (backfill, backtest, digest_assembler,
-                                      m_ensemble, m_geopolitical,
+                                      m_band, m_ensemble, m_geopolitical,
                                       m_logistic, m_momentum, m_montecarlo,
                                       m_probability, m_sentiment, m_velocity,
                                       m_vector)
@@ -37,39 +37,60 @@ def _run_velocity(holdings, stops, closes_by_sym):
     return m_velocity.run(holdings, stops, closes_by_sym)
 
 
-def build_digest(*, date_str, holdings, universe, db_path, geo_payload,
-                 stops, closes_by_sym, daily_by_feature,
-                 sentiment_payload=None, gate=None) -> str:
+def build_results(*, holdings, universe, geo_payload, stops, closes_by_sym,
+                  daily_by_feature, sentiment_payload=None, gate=None,
+                  respect_gate: bool = True):
+    """5+5 시스템을 실행해 PredictionResult 리스트 + 보유심볼 반환.
+
+    respect_gate=True(다이제스트): 백테스트 통과 모델만 산출.
+    respect_gate=False(모델별 뷰): 게이트 무관 전부 산출(탈락도 raw 표시용).
+    """
     gate = gate if gate is not None else backtest.load_gate()
+
+    def gated(name: str) -> bool:
+        return (not respect_gate) or backtest.passed(gate, name)
+
     results: list[PredictionResult] = []
-    # ── Phase 1 보유 신호 ──
+    # ── 보유 신호 ──
     results += _safe("velocity", _run_velocity, holdings, stops, closes_by_sym)
     holding_syms = [str(pos.get("symbol", "")) for pos in holdings if pos.get("symbol")]
     for sym in holding_syms:
         results += _safe("probability", m_probability.run_symbol, sym,
                          list(closes_by_sym.get(sym, [])), stops.get(sym, 0.0))
-    # ── Phase 2 montecarlo 보유 (백테스트 통과 시만) ──
-    if backtest.passed(gate, "montecarlo"):
+    if gated("montecarlo"):
         for sym in holding_syms:
             results += _safe("montecarlo", m_montecarlo.run_symbol, sym,
                              list(closes_by_sym.get(sym, [])), stops.get(sym))
-    # momentum = 보유 우선 → 유니버스 (dedup, 보유분은 종목 라인에 인라인됨)
+    # momentum = 보유 우선 → 유니버스 (dedup)
     mom_syms = list(dict.fromkeys(holding_syms + list(universe)))
     for sym in mom_syms:
         results += _safe("momentum", m_momentum.run_symbol, sym,
                          closes_by_sym.get(sym, []))
-    # ── 시장 방향 신호 (Phase 1 + Phase 2) ──
+    # ── 시장 방향 신호 ──
     results += _safe("geopolitical", m_geopolitical.run, geo_payload)
     results += _safe("sentiment", m_sentiment.run, sentiment_payload)
     results += _safe("vector_analog", m_vector.predict, daily_by_feature,
                      features=_FEATURES)
-    if backtest.passed(gate, "logistic"):
+    if gated("logistic"):
         results += _safe("logistic", m_logistic.predict_market, daily_by_feature,
                          features=_FEATURES)
-    # band(범위)는 방향 섹션에 부적합 → 모듈·게이트는 유지하되 일일 다이제스트 미표시.
-    # ── 앙상블 합의 = 시장 방향 신호 종합 (헤드라인, 게이트 존중) ──
+    if not respect_gate:  # 모델별 뷰에선 band도 시장레벨로 산출
+        base_closes = [d["close"] for d in daily_by_feature.get(_FEATURES[0], [])]
+        results += _safe("band", m_band.run_symbol, "market", base_closes)
+    # ── 앙상블 합의 (시장 방향 종합, 게이트 존중) ──
     ens = m_ensemble.run([r for r in results if r.scope == "market"], gate=gate)
     final = ([ens] if ens.data_ok else []) + results
+    return final, holding_syms
+
+
+def build_digest(*, date_str, holdings, universe, db_path, geo_payload,
+                 stops, closes_by_sym, daily_by_feature,
+                 sentiment_payload=None, gate=None) -> str:
+    final, holding_syms = build_results(
+        holdings=holdings, universe=universe, geo_payload=geo_payload,
+        stops=stops, closes_by_sym=closes_by_sym,
+        daily_by_feature=daily_by_feature, sentiment_payload=sentiment_payload,
+        gate=gate)
     return digest_assembler.assemble(final, date_str,
                                      holding_symbols=set(holding_syms))
 
@@ -121,6 +142,8 @@ def gather_inputs(*, portfolio_path: Path, universe_path: Path, db_path: Path,
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--by-model", action="store_true",
+                    help="모델별 상세 뷰(게이트 무관 전부 표시, 탈락 태깅)")
     args = ap.parse_args(argv)
 
     date_str = datetime.now(KST).strftime("%Y-%m-%d")
@@ -129,13 +152,24 @@ def main(argv: list[str] | None = None) -> int:
     _UNI = Path(__file__).resolve().parent.parent / "monitored_universe.json"
     inp = gather_inputs(portfolio_path=_PF, universe_path=_UNI, db_path=_DB,
                         geo_fetch=lambda: None)
-    text = build_digest(date_str=date_str, holdings=inp["holdings"],
-                        universe=inp["universe"], db_path=_DB,
-                        geo_payload=inp["geo_payload"], stops=inp["stops"],
-                        closes_by_sym=inp["closes_by_sym"],
-                        daily_by_feature=inp["daily_by_feature"],
-                        sentiment_payload=inp.get("sentiment_payload"))
-    if args.dry_run:
+    if args.by_model:
+        gate = backtest.load_gate()
+        results, _ = build_results(
+            holdings=inp["holdings"], universe=inp["universe"],
+            geo_payload=inp["geo_payload"], stops=inp["stops"],
+            closes_by_sym=inp["closes_by_sym"],
+            daily_by_feature=inp["daily_by_feature"],
+            sentiment_payload=inp.get("sentiment_payload"),
+            gate=gate, respect_gate=False)
+        text = digest_assembler.by_model(results, date_str, gate=gate)
+    else:
+        text = build_digest(date_str=date_str, holdings=inp["holdings"],
+                            universe=inp["universe"], db_path=_DB,
+                            geo_payload=inp["geo_payload"], stops=inp["stops"],
+                            closes_by_sym=inp["closes_by_sym"],
+                            daily_by_feature=inp["daily_by_feature"],
+                            sentiment_payload=inp.get("sentiment_payload"))
+    if args.dry_run or args.by_model:
         print(text)
     else:
         _send(text)

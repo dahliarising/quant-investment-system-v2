@@ -20,3 +20,20 @@ def test_dry_run_does_not_send(monkeypatch, capsys):
     monkeypatch.setattr(orch, "_send", lambda body: sent.__setitem__("called", True))
     orch.main(["--dry-run"])
     assert sent["called"] is False   # dry-run은 전송 안 함
+
+
+def test_build_results_by_model_runs_gated_systems():
+    # respect_gate=False면 게이트 탈락 모델도 산출(모델별 뷰용)
+    final, syms = orch.build_results(
+        holdings=[], universe=[], geo_payload=None, stops={},
+        closes_by_sym={}, daily_by_feature={}, gate={}, respect_gate=False)
+    systems = {r.system for r in final}
+    assert "logistic" in systems   # 게이트 무관 산출
+    assert "band" in systems
+
+
+def test_by_model_does_not_send(monkeypatch):
+    sent = {"called": False}
+    monkeypatch.setattr(orch, "_send", lambda body: sent.__setitem__("called", True))
+    orch.main(["--by-model"])
+    assert sent["called"] is False   # by-model도 stdout만

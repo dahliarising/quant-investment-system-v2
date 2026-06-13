@@ -64,6 +64,25 @@ def test_real_signal_suppresses_hold_for_same_symbol():
     assert "⏸" not in nvda_lines[0]
 
 
+def test_by_model_groups_and_tags_gate():
+    results = [
+        PredictionResult("vector_analog", "market", "상승 우위", 65,
+                         {"mean": 0.02}, True),
+        PredictionResult("logistic", "market", "상승확률 63%", 60,
+                         {"prob_up": 0.63}, True),
+        PredictionResult("montecarlo", "NVDA", "MC 21일 중앙 +3%", 62,
+                         {"p50": 3.6}, True),
+        insufficient("sentiment", "market", "미배선"),
+    ]
+    gate = {"logistic": {"passed": False}, "montecarlo": {"passed": True}}
+    text = digest_assembler.by_model(results, "2026-06-13", gate=gate)
+    assert "모델별 예측" in text
+    assert "❌백테스트탈락" in text     # logistic 게이트 탈락 태그
+    assert "✅통과" in text              # montecarlo 통과 태그
+    assert "벡터 analog" in text
+    assert "NVDA" in text
+
+
 def test_near_zero_gap_drops_misleading_minus_zero():
     """gap이 0으로 반올림되면 '-0%' 대신 화살표만 (meaningful-metrics)."""
     results = [PredictionResult("momentum", "MSFT", "MA 교차 중립", 55,
