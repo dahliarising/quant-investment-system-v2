@@ -11,6 +11,8 @@ def _sma(values: list[float], window: int) -> float:
 
 def run_symbol(symbol: str, closes: list[float], short: int = 20,
                long: int = 120, min_days: int = 120) -> PredictionResult:
+    if short >= long:
+        return insufficient("momentum", symbol, f"short({short}) >= long({long}) 파라미터 오류")
     if len(closes) < min_days:
         return insufficient("momentum", symbol, f"일봉 {len(closes)} < {min_days}")
     sma_s = _sma(closes, short)

@@ -19,13 +19,15 @@ def _log_returns(closes: list[float]) -> list[float]:
 
 def run_symbol(symbol: str, closes: list[float], stop: float,
                horizon_days: int = 5, min_days: int = 20) -> PredictionResult:
+    if stop is None or stop <= 0.0:
+        return insufficient("probability", symbol, "손절가 미설정(stop<=0)")
     if len(closes) < min_days:
         return insufficient("probability", symbol, f"일봉 {len(closes)} < {min_days}")
     rets = _log_returns(closes)
     if len(rets) < 2:
         return insufficient("probability", symbol, "수익률 표본 부족")
     mu = statistics.mean(rets)
-    sigma = statistics.pstdev(rets)
+    sigma = statistics.stdev(rets)
     price = closes[-1]
     prob = predict.probability_below(price, stop, mu, sigma, horizon_days)
     verdict = f"{horizon_days}일 내 손절가({stop:g}) 이탈 확률 {prob*100:.0f}%"

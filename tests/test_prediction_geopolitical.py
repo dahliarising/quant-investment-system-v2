@@ -15,3 +15,8 @@ def test_high_risk_maps_to_caution_verdict():
 def test_none_payload_insufficient():
     r = m_geopolitical.run(None)
     assert r.data_ok is False
+
+
+def test_non_numeric_risk_score_insufficient():
+    r = m_geopolitical.run({"risk_score": "high"})
+    assert r.data_ok is False

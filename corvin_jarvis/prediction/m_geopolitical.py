@@ -12,9 +12,9 @@ from corvin_jarvis.prediction.contract import PredictionResult, insufficient
 
 
 def run(payload: dict[str, Any] | None) -> PredictionResult:
-    if not payload or "risk_score" not in payload:
-        return insufficient("geopolitical", "market", "MCP 응답 없음")
-    score = payload["risk_score"]
+    score = payload.get("risk_score") if payload else None
+    if not isinstance(score, (int, float)) or isinstance(score, bool):
+        return insufficient("geopolitical", "market", "MCP 응답 없음/타입 오류")
     trend = payload.get("trend", "?")
     event = payload.get("top_event", "")
     if score >= 65:

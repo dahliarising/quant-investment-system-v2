@@ -16,3 +16,8 @@ def test_probability_result_for_symbol_with_history():
 def test_probability_insufficient_when_short():
     r = m_probability.run_symbol("BBB", [100], stop=90.0, horizon_days=5, min_days=5)
     assert r.data_ok is False
+
+
+def test_zero_stop_insufficient():
+    r = m_probability.run_symbol("AAA", [100, 101, 99, 102, 98, 103], stop=0.0)
+    assert r.data_ok is False
