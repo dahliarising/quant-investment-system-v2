@@ -3,6 +3,24 @@ import json
 from corvin_jarvis import notify
 
 
+def test_brief_overlay_block_injected_has_leading_newline():
+    """digest top_block 규약(선행 개행) + 포지션 손익 포함."""
+    from corvin_jarvis.brief.types import Brief, PositionLine, PsychGuard
+    b = Brief(headline="h",
+              positions=[PositionLine("NVDA", 9.0, "✅", "유지", "종가")],
+              evidence={}, framing=None, psych=PsychGuard(False, None, None),
+              as_of="2026-06-13", market_state="장마감")
+    block = notify._brief_overlay_block(brief_obj=b)
+    assert block.startswith("\n")
+    assert "보유 포지션" in block and "NVDA +9.0%" in block
+
+
+def test_brief_overlay_block_empty_when_no_positions():
+    from corvin_jarvis.brief.types import Brief
+    empty = Brief("h", [], {}, None, None, "2026-06-13", "장마감")
+    assert notify._brief_overlay_block(brief_obj=empty) == ""
+
+
 def test_actionability_flags_held_symbol():
     held = {"NVDA", "META", "MSFT"}
     a = {"metric": "pnl_NVDA", "message": "NVDA 수익 +16%", "value": 16.0, "severity": "medium"}

@@ -319,6 +319,39 @@ def _final_actions_block(state_path: Path | None = None) -> str:
     return "\n".join(lines)
 
 
+def _load_brief_for_overlay():
+    """digest 오버레이용 Brief 조립 (실 IO). 포지션 없으면 None."""
+    from corvin_jarvis import pulse
+    from corvin_jarvis.brief.builder import build_brief
+    from corvin_jarvis.brief.__main__ import _market_labels
+
+    positions = pulse.fetch_portfolio()[0]
+    if not positions:
+        return None
+    market_state, fresh_label = _market_labels()
+    actions = (_load_json(_FINAL_ACTIONS_PATH) or {}).get("actions", [])
+    calibration = _load_json(STATE_DIR / "calibration.json") or {}
+    as_of = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M KST")
+    return build_brief(positions=positions, actions=actions,
+                       calibration=calibration, held=_held_symbols(),
+                       market_state=market_state, fresh_label=fresh_label,
+                       as_of=as_of)
+
+
+def _brief_overlay_block(brief_obj=None) -> str:
+    """digest용 보유 포지션 손익 + 심리 오버레이 (brief 패키지 재사용).
+    포지션 없음/로드 실패 → '' (오버레이 실패가 digest 전체를 막지 않게)."""
+    from corvin_jarvis.brief.render import render_overlay
+    try:
+        if brief_obj is None:
+            brief_obj = _load_brief_for_overlay()
+        block = render_overlay(brief_obj) if brief_obj else ""
+    except Exception as exc:  # noqa: BLE001 — 오버레이는 best-effort
+        log.warning("brief overlay 생략: %s", exc)
+        return ""
+    return ("\n" + block) if block else ""
+
+
 _PRED_ICONS = {"EVENT": "📅", "VELOCITY": "⚡", "RS_WEAK": "📉", "VELOCITY_UP": "📈"}
 
 
@@ -463,8 +496,8 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     if mode == "digest":
-        # 중재 액션 + 예측(선행) 신호를 헤더 직후 함께 삽입 (잘림 방지)
-        top_block = _final_actions_block() + _predictive_block()
+        # 보유 포지션 오버레이 + 중재 액션 + 예측(선행) 신호를 헤더 직후 삽입 (잘림 방지)
+        top_block = _brief_overlay_block() + _final_actions_block() + _predictive_block()
         if top_block:
             def _insert_after_header(msg: str) -> str:
                 head, sep, rest = msg.partition("\n")
