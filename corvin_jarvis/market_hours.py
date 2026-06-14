@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -82,6 +82,9 @@ def alert_markets(alert: dict[str, Any], sector_markets: dict[str, set[str]]) ->
         parts = metric.split("_")
         sym = parts[1] if len(parts) > 1 else ""
         return {_market_of_symbol(sym)} if sym else set()
+    if cat == "predictive":
+        # predictive alert의 metric은 종목 심볼 자체 (예: "META", "005930").
+        return {_market_of_symbol(metric)} if metric else set()
     if cat == "portfolio":
         sym = metric.split("_")[-1]
         return {_market_of_symbol(sym)} if sym else set()
@@ -104,3 +107,79 @@ def should_suppress(alert: dict[str, Any], now: datetime, sector_markets: dict[s
     if not markets:
         return False
     return all(not is_market_open(m, now) for m in markets)
+
+
+def partition_alerts(
+    alerts: list[dict[str, Any]],
+    now: datetime,
+    sector_markets: dict[str, set[str]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """alert을 (live, stale)로 분리.
+
+    stale = 가리키는 시장이 전부 휴장이라 값이 갱신될 수 없는 신호(지난 거래일 마감 시점).
+    브리핑에서 stale을 가짜 CRITICAL로 재노출하지 않고 '참고' 섹션으로 접기 위함.
+    거시(시장 무관)는 항상 live.
+    """
+    live: list[dict[str, Any]] = []
+    stale: list[dict[str, Any]] = []
+    for a in alerts:
+        (stale if should_suppress(a, now, sector_markets) else live).append(a)
+    return live, stale
+
+
+# ---------------------------------------------------------------------------
+# 거래일 캘린더 — 브리핑 시점 라벨링용.
+# 주의: 공휴일은 미반영(주말만 처리). 휴장일 정밀화가 필요하면 거래소 캘린더 도입.
+# ---------------------------------------------------------------------------
+def _tz(market: str) -> ZoneInfo:
+    return KST if market == "KR" else NY
+
+
+def _close_time(market: str) -> time:
+    return time(15, 30) if market == "KR" else time(16, 0)
+
+
+def _open_time(market: str) -> time:
+    return time(9, 0) if market == "KR" else time(9, 30)
+
+
+def last_close_date(now: datetime, market: str) -> date:
+    """가장 최근 '마감이 완료된' 정규장 날짜 (해당 시장 현지 기준)."""
+    local = now.astimezone(_tz(market))
+    day = local.date()
+    closed_today = day.weekday() < 5 and local.time() >= _close_time(market)
+    if not closed_today:
+        day -= timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
+def next_open_date(now: datetime, market: str) -> date:
+    """다음 정규장 개장 날짜 (해당 시장 현지 기준). 평일 개장 전이면 당일."""
+    local = now.astimezone(_tz(market))
+    day = local.date()
+    if day.weekday() < 5 and local.time() < _open_time(market):
+        return day
+    day += timedelta(days=1)
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day
+
+
+def market_status_label(now: datetime) -> str:
+    """브리핑 헤더용 시장 상태 1줄. 휴장 시 데이터 시점/다음 개장을 명시."""
+    kr_open = is_kr_open(now)
+    us_open = is_us_open(now)
+    if kr_open or us_open:
+        parts = []
+        parts.append("KR 정규장" if kr_open else "KR 휴장")
+        parts.append("US 정규장" if us_open else "US 휴장")
+        return "🟢 " + " · ".join(parts) + " — 일부 실시간"
+    kr_close = last_close_date(now, "KR")
+    us_close = last_close_date(now, "US")
+    kr_next = next_open_date(now, "KR")
+    return (
+        f"🔴 휴장 — 시세는 마지막 거래일 종가 기준 "
+        f"(KR {kr_close:%m-%d} · US {us_close:%m-%d}) · 다음 개장 KR {kr_next:%m-%d}"
+    )

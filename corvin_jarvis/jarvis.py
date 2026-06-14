@@ -23,6 +23,7 @@ sys.path.insert(0, str(BASE_DIR.parent))
 
 from compare import run_compare  # noqa: E402
 from corvin_jarvis import earnings  # noqa: E402
+from corvin_jarvis import market_hours  # noqa: E402
 from corvin_jarvis import narrative  # noqa: E402
 from corvin_jarvis import attribution  # noqa: E402
 from corvin_jarvis import predict  # noqa: E402
@@ -65,30 +66,67 @@ def _format_pct(value: float | None) -> str:
     return f"{value:+.2f}%"
 
 
-def _format_alerts_section(alerts: list[dict[str, Any]]) -> str:
-    if not alerts:
-        return "## 🟢 알람\n\n현재 임계값을 초과한 신호 없음.\n"
+def _render_severity_buckets(alerts: list[dict[str, Any]]) -> list[str]:
+    """severity별 버킷 렌더 (live 알람용)."""
     by_sev: dict[str, list[dict[str, Any]]] = {"critical": [], "high": [], "medium": [], "low": []}
     for a in alerts:
         by_sev.setdefault(a["severity"], []).append(a)
-    sections: list[str] = ["## 🚨 알람"]
     sev_emoji = {"critical": "🚨", "high": "⚠️", "medium": "ℹ️", "low": "·"}
     sev_label = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"}
+    out: list[str] = []
     for sev in ["critical", "high", "medium", "low"]:
         if not by_sev[sev]:
             continue
-        sections.append(f"\n### {sev_emoji[sev]} {sev_label[sev]} ({len(by_sev[sev])}건)\n")
+        out.append(f"\n### {sev_emoji[sev]} {sev_label[sev]} ({len(by_sev[sev])}건)\n")
         for a in by_sev[sev]:
-            sections.append(f"- **[{a['category']}/{a['metric']}]** {a['message']}")
+            out.append(f"- **[{a['category']}/{a['metric']}]** {a['message']}")
+    return out
+
+
+def _format_alerts_section(
+    alerts: list[dict[str, Any]],
+    now: datetime | None = None,
+    sector_markets: dict[str, set[str]] | None = None,
+) -> str:
+    if not alerts:
+        return "## 🟢 알람\n\n현재 임계값을 초과한 신호 없음.\n"
+    now = now or datetime.now(KST)
+    if sector_markets is None:
+        sector_markets = market_hours.load_sector_markets()
+    # 휴장 시장의 신호는 지난 거래일 마감 시점 — 가짜 CRITICAL 재노출 금지, '참고'로 분리.
+    live, stale = market_hours.partition_alerts(alerts, now, sector_markets)
+
+    if live:
+        sections: list[str] = ["## 🚨 알람"]
+        sections.extend(_render_severity_buckets(live))
+    else:
+        sections = ["## 🟢 알람\n\n실시간 임계 초과 신호 없음 (휴장)."]
+
+    if stale:
+        kr_close = market_hours.last_close_date(now, "KR")
+        sections.append(f"\n### 📁 지난 거래일 마감 시점 신호 ({len(stale)}건, 참고)\n")
+        sections.append(f"_시장 휴장 — 아래는 {kr_close:%m-%d} 마감 기준이며 갱신되지 않습니다._")
+        for a in stale:
+            sections.append(f"- [{a['category']}/{a['metric']}] {a['message']}")
     return "\n".join(sections) + "\n"
 
 
-def _format_market_section(latest: dict[str, Any]) -> str:
+def _market_closed(now: datetime) -> bool:
+    """양 시장(KR·US) 모두 휴장이면 True."""
+    return not (market_hours.is_kr_open(now) or market_hours.is_us_open(now))
+
+
+def _format_market_section(latest: dict[str, Any], now: datetime | None = None) -> str:
     indices = latest.get("indices", {})
     commodities = latest.get("commodities", {})
     fx = latest.get("fx", {})
 
-    out = ["## 📊 시장 스냅샷\n"]
+    now = now or datetime.now(KST)
+    if _market_closed(now):
+        kr_close = market_hours.last_close_date(now, "KR")
+        out = [f"## 📊 시장 스냅샷 (지난 거래일 마감 · {kr_close:%m-%d} 종가 기준)\n"]
+    else:
+        out = ["## 📊 시장 스냅샷\n"]
     out.append("| 카테고리 | 자산 | 가격 | 변동 |")
     out.append("|---|---|---|---|")
     for name, q in indices.items():
@@ -100,9 +138,12 @@ def _format_market_section(latest: dict[str, Any]) -> str:
     return "\n".join(out) + "\n"
 
 
-def _format_portfolio_section(latest: dict[str, Any]) -> str:
+def _format_portfolio_section(latest: dict[str, Any], now: datetime | None = None) -> str:
     portfolio = latest.get("portfolio", [])
     summary = latest.get("portfolio_summary", {})
+
+    now = now or datetime.now(KST)
+    price_hdr = "종가" if _market_closed(now) else "현재가"
 
     out = ["## 💼 포트폴리오 상태\n"]
     out.append(f"- 총 가치: **KRW ₩{summary.get('total_value_krw'):,}** + **USD ${summary.get('total_value_usd'):,}**")
@@ -115,7 +156,7 @@ def _format_portfolio_section(latest: dict[str, Any]) -> str:
     out.append(f"- 최고/최저 PnL: {_format_pct(summary.get('best_pnl_pct'))} / {_format_pct(summary.get('worst_pnl_pct'))}")
     out.append(f"- portfolio.json 마지막 업데이트: {summary.get('stale_as_of')}\n")
 
-    out.append("| 종목 | 보유 | 평단 | 현재가 | PnL | 평가액 |")
+    out.append(f"| 종목 | 보유 | 평단 | {price_hdr} | PnL | 평가액 |")
     out.append("|---|---|---|---|---|---|")
     for pos in portfolio:
         sym = pos.get("symbol")
@@ -199,15 +240,16 @@ def _format_recommendations_section(alerts: list[dict[str, Any]]) -> str:
     return "\n".join(out) + "\n"
 
 
-def compose_briefing() -> str:
+def compose_briefing(now: datetime | None = None) -> str:
     latest = _load(LATEST_FILE) or {}
     alerts_data = _load(ALERTS_FILE) or {}
     alerts = alerts_data.get("alerts", [])
 
-    now_kst = datetime.now(KST)
+    now_kst = now or datetime.now(KST)
     header = (
         f"# 🦅 Corvin Jarvis Briefing\n\n"
         f"**Generated**: {now_kst.strftime('%Y-%m-%d %H:%M KST')}\n"
+        f"**Market**: {market_hours.market_status_label(now_kst)}\n"
         f"**Snapshot**: {latest.get('timestamp_kst', 'N/A')}\n"
         f"**Alert 총합**: {len(alerts)}건 "
         f"(critical: {sum(1 for a in alerts if a['severity'] == 'critical')}, "
@@ -218,10 +260,10 @@ def compose_briefing() -> str:
     sections = [
         header,
         _format_geo_section(),
-        _format_alerts_section(alerts),
+        _format_alerts_section(alerts, now=now_kst),
         _format_recommendations_section(alerts),
-        _format_market_section(latest),
-        _format_portfolio_section(latest),
+        _format_market_section(latest, now=now_kst),
+        _format_portfolio_section(latest, now=now_kst),
         _format_continuity_section(),
     ]
     return "\n".join(sections)

@@ -89,3 +89,75 @@ def test_load_sector_markets_reads_file():
     assert m.get("battery") == {"KR"}
     assert m.get("space") == {"US"}
     assert m.get("semiconductor") == {"KR", "US"}
+
+
+# ---------------------------------------------------------------------------
+# 2026-06-14 (일): 주말 브리핑이 금요일 종가를 '현재가'로 찍어 '예전 그대로'로
+# 보이던 문제. predictive 카테고리 휴장 우회 버그(C) + 라벨/억제 헬퍼.
+# ---------------------------------------------------------------------------
+from datetime import date  # noqa: E402
+
+SUN_0500 = datetime(2026, 6, 14, 5, 0, tzinfo=KST)   # 일요일 새벽 (브리핑 시각)
+FRI_1000 = datetime(2026, 6, 12, 10, 0, tzinfo=KST)  # 금요일 KR 정규장 중
+SAT_1200 = datetime(2026, 6, 13, 12, 0, tzinfo=KST)  # 토요일
+
+
+def test_predictive_alert_maps_to_symbol_market():
+    """C: predictive 알람은 종목 시장으로 매핑돼야 한다 (거시 취급 금지)."""
+    assert mh.alert_markets({"category": "predictive", "metric": "META"}, {}) == {"US"}
+    assert mh.alert_markets({"category": "predictive", "metric": "005930"}, {}) == {"KR"}
+
+
+def test_predictive_suppressed_on_weekend():
+    """C: 주말엔 predictive 종목 알람도 억제 대상."""
+    assert mh.should_suppress({"category": "predictive", "metric": "META"}, SUN_0500, {}) is True
+
+
+def test_last_close_date_weekend_is_friday():
+    assert mh.last_close_date(SUN_0500, "KR") == date(2026, 6, 12)
+    # 일요일 05:00 KST = 토요일 16:00 ET → US 마지막 마감도 금요일
+    assert mh.last_close_date(SUN_0500, "US") == date(2026, 6, 12)
+
+
+def test_last_close_date_intraday_not_yet_closed_uses_prev():
+    # 금요일 10:00 KST — 아직 장중(마감 전) → 마지막 '완료' 거래일은 목요일
+    assert mh.last_close_date(FRI_1000, "KR") == date(2026, 6, 11)
+
+
+def test_next_open_date_weekend_is_monday():
+    assert mh.next_open_date(SUN_0500, "KR") == date(2026, 6, 15)
+    assert mh.next_open_date(SAT_1200, "KR") == date(2026, 6, 15)
+
+
+def test_market_status_label_weekend_flags_closed_and_vintage():
+    label = mh.market_status_label(SUN_0500)
+    assert "휴장" in label
+    assert "06-12" in label   # 마지막 거래일 종가 기준 표기
+    assert "06-15" in label   # 다음 개장
+
+
+def test_market_status_label_open_session_marks_realtime():
+    label = mh.market_status_label(FRI_1000)
+    assert "정규장" in label or "개장" in label
+
+
+def test_partition_alerts_splits_live_and_stale_on_weekend():
+    alerts = [
+        {"category": "fx", "metric": "usd_krw_level", "severity": "low"},       # live (macro)
+        {"category": "index", "metric": "kospi", "severity": "critical"},       # stale (KR 휴장)
+        {"category": "predictive", "metric": "META", "severity": "critical"},   # stale (US 휴장)
+        {"category": "commodity", "metric": "gold", "severity": "medium"},      # live (macro)
+    ]
+    live, stale = mh.partition_alerts(alerts, SUN_0500, {})
+    assert {a["metric"] for a in live} == {"usd_krw_level", "gold"}
+    assert {a["metric"] for a in stale} == {"kospi", "META"}
+
+
+def test_partition_alerts_all_live_during_open_session():
+    alerts = [
+        {"category": "index", "metric": "kospi", "severity": "critical"},
+        {"category": "fx", "metric": "usd_krw_level", "severity": "low"},
+    ]
+    live, stale = mh.partition_alerts(alerts, FRI_1000, {})
+    assert len(live) == 2
+    assert stale == []
