@@ -568,7 +568,7 @@ def compute_and_write_verdicts() -> int:
     if not latest:
         return 0
     alerts = (_load(ALERTS_FILE) or {}).get("alerts", [])
-    verdicts = verdict.verdicts_for_state(latest, alerts)
+    verdicts = verdict.verdicts_for_state(latest, alerts, market_closed=_market_closed(datetime.now(KST)))
     VERDICTS_FILE.write_text(json.dumps(verdicts, indent=2, ensure_ascii=False))
     log.info("Verdicts computed: %d symbols", len(verdicts))
     return len(verdicts)

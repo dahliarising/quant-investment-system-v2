@@ -135,7 +135,9 @@ def decide(ctx: dict[str, Any]) -> Verdict:
     # 미보유
     spike = 15.0 if hv else 8.0
     if today is not None and today >= spike:
-        return v("관망", "하" if hv else "중", f"오늘 이미 +{today:.0f}% 급등 — 추격 위험, 눌림 대기")
+        # 휴장 시 '오늘'은 오기 — 마지막 거래일 움직임이므로 '지난 거래일'로 라벨.
+        day_label = "지난 거래일" if ctx.get("market_closed") else "오늘"
+        return v("관망", "하" if hv else "중", f"{day_label} 이미 +{today:.0f}% 급등 — 추격 위험, 눌림 대기")
     if dca >= _DCA_DEEP and alive and (rs or 0) > 0:
         return v("매수", cap, f"DCA 가치점수 {dca}(깊은 저평가)+테마 살아있음+주도주")
     if dca >= _DCA_STRONG and alive:
@@ -187,7 +189,7 @@ def _theme_alive(latest: dict[str, Any], sector: str | None) -> bool:
     return avg >= _SECTOR_TH.get(sector, _SECTOR_TH_DEFAULT)
 
 
-def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
+def for_symbol(symbol: str, latest: dict[str, Any], market_closed: bool = False) -> Verdict:
     """종목 + 최신 snapshot으로 컨텍스트 조립 후 판정."""
     from corvin_jarvis import dca_timing, quote_provider
 
@@ -223,11 +225,13 @@ def for_symbol(symbol: str, latest: dict[str, Any]) -> Verdict:
         "rs": rs, "pct_today": pct_today, "theme_alive": _theme_alive(latest, sector),
         "high_vol": sector is None or sector in _MOONSHOT_SECTORS,  # 미추적 or 미래기술 무어샷 = 보수
         "bucket": bucket, "atr_pct": atr_pct, "peak_pnl_pct": peak_pnl_pct,
+        "market_closed": market_closed,
     }
     return decide(ctx)
 
 
-def verdicts_for_state(latest: dict[str, Any], alerts: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
+def verdicts_for_state(latest: dict[str, Any], alerts: list[dict[str, Any]],
+                       market_closed: bool = False) -> dict[str, dict[str, str]]:
     """보유 종목 + 오늘 alert이 가리키는 개별 종목에 대해 verdict 일괄 산출 (회사명 포함)."""
     from corvin_jarvis.signals import universe_loader
     name_map = {t.symbol: t.name for t in universe_loader.load()}
@@ -246,7 +250,7 @@ def verdicts_for_state(latest: dict[str, Any], alerts: list[dict[str, Any]]) -> 
 
     out: dict[str, dict[str, str]] = {}
     for s in sorted(syms):
-        v = for_symbol(s, latest)
+        v = for_symbol(s, latest, market_closed=market_closed)
         out[s] = {"action": v.action, "confidence": v.confidence,
                   "rationale": v.rationale, "name": name_map.get(s, "")}
     return out

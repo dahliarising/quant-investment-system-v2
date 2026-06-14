@@ -107,7 +107,7 @@ def test_verdicts_for_state_covers_held_and_alerted(monkeypatch):
         {"category": "narrative", "metric": "foreign_net_buy", "value": 2.4, "severity": "high"},
     ]
 
-    def fake_for_symbol(sym, lt):
+    def fake_for_symbol(sym, lt, market_closed=False):
         return V.Verdict(symbol=sym, action="관망", confidence="중", rationale="test")
     monkeypatch.setattr(V, "for_symbol", fake_for_symbol)
 
@@ -156,7 +156,7 @@ def test_jarvis_writes_verdicts_file(tmp_path, monkeypatch):
     monkeypatch.setattr(jarvis, "LATEST_FILE", lf)
     monkeypatch.setattr(jarvis, "ALERTS_FILE", af)
     monkeypatch.setattr(jarvis, "VERDICTS_FILE", vf)
-    monkeypatch.setattr(V, "for_symbol", lambda s, lt: V.Verdict(s, "홀딩", "중", "t"))
+    monkeypatch.setattr(V, "for_symbol", lambda s, lt, market_closed=False: V.Verdict(s, "홀딩", "중", "t"))
 
     n = jarvis.compute_and_write_verdicts()
     assert n == 2   # NVDA(held) + 000660(alerted)

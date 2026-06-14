@@ -352,7 +352,8 @@ def _brief_overlay_block(brief_obj=None) -> str:
     return ("\n" + block) if block else ""
 
 
-_PRED_ICONS = {"EVENT": "📅", "VELOCITY": "⚡", "RS_WEAK": "📉", "VELOCITY_UP": "📈"}
+_PRED_ICONS = {"EVENT": "📅", "VELOCITY": "⚡", "RS_WEAK": "📉", "VELOCITY_UP": "📈",
+               "RS_REVERT": "📉"}
 
 
 def _predictive_block(state_path: Path | None = None) -> str:
@@ -377,6 +378,109 @@ def _predictive_block(state_path: Path | None = None) -> str:
         sym = str(s.get("symbol") or "").strip()
         head = f"{sym} " if sym else ""
         lines.append(f"{icon} {head}{s.get('message', '')}")
+    return "\n".join(lines)
+
+
+def _prediction_digest_block(now: datetime | None = None) -> str:
+    """긴급 푸시 🔮 섹션용 — 예측 다이제스트(시스템①~⑩)를 라이브 생성(로컬, ~0.1s).
+
+    best-effort: 어떤 이유로든 실패하면 ''(푸시 자체를 막지 않음).
+    다이제스트의 '📅 …장초반 스냅샷(09:36)' 헤더·푸터·바깥 구분선은 긴급 포맷이
+    감싸므로 제거(잘못된 09:36 시점 라벨 노출 방지).
+    """
+    try:
+        import sys
+        root = STATE_DIR.parent.parent            # repo root
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from corvin_jarvis.prediction import backfill, feeds
+        from corvin_jarvis.prediction import run_prediction_digest as R
+
+        cj = STATE_DIR.parent                      # corvin_jarvis/
+        db = STATE_DIR / "daily_history.db"
+        backfill.init_db(db)
+        inp = R.gather_inputs(portfolio_path=root / "portfolio.json",
+                              universe_path=cj / "monitored_universe.json",
+                              db_path=db, geo_fetch=lambda: None,
+                              sentiment_fetch=feeds.fetch_sentiment)
+        now = now or datetime.now(ZoneInfo("Asia/Seoul"))
+        text = R.build_digest(date_str=now.strftime("%Y-%m-%d"),
+                              holdings=inp["holdings"], universe=inp["universe"],
+                              db_path=db, geo_payload=inp["geo_payload"],
+                              stops=inp["stops"], closes_by_sym=inp["closes_by_sym"],
+                              daily_by_feature=inp["daily_by_feature"],
+                              sentiment_payload=inp.get("sentiment_payload"))
+    except Exception as exc:  # noqa: BLE001 — 예측 블록은 best-effort
+        log.warning("예측 다이제스트 블록 생략: %s", exc)
+        return ""
+    body = [ln for ln in text.split("\n")
+            if ln.strip() and not ln.startswith("📅")
+            and not ln.strip().startswith("_⚠️") and set(ln.strip()) != {"━"}]
+    return "\n".join(body)
+
+
+def _format_verdicts_block(verdicts: dict[str, Any] | None) -> list[str]:
+    """🎯 판정 블록 — 액션성은 개별 1줄, 관망은 묶음, 홀딩은 카운트로 접음.
+
+    가독성: 12줄 나열(특히 홀딩 N종 '보유 논리 유효' 반복)을 묶어 노이즈 제거.
+    """
+    if not verdicts:
+        return []
+    actionable: list[tuple[str, dict]] = []
+    watch: list[tuple[str, dict]] = []
+    hold: list[tuple[str, dict]] = []
+    for sym, vd in verdicts.items():
+        act = vd.get("action", "")
+        if act == "홀딩":
+            hold.append((sym, vd))
+        elif act == "관망":
+            if vd.get("confidence") != "하":   # 신뢰 하 관망 = 신호 없음, 숨김
+                watch.append((sym, vd))
+        else:
+            actionable.append((sym, vd))
+    if not (actionable or watch or hold):
+        return []
+    out = ["", "━━━━━━ 🎯 판정 ━━━━━━"]
+    for sym, vd in actionable:
+        e = _ACTION_EMOJI.get(vd.get("action", ""), "")
+        label = f"{vd['name']}({sym})" if vd.get("name") else sym
+        out.append(f"{e} {label} {vd.get('action')} · {vd.get('rationale', '')}")
+    if watch:
+        syms = "·".join(s for s, _ in watch)
+        out.append(f"⏸ {syms} 관망")
+        why = watch[0][1].get("rationale", "")
+        if why:
+            out.append(f"   └ {why}")
+    if hold:
+        syms = "·".join(s for s, _ in hold)
+        out.append(f"⚪ 홀딩 {len(hold)}종 안정")
+        out.append(f"   └ {syms}")
+    return out
+
+
+def _format_urgent_message(alerts: list[dict[str, Any]], title: str, limit: int,
+                           verdicts: dict[str, Any] | None,
+                           predictive_block: str = "",
+                           now: datetime | None = None) -> str:
+    """긴급 푸시 전용 스캔 포맷 — 시장상태 + 트리거 + 🎯판정(묶음) + 🔮예측."""
+    now = now or datetime.now(ZoneInfo("Asia/Seoul"))
+    shown = alerts[:limit]
+    extra = len(alerts) - len(shown)
+    lines = [f"## {title}", market_hours.market_status_label(now)]
+    if shown:
+        lines.append(f"\n🚨 트리거 {len(alerts)}건")
+        for a in shown:
+            lines.append(f"{SEV_EMOJI[a['severity']]} {a['message']}")
+        if extra > 0:
+            lines.append(f"…외 {extra}건")
+    lines.extend(_format_verdicts_block(verdicts))
+    if predictive_block:
+        body = [ln for ln in predictive_block.strip().split("\n") if "예측 신호" not in ln]
+        if body:
+            lines.append("\n━━━━━━ 🔮 예측 ━━━━━━")
+            lines.extend(body)
+    lines.append("\n━━━━━━━━━━")
+    lines.append("📄 상세 briefing.md")
     return "\n".join(lines)
 
 
@@ -493,9 +597,9 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
     verdicts = _load_json(VERDICTS_FILE) or None
     # digest는 dedup 안 함 → 매일 같은 alert 재노출되므로 "신규"라 부르면 오해. "감지"로 표기.
     count_label = "감지" if mode == "digest" else "신규"
-    msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     msg_short = _format_message(fresh, compact=True, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
     if mode == "digest":
+        msg_long = _format_message(fresh, compact=False, title=title, limit=limit, verdicts=verdicts, count_label=count_label)
         # 보유 포지션 오버레이 + 중재 액션 + 예측(선행) 신호를 헤더 직후 삽입 (잘림 방지)
         top_block = _brief_overlay_block() + _final_actions_block() + _predictive_block()
         if top_block:
@@ -504,6 +608,11 @@ def notify(mode: str = "urgent", cooldown_s: int = DEFAULT_COOLDOWN) -> NotifyRe
                 return head + sep + top_block + "\n" + rest if sep else msg + "\n" + top_block
             msg_long = _insert_after_header(msg_long)
             msg_short = _insert_after_header(msg_short)
+    else:
+        # 긴급: 스캔 포맷(시장상태·판정묶음·예측). 🔮은 예측 다이제스트(시스템①~⑩) 라이브.
+        msg_long = _format_urgent_message(fresh, title=title, limit=limit,
+                                          verdicts=verdicts,
+                                          predictive_block=_prediction_digest_block())
     delivered: list[str] = []
 
     if channels.is_enabled("telegram"):

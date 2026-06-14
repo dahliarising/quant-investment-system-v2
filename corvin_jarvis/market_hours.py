@@ -85,6 +85,10 @@ def alert_markets(alert: dict[str, Any], sector_markets: dict[str, set[str]]) ->
     if cat == "predictive":
         # predictive alert의 metric은 종목 심볼 자체 (예: "META", "005930").
         return {_market_of_symbol(metric)} if metric else set()
+    if cat == "early_warning":
+        # 포지션성 하드스톱 등 — metric 끝 토큰이 심볼 (예: "hardstop_012450").
+        sym = metric.split("_")[-1]
+        return {_market_of_symbol(sym)} if sym else set()
     if cat == "portfolio":
         sym = metric.split("_")[-1]
         return {_market_of_symbol(sym)} if sym else set()

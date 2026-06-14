@@ -113,6 +113,20 @@ def test_predictive_suppressed_on_weekend():
     assert mh.should_suppress({"category": "predictive", "metric": "META"}, SUN_0500, {}) is True
 
 
+def test_early_warning_hardstop_maps_to_symbol_market():
+    """early_warning 하드스톱도 종목 시장으로 매핑 (거시 우회 금지)."""
+    assert mh.alert_markets({"category": "early_warning", "metric": "hardstop_012450"}, {}) == {"KR"}
+    assert mh.alert_markets({"category": "early_warning", "metric": "hardstop_NVDA"}, {}) == {"US"}
+
+
+def test_early_warning_suppressed_on_weekend():
+    """주말엔 하드스톱 긴급알람도 억제 (월요일 개장 전 재부상)."""
+    a = {"category": "early_warning", "metric": "hardstop_012450"}
+    assert mh.should_suppress(a, SUN_0500, {}) is True
+    # 평일 KR 장중엔 유지
+    assert mh.should_suppress(a, FRI_1000, {}) is False
+
+
 def test_last_close_date_weekend_is_friday():
     assert mh.last_close_date(SUN_0500, "KR") == date(2026, 6, 12)
     # 일요일 05:00 KST = 토요일 16:00 ET → US 마지막 마감도 금요일
