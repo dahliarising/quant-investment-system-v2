@@ -29,6 +29,18 @@ def test_actionable_drops_hold_and_watch():
 
 
 @pytest.mark.unit
+def test_holdings_from_balance_extracts_pdno_qty():
+    from corvin_jarvis import kis_order
+    bal = kis_order.Balance(
+        orderable_cash=1_000_000, total_eval=2_000_000,
+        holdings=[{"pdno": "005930", "hldg_qty": "3"},
+                  {"pdno": "012450", "hldg_qty": "0"},
+                  {"hldg_qty": "5"}],  # pdno 없음 → 무시
+    )
+    assert rsd.holdings_from_balance(bal) == {"005930": 3, "012450": 0}
+
+
+@pytest.mark.unit
 def test_split_by_market_separates_kr_and_us():
     """국내(라우팅 가능) vs 해외(보류) 분리 — 통화/주문TR 다름."""
     candidates = {

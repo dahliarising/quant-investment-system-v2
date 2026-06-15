@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from corvin_jarvis import quote_provider, signal_router
+from corvin_jarvis import kis_auth, kis_order, quote_provider, signal_router
 
 # ⚠️ 현재 주문 모듈은 국내(place_kr_order)만. 해외주식은 KRW 트랜치/주문 TR이 달라
 #    별도 모듈(④) 필요 → dry-run에서 KR만 라우팅, US/기타는 '보류'로 분리.
@@ -74,6 +74,19 @@ def format_plans(plans: list[signal_router.RoutedPlan]) -> str:
     return "\n".join(lines)
 
 
+def holdings_from_balance(bal: "kis_order.Balance") -> dict[str, int]:
+    """모의계좌 잔고 → {종목: 보유수량} (순수). --place 사이징은 모의계좌 실보유 기준."""
+    out: dict[str, int] = {}
+    for h in bal.holdings:
+        sym = h.get("pdno")
+        if sym:
+            try:
+                out[sym] = int(h.get("hldg_qty", 0))
+            except (TypeError, ValueError):
+                out[sym] = 0
+    return out
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
@@ -84,14 +97,21 @@ def main() -> int:
                         help="모의주문 실제 실행 (기본=dry-run)")
     args = parser.parse_args()
 
-    pf = _load_json(PORTFOLIO_FILE)
     verdicts = _load_json(VERDICTS_FILE)
-    holdings = holdings_from_portfolio(pf)
     kr, us = split_by_market(actionable(verdicts))
 
     if not kr and not us:
         print("🔬 신호→주문 dry-run\n주문 후보 없음 — 현재 전부 홀딩/관망.")
         return 0
+
+    # --place: 모의계좌 env + *모의계좌 실보유* 기준 사이징 (자기일관).
+    # dry-run: 실제 portfolio.json 보유 기준 (실보유 분석).
+    env = None
+    if args.place:
+        env = kis_auth.load_mock_env()
+        holdings = holdings_from_balance(kis_order.get_kr_balance(env=env))
+    else:
+        holdings = holdings_from_portfolio(_load_json(PORTFOLIO_FILE))
 
     # 라이브 현재가 (국내 후보만 — 라우팅 대상)
     prices: dict[str, float] = {}
@@ -103,7 +123,7 @@ def main() -> int:
             log.warning("가격 조회 실패 %s (%s) — 제외", sym, q.source)
 
     plans = signal_router.route_verdicts(
-        kr, holdings=holdings, prices=prices, place=args.place,
+        kr, holdings=holdings, prices=prices, env=env, place=args.place,
     )
 
     mode = "모의주문 실행" if args.place else "DRY-RUN (주문 0발)"
