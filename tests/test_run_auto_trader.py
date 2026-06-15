@@ -51,6 +51,34 @@ def test_sell_signals_only_for_held():
     assert "207940" not in by  # 미보유 → 신호 없음
 
 
+def _result(executed):
+    return {"session": "US", "observe": False, "executed": executed, "plans": [],
+            "snapshot": {"total_value_krw": 10_000_000, "cash_krw": 9_000_000,
+                         "pnl_krw": 0, "pnl_pct": 0.0}}
+
+
+@pytest.mark.unit
+def test_notify_sends_only_on_real_trades():
+    sent = []
+    fake = lambda body: bool(sent.append(body)) or True  # noqa: E731
+    r = _result([{"applied": True, "side": "buy", "symbol": "005930",
+                  "qty": 1, "price_krw": 300_000, "status": "planned"}])
+    assert rat.notify_trades(r, sender=fake) is True
+    assert len(sent) == 1
+    assert "005930" in sent[0]
+
+
+@pytest.mark.unit
+def test_no_notify_when_zero_trades():
+    """체결 0건(스킵만/관찰) → 알림 안 감 (노이즈 방지)."""
+    sent = []
+    fake = lambda body: bool(sent.append(body)) or True  # noqa: E731
+    r = _result([{"applied": False, "side": "buy", "symbol": "MU", "qty": 0,
+                  "price_krw": 0, "status": "skipped"}])
+    assert rat.notify_trades(r, sender=fake) is False
+    assert sent == []
+
+
 @pytest.mark.unit
 def test_reduce_sells_one_third():
     verdicts = {"012450": {"action": "비중축소"}}

@@ -80,6 +80,56 @@ def test_cap_qty_zero_when_full():
 
 
 # ============================================================
+# 캘리브레이션 게이트 — 검증된 신호만
+# ============================================================
+
+@pytest.mark.unit
+def test_calibration_blocks_proven_poor_edge():
+    """n≥10 + 적중률<floor (semis 18%형) → 차단."""
+    cal = {"ensemble": {"semis": {"n": 30, "hit_rate": 0.18}}}
+    ok, why = st.calibration_gate(cal, "ensemble", "semis")
+    assert ok is False
+    assert "엣지없음" in why
+
+
+@pytest.mark.unit
+def test_calibration_allows_proven_edge():
+    cal = {"montecarlo": {"BUY": {"n": 25, "hit_rate": 0.66}}}
+    assert st.calibration_gate(cal, "montecarlo", "BUY")[0] is True
+
+
+@pytest.mark.unit
+def test_calibration_neutral_when_insufficient_samples():
+    """표본<10 → 데이터 없는데 막지 않음 (중립 통과)."""
+    cal = {"momentum": {"BUY": {"n": 4, "hit_rate": 0.0}}}
+    ok, why = st.calibration_gate(cal, "momentum", "BUY")
+    assert ok is True
+    assert "표본부족" in why
+
+
+@pytest.mark.unit
+def test_calibration_neutral_when_engine_unknown():
+    assert st.calibration_gate({}, "nope", "BUY")[0] is True
+
+
+@pytest.mark.unit
+def test_plan_skips_uncalibrated_buy():
+    pf = pp.PaperPortfolio(cash_krw=10_000_000, initial_krw=10_000_000)
+    cal = {"ensemble": {"semis": {"n": 30, "hit_rate": 0.18}}}
+    plans = st.plan_cycle(
+        pf,
+        buy_signals=[{"symbol": "AAA", "action": "매수",
+                      "engine": "ensemble", "kind": "semis"}],
+        sell_signals=[], prices_krw={"AAA": 100_000},
+        chase_metrics={"AAA": st.ChaseMetrics(2, 45, -20)},  # 눌림(추격아님)
+        buy_krw=500_000, max_position_pct=20.0, calibrations=cal,
+    )
+    p = [x for x in plans if x["symbol"] == "AAA"][0]
+    assert p["status"] == "skipped"
+    assert "미검증" in p["skip_reason"]
+
+
+# ============================================================
 # plan_cycle — 통합 (매도 + 가드된 매수)
 # ============================================================
 

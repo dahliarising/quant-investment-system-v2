@@ -27,6 +27,10 @@ SPLIT_BUY_RATIO = 0.5
 BUY_ACTIONS = frozenset({"매수", "비중확대"})
 SPLIT_BUY_ACTIONS = frozenset({"분할매수"})
 
+# 캘리브레이션 게이트 — 검증된 신호만 매매 (signal scorer 적중률)
+CALIB_FLOOR = 0.45    # 적중률 이하 = 엣지 없음/음 → 매수 차단
+CALIB_MIN_N = 10      # 표본 미만이면 판단 보류(중립 통과). n<10은 보정 보류 정책과 동일.
+
 
 @dataclass(frozen=True)
 class ChaseMetrics:
@@ -47,6 +51,24 @@ def is_chasing(m: ChaseMetrics, *,
     if m.pct_from_52w_high is not None and m.pct_from_52w_high >= -near_high_pct:
         return True, f"52주고 {m.pct_from_52w_high:+.0f}% 거의 고점"
     return False, ""
+
+
+def calibration_gate(
+    calibrations: Mapping[str, Mapping[str, Any]], engine: str, kind: str, *,
+    floor: float = CALIB_FLOOR, min_n: int = CALIB_MIN_N,
+) -> tuple[bool, str]:
+    """검증된 신호만 통과. 표본<min_n이면 판단 보류(중립 통과 — 데이터 없는데 막지 않음).
+
+    calibrations = {engine: {kind: {n, hit_rate, ...}}} (calibration.compute()).
+    적중률<floor (예: semis 18%≈랜덤) → 차단. 부트스트랩 동안은 대부분 중립.
+    """
+    entry = (calibrations.get(engine) or {}).get(kind)
+    if not entry or entry.get("n", 0) < min_n:
+        return True, "표본부족→중립통과"
+    hr = entry.get("hit_rate", 0.0)
+    if hr < floor:
+        return False, f"검증적중률 {hr:.0%}<{floor:.0%} (엣지없음)"
+    return True, f"검증통과(적중 {hr:.0%}·n={entry['n']})"
 
 
 def cap_qty_to_weight(pf: pp.PaperPortfolio, symbol: str, qty: int,
@@ -80,10 +102,12 @@ def plan_cycle(
     chase_metrics: Mapping[str, ChaseMetrics],
     buy_krw: float,
     max_position_pct: float,
+    calibrations: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """한 사이클의 실행 계획. 매도(보유분) 먼저, 가드된 매수 다음.
 
-    buy_signals = [{symbol, action}], sell_signals = [{symbol, qty, reason}].
+    buy_signals = [{symbol, action, engine?, kind?}], sell_signals = [{symbol, qty, reason}].
+    calibrations 주어지고 buy에 engine/kind 있으면 캘리브레이션 게이트 적용.
     반환 = planned/skipped dict 리스트 (status·skip_reason 포함, 가시성).
     """
     plans: list[dict[str, Any]] = []
@@ -108,6 +132,12 @@ def plan_cycle(
         if not px:
             plans.append(_planned(sym, "buy", 0, 0, action, "skipped", "현재가 없음"))
             continue
+        # 캘리브레이션 게이트: 미검증/저적중 신호 차단 (engine/kind + 데이터 있을 때만)
+        if calibrations is not None and b.get("engine"):
+            ok, why = calibration_gate(calibrations, b["engine"], b.get("kind", ""))
+            if not ok:
+                plans.append(_planned(sym, "buy", 0, px, action, "skipped", f"미검증: {why}"))
+                continue
         # 행동 가드: 추격 차단
         chasing, why = is_chasing(chase_metrics.get(sym, ChaseMetrics(None, None, None)))
         if chasing:

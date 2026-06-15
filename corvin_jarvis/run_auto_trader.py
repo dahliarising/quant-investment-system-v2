@@ -24,8 +24,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from corvin_jarvis import auto_strategy as st
+from corvin_jarvis import channels
 from corvin_jarvis import paper_portfolio as pp
 from corvin_jarvis import quote_provider as qp
+from corvin_jarvis.signals import calibration as cal
+from corvin_jarvis.signals import ledger as sl
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("corvin.auto_trader")
@@ -115,11 +118,36 @@ def _fx() -> float:
         return FX_FALLBACK
 
 
+def _calibration_context() -> tuple[dict[str, Any], dict[str, tuple[str, str]]]:
+    """캘리브레이션 맵 + 심볼→(engine,kind) (열린 신호 기준). 실패 시 빈 값(게이트 무력)."""
+    try:
+        calibrations = cal.compute()
+    except Exception as e:  # noqa: BLE001
+        log.warning("calibration 로드 실패 (%s) — 게이트 중립", e)
+        return {}, {}
+    sym_key: dict[str, tuple[str, str]] = {}
+    try:
+        for s in sl.fetch_open():
+            sym = s.get("symbol")
+            if sym and sym not in sym_key:
+                sym_key[sym] = (s.get("engine", ""), s.get("kind", ""))
+    except Exception as e:  # noqa: BLE001
+        log.warning("ledger 조회 실패 (%s)", e)
+    return calibrations, sym_key
+
+
 def run_cycle(*, observe: bool = False, session: str | None = "KR") -> dict[str, Any]:
     """한 사이클: 신호→가드→가상체결→저장→성과. 반환=요약 dict."""
     verdicts = json.loads(VERDICTS_FILE.read_text())
     pf = pp.load(PORTFOLIO_STATE)
     buys, sells = signals_from_verdicts(verdicts, pf)
+
+    # 캘리브레이션 게이트 컨텍스트 — 매수신호에 engine/kind 부착
+    calibrations, sym_key = _calibration_context()
+    for b in buys:
+        key = sym_key.get(b["symbol"])
+        if key:
+            b["engine"], b["kind"] = key
 
     fx = _fx()
     cand = [b["symbol"] for b in buys] + [s["symbol"] for s in sells]
@@ -136,6 +164,7 @@ def run_cycle(*, observe: bool = False, session: str | None = "KR") -> dict[str,
     plans = st.plan_cycle(
         pf, buy_signals=buys, sell_signals=sells, prices_krw=prices,
         chase_metrics=metrics, buy_krw=BUY_KRW, max_position_pct=MAX_POSITION_PCT,
+        calibrations=calibrations,
     )
 
     executed = []
@@ -187,6 +216,15 @@ def format_report(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def notify_trades(result: dict[str, Any], *, sender: Any = None) -> bool:
+    """실제 체결(applied=True)이 있을 때만 Telegram 알림. 0건/스킵엔 무알림(노이즈 방지)."""
+    sender = sender or channels.send_telegram
+    applied = [e for e in result.get("executed", []) if e.get("applied")]
+    if not applied:
+        return False
+    return bool(sender(format_report(result)))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Corvin 자동매매 페이퍼트레이더")
     ap.add_argument("--observe", action="store_true", help="체결 미반영(관찰만)")
@@ -199,6 +237,9 @@ def main() -> int:
         return 0
     result = run_cycle(observe=args.observe, session=session)
     print(format_report(result))
+    if not args.observe:
+        if notify_trades(result):
+            log.info("거래 알림 전송됨")
     return 0
 
 
