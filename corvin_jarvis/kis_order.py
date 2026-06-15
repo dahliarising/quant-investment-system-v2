@@ -259,8 +259,13 @@ def get_kr_balance(env: kis_auth.KISEnv | None = None) -> Balance:
         except (TypeError, ValueError):
             return None
 
+    # inquire-balance 응답엔 ord_psbl_cash 없음 — 가수도정산금액(주문가능 근사),
+    # 없으면 예수금총금액으로 폴백. (라이브 검증으로 확인)
+    orderable = _f(summary0.get("prvs_rcdl_excc_amt"))
+    if orderable is None:
+        orderable = _f(summary0.get("dnca_tot_amt"))
     return Balance(
-        orderable_cash=_f(summary0.get("ord_psbl_cash")),
+        orderable_cash=orderable,
         total_eval=_f(summary0.get("tot_evlu_amt")),
         holdings=data.get("output1") or [],
         raw=data,

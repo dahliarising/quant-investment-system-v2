@@ -207,13 +207,26 @@ def test_limit_order_requires_price(mock_env: kis_auth.KISEnv) -> None:
 # ============================================================
 
 @pytest.mark.unit
-def test_get_kr_balance_parses_ord_psbl_cash(mock_env: kis_auth.KISEnv) -> None:
+def test_get_kr_balance_parses_real_fields(mock_env: kis_auth.KISEnv) -> None:
+    """inquire-balance 실제 응답: 주문가능현금=prvs_rcdl_excc_amt, 평가=tot_evlu_amt.
+    (ord_psbl_cash는 이 엔드포인트에 없음 — 라이브 검증으로 확인된 버그 회귀방지.)"""
     payload = {
         "rt_cd": "0",
         "output1": [{"pdno": "005930", "hldg_qty": "3", "prpr": "70000"}],
-        "output2": [{"ord_psbl_cash": "1500000", "tot_evlu_amt": "5000000"}],
+        "output2": [{"dnca_tot_amt": "1500000", "prvs_rcdl_excc_amt": "1500000",
+                     "tot_evlu_amt": "5000000"}],
     }
     with patch("corvin_jarvis.kis_order.requests.get", return_value=_resp(payload)):
         bal = kis_order.get_kr_balance(env=mock_env)
     assert bal.orderable_cash == 1500000.0
+    assert bal.total_eval == 5000000.0
     assert bal.holdings[0]["pdno"] == "005930"
+
+
+@pytest.mark.unit
+def test_get_kr_balance_falls_back_to_dnca(mock_env: kis_auth.KISEnv) -> None:
+    """prvs_rcdl_excc_amt 없으면 dnca_tot_amt(예수금)로 폴백."""
+    payload = {"rt_cd": "0", "output2": [{"dnca_tot_amt": "999"}]}
+    with patch("corvin_jarvis.kis_order.requests.get", return_value=_resp(payload)):
+        bal = kis_order.get_kr_balance(env=mock_env)
+    assert bal.orderable_cash == 999.0

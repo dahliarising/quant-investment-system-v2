@@ -24,10 +24,9 @@ def kis_env() -> kis_auth.KISEnv:
 
 @pytest.fixture
 def isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    cache = tmp_path / "kis_token.json"
-    monkeypatch.setattr(kis_auth, "TOKEN_CACHE", cache)
+    """env별 캐시 — mock 토큰은 kis_token_mock.json."""
     monkeypatch.setattr(kis_auth, "STATE_DIR", tmp_path)
-    return cache
+    return tmp_path / "kis_token_mock.json"
 
 
 @pytest.mark.unit
@@ -115,6 +114,49 @@ def test_get_token_requests_new_when_no_cache(
     cached = json.loads(isolated_cache.read_text())
     assert cached["access_token"] == "fresh-token"
     assert cached["env"] == "mock"
+
+
+@pytest.mark.unit
+def test_per_env_cache_isolation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """모의 토큰 발급이 실전 캐시를 덮어쓰지 않음 (별도 파일)."""
+    monkeypatch.setattr(kis_auth, "STATE_DIR", tmp_path)
+    future = (datetime.now(timezone.utc) + timedelta(hours=20)).isoformat()
+    # 실전 캐시 미리 존재
+    (tmp_path / "kis_token_prod.json").write_text(json.dumps({
+        "env": "prod", "expires_at": future, "access_token": "PROD-TOKEN",
+    }))
+    mock_env = kis_auth.KISEnv("k", "s", kis_auth.MOCK_URL, "mock")
+    fake_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    with patch("corvin_jarvis.kis_auth._request_new_token",
+               return_value=("MOCK-TOKEN", fake_expires)):
+        kis_auth.get_token(mock_env)
+    # 실전 캐시 보존 + 모의 캐시 별도 생성
+    prod_cached = json.loads((tmp_path / "kis_token_prod.json").read_text())
+    assert prod_cached["access_token"] == "PROD-TOKEN"
+    mock_cached = json.loads((tmp_path / "kis_token_mock.json").read_text())
+    assert mock_cached["access_token"] == "MOCK-TOKEN"
+
+
+@pytest.mark.unit
+def test_load_mock_env_reads_mock_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KIS_MOCK_APP_KEY", "mk")
+    monkeypatch.setenv("KIS_MOCK_APP_SECRET", "ms")
+    monkeypatch.setenv("KIS_MOCK_ACCOUNT_NO", "50193344-01")
+    env = kis_auth.load_mock_env()
+    assert env.env == "mock"
+    assert env.base_url == kis_auth.MOCK_URL
+    assert env.app_key == "mk"
+    assert env.account_no == "50193344-01"
+
+
+@pytest.mark.unit
+def test_load_mock_env_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KIS_MOCK_APP_KEY", raising=False)
+    monkeypatch.delenv("KIS_MOCK_APP_SECRET", raising=False)
+    with pytest.raises(kis_auth.KISConfigError):
+        kis_auth.load_mock_env()
 
 
 @pytest.mark.unit

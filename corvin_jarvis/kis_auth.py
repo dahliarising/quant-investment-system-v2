@@ -26,7 +26,11 @@ import requests
 
 BASE_DIR = Path(__file__).resolve().parent
 STATE_DIR = BASE_DIR / "state"
-TOKEN_CACHE = STATE_DIR / "kis_token.json"
+
+
+def _cache_path(env_id: str) -> Path:
+    """env별 토큰 캐시 파일 — 모의/실전 토큰이 서로 덮어쓰지 않게 분리."""
+    return STATE_DIR / f"kis_token_{env_id}.json"
 
 PROD_URL = "https://openapi.koreainvestment.com:9443"
 MOCK_URL = "https://openapivts.koreainvestment.com:29443"
@@ -69,19 +73,42 @@ def load_env() -> KISEnv:
     )
 
 
-def _read_cache() -> dict[str, str]:
-    if not TOKEN_CACHE.exists():
+def load_mock_env() -> KISEnv:
+    """모의 전용 env — KIS_MOCK_* 키 사용 (실전 KIS_* 시세키와 분리).
+
+    주문 검증/모의 자동매매용. 전역 KIS_ENV(시세=prod)와 무관하게 항상 mock.
+    """
+    app_key = os.environ.get("KIS_MOCK_APP_KEY", "").strip()
+    app_secret = os.environ.get("KIS_MOCK_APP_SECRET", "").strip()
+    if not app_key or not app_secret:
+        raise KISConfigError(
+            "KIS_MOCK_APP_KEY / KIS_MOCK_APP_SECRET 미설정 — "
+            "모의투자 API 신청 후 corvin_jarvis/.env에 추가"
+        )
+    return KISEnv(
+        app_key=app_key,
+        app_secret=app_secret,
+        base_url=MOCK_URL,
+        env="mock",
+        account_no=os.environ.get("KIS_MOCK_ACCOUNT_NO", "").strip(),
+    )
+
+
+def _read_cache(env_id: str) -> dict[str, str]:
+    path = _cache_path(env_id)
+    if not path.exists():
         return {}
     try:
-        return json.loads(TOKEN_CACHE.read_text())
+        return json.loads(path.read_text())
     except (json.JSONDecodeError, OSError):
         return {}
 
 
-def _write_cache(data: dict[str, str]) -> None:
+def _write_cache(env_id: str, data: dict[str, str]) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    TOKEN_CACHE.write_text(json.dumps(data, indent=2))
-    TOKEN_CACHE.chmod(0o600)  # access token = 시크릿, owner-only
+    path = _cache_path(env_id)
+    path.write_text(json.dumps(data, indent=2))
+    path.chmod(0o600)  # access token = 시크릿, owner-only
 
 
 def _is_token_fresh(cache: dict[str, str], env_id: str) -> bool:
@@ -125,13 +152,13 @@ def get_token(env: KISEnv | None = None) -> str:
     KIS 토큰 발급은 분당 1회 제한 → 캐시 필수.
     """
     env = env or load_env()
-    cache = _read_cache()
+    cache = _read_cache(env.env)
     if _is_token_fresh(cache, env.env):
         return cache["access_token"]
 
     log.info("KIS 토큰 발급/갱신 중 (env=%s)", env.env)
     token, expires_at = _request_new_token(env)
-    _write_cache({
+    _write_cache(env.env, {
         "access_token": token,
         "expires_at": expires_at.isoformat(timespec="seconds"),
         "env": env.env,
